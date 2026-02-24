@@ -1,0 +1,3 @@
+// common is a shared library used by all Java services.
+// Spring Boot application plugins are NOT applied here.
+// Dependencies will be added as shared DTOs and utilities are introduced in future tickets.

@@ -1,6 +1,7 @@
 # Claude Code
 .claude/
-CLAUDE.md
+*.md
+!README.md
 
 # IDE
 .idea/
@@ -54,3 +55,6 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Context files
+more-context-from-claude-web-chat.txt

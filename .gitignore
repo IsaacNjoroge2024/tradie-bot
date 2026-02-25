@@ -1,0 +1,60 @@
+# Claude Code
+.claude/
+*.md
+!README.md
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Build
+build/
+target/
+dist/
+out/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data
+data/historical/*
+data/logs/*
+data/models/*
+!data/historical/.gitkeep
+!data/logs/.gitkeep
+!data/models/.gitkeep
+
+# Secrets
+*.pem
+*.key
+*.jks
+*.p12
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Context files
+more-context-from-claude-web-chat.txt

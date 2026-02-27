@@ -1,0 +1,29 @@
+package com.tradie.common.repository;
+
+import com.tradie.common.entity.TradeSignal;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+public interface TradeSignalRepository extends JpaRepository<TradeSignal, UUID> {
+
+    List<TradeSignal> findByStatusOrderByCreatedAtDesc(TradeSignal.SignalStatus status);
+
+    List<TradeSignal> findBySymbolAndCreatedAtAfterOrderByCreatedAtDesc(
+            String symbol, Instant since);
+
+    @Query(value = "SELECT * FROM trade_signals " +
+            "WHERE status = 'PENDING' AND created_at > :cutoff " +
+            "ORDER BY created_at ASC",
+            nativeQuery = true)
+    List<TradeSignal> findPendingSignals(@Param("cutoff") Instant cutoff);
+
+    @Query(value = "SELECT COUNT(*) FROM trade_signals " +
+            "WHERE status = 'EXECUTED' AND created_at > NOW() - INTERVAL '24 hours'",
+            nativeQuery = true)
+    long countExecutedToday();
+}

@@ -23,8 +23,9 @@ public interface TradeSignalRepository extends JpaRepository<TradeSignal, UUID> 
             @Param("status") TradeSignal.SignalStatus status,
             @Param("cutoff") Instant cutoff);
 
-    @Query(value = "SELECT COUNT(*) FROM trade_signals " +
-            "WHERE status = 'EXECUTED' AND created_at >= CURRENT_DATE",
-            nativeQuery = true)
-    long countExecutedToday();
+    @Query("SELECT COUNT(ts) FROM TradeSignal ts " +
+            "WHERE ts.status = :status AND ts.createdAt >= :from")
+    long countByStatusSince(
+            @Param("status") TradeSignal.SignalStatus status,
+            @Param("from") Instant from);
 }

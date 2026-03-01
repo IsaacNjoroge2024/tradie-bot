@@ -2,6 +2,7 @@ package com.tradie.common.entity;
 
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -18,18 +19,35 @@ class PositionTest {
     @Test
     void defaultCommissionTotalIsZero() {
         Position position = new Position();
-        assertEquals(0.0, position.getCommissionTotal());
+        assertEquals(BigDecimal.ZERO, position.getCommissionTotal());
     }
 
     @Test
-    void defaultOpenedAtIsSet() {
-        Instant before = Instant.now();
+    void openedAtIsNullBeforePersist() {
         Position position = new Position();
+        assertNull(position.getOpenedAt());
+    }
+
+    @Test
+    void onOpenSetsOpenedAt() {
+        Position position = new Position();
+        Instant before = Instant.now();
+        position.onOpen();
         Instant after = Instant.now();
 
         assertNotNull(position.getOpenedAt());
         assertFalse(position.getOpenedAt().isBefore(before));
         assertFalse(position.getOpenedAt().isAfter(after));
+    }
+
+    @Test
+    void onOpenDoesNotOverwriteExistingOpenedAt() {
+        Instant fixed = Instant.parse("2024-01-01T00:00:00Z");
+        Position position = new Position();
+        position.setOpenedAt(fixed);
+        position.onOpen();
+
+        assertEquals(fixed, position.getOpenedAt());
     }
 
     @Test
@@ -40,10 +58,10 @@ class PositionTest {
         position.setExchange("IDEALPRO");
         position.setAssetClass("CASH");
         position.setSide(Order.OrderSide.BUY);
-        position.setQuantity(100000.0);
-        position.setEntryPrice(1.0850);
-        position.setStopLoss(1.0800);
-        position.setTakeProfit(1.0950);
+        position.setQuantity(new BigDecimal("100000"));
+        position.setEntryPrice(new BigDecimal("1.0850"));
+        position.setStopLoss(new BigDecimal("1.0800"));
+        position.setTakeProfit(new BigDecimal("1.0950"));
         position.setStrategy("ORDER_BLOCK");
         position.setEntrySignalId(entrySignalId);
 
@@ -51,10 +69,10 @@ class PositionTest {
         assertEquals("IDEALPRO", position.getExchange());
         assertEquals("CASH", position.getAssetClass());
         assertEquals(Order.OrderSide.BUY, position.getSide());
-        assertEquals(100000.0, position.getQuantity());
-        assertEquals(1.0850, position.getEntryPrice());
-        assertEquals(1.0800, position.getStopLoss());
-        assertEquals(1.0950, position.getTakeProfit());
+        assertEquals(new BigDecimal("100000"), position.getQuantity());
+        assertEquals(new BigDecimal("1.0850"), position.getEntryPrice());
+        assertEquals(new BigDecimal("1.0800"), position.getStopLoss());
+        assertEquals(new BigDecimal("1.0950"), position.getTakeProfit());
         assertEquals("ORDER_BLOCK", position.getStrategy());
         assertEquals(entrySignalId, position.getEntrySignalId());
     }
@@ -66,14 +84,14 @@ class PositionTest {
 
         Position position = new Position();
         position.setStatus(Position.PositionStatus.CLOSED);
-        position.setExitPrice(1.0950);
-        position.setRealizedPnl(1000.0);
+        position.setExitPrice(new BigDecimal("1.0950"));
+        position.setRealizedPnl(new BigDecimal("1000.00"));
         position.setClosedAt(closedAt);
         position.setExitSignalId(exitSignalId);
 
         assertEquals(Position.PositionStatus.CLOSED, position.getStatus());
-        assertEquals(1.0950, position.getExitPrice());
-        assertEquals(1000.0, position.getRealizedPnl());
+        assertEquals(new BigDecimal("1.0950"), position.getExitPrice());
+        assertEquals(new BigDecimal("1000.00"), position.getRealizedPnl());
         assertEquals(closedAt, position.getClosedAt());
         assertEquals(exitSignalId, position.getExitSignalId());
     }
@@ -81,8 +99,8 @@ class PositionTest {
     @Test
     void unrealizedPnlCanBeUpdated() {
         Position position = new Position();
-        position.setUnrealizedPnl(250.50);
-        assertEquals(250.50, position.getUnrealizedPnl());
+        position.setUnrealizedPnl(new BigDecimal("250.50"));
+        assertEquals(new BigDecimal("250.50"), position.getUnrealizedPnl());
     }
 
     @Test

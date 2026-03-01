@@ -1,6 +1,7 @@
 package com.tradie.common.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -13,7 +14,7 @@ public class Order {
     private UUID id;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt;
 
     @Column(name = "signal_id")
     private UUID signalId;
@@ -34,21 +35,21 @@ public class Order {
     private String assetClass;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private OrderSide side;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "order_type", nullable = false)
+    @Column(name = "order_type", nullable = false, length = 20)
     private OrderType orderType;
 
-    @Column(nullable = false)
-    private Double quantity;
+    @Column(nullable = false, precision = 20, scale = 8)
+    private BigDecimal quantity;
 
-    @Column(name = "limit_price")
-    private Double limitPrice;
+    @Column(name = "limit_price", precision = 20, scale = 8)
+    private BigDecimal limitPrice;
 
-    @Column(name = "stop_price")
-    private Double stopPrice;
+    @Column(name = "stop_price", precision = 20, scale = 8)
+    private BigDecimal stopPrice;
 
     @Column(name = "parent_order_id")
     private UUID parentOrderId;
@@ -57,17 +58,17 @@ public class Order {
     private Boolean isBracketParent = false;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private OrderStatus status = OrderStatus.PENDING;
 
-    @Column(name = "filled_quantity")
-    private Double filledQuantity = 0.0;
+    @Column(name = "filled_quantity", precision = 20, scale = 8)
+    private BigDecimal filledQuantity = BigDecimal.ZERO;
 
-    @Column(name = "avg_fill_price")
-    private Double avgFillPrice;
+    @Column(name = "avg_fill_price", precision = 20, scale = 8)
+    private BigDecimal avgFillPrice;
 
-    @Column
-    private Double commission;
+    @Column(precision = 20, scale = 8)
+    private BigDecimal commission;
 
     @Column(name = "submitted_at")
     private Instant submittedAt;
@@ -79,6 +80,13 @@ public class Order {
     private Instant cancelledAt;
 
     public Order() {}
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 
     // Getters and Setters
 
@@ -111,14 +119,14 @@ public class Order {
     public OrderType getOrderType() { return orderType; }
     public void setOrderType(OrderType orderType) { this.orderType = orderType; }
 
-    public Double getQuantity() { return quantity; }
-    public void setQuantity(Double quantity) { this.quantity = quantity; }
+    public BigDecimal getQuantity() { return quantity; }
+    public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
 
-    public Double getLimitPrice() { return limitPrice; }
-    public void setLimitPrice(Double limitPrice) { this.limitPrice = limitPrice; }
+    public BigDecimal getLimitPrice() { return limitPrice; }
+    public void setLimitPrice(BigDecimal limitPrice) { this.limitPrice = limitPrice; }
 
-    public Double getStopPrice() { return stopPrice; }
-    public void setStopPrice(Double stopPrice) { this.stopPrice = stopPrice; }
+    public BigDecimal getStopPrice() { return stopPrice; }
+    public void setStopPrice(BigDecimal stopPrice) { this.stopPrice = stopPrice; }
 
     public UUID getParentOrderId() { return parentOrderId; }
     public void setParentOrderId(UUID parentOrderId) { this.parentOrderId = parentOrderId; }
@@ -129,14 +137,14 @@ public class Order {
     public OrderStatus getStatus() { return status; }
     public void setStatus(OrderStatus status) { this.status = status; }
 
-    public Double getFilledQuantity() { return filledQuantity; }
-    public void setFilledQuantity(Double filledQuantity) { this.filledQuantity = filledQuantity; }
+    public BigDecimal getFilledQuantity() { return filledQuantity; }
+    public void setFilledQuantity(BigDecimal filledQuantity) { this.filledQuantity = filledQuantity; }
 
-    public Double getAvgFillPrice() { return avgFillPrice; }
-    public void setAvgFillPrice(Double avgFillPrice) { this.avgFillPrice = avgFillPrice; }
+    public BigDecimal getAvgFillPrice() { return avgFillPrice; }
+    public void setAvgFillPrice(BigDecimal avgFillPrice) { this.avgFillPrice = avgFillPrice; }
 
-    public Double getCommission() { return commission; }
-    public void setCommission(Double commission) { this.commission = commission; }
+    public BigDecimal getCommission() { return commission; }
+    public void setCommission(BigDecimal commission) { this.commission = commission; }
 
     public Instant getSubmittedAt() { return submittedAt; }
     public void setSubmittedAt(Instant submittedAt) { this.submittedAt = submittedAt; }

@@ -2,6 +2,7 @@ package com.tradie.common.entity;
 
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -18,7 +19,7 @@ class OrderTest {
     @Test
     void defaultFilledQuantityIsZero() {
         Order order = new Order();
-        assertEquals(0.0, order.getFilledQuantity());
+        assertEquals(BigDecimal.ZERO, order.getFilledQuantity());
     }
 
     @Test
@@ -28,14 +29,31 @@ class OrderTest {
     }
 
     @Test
-    void defaultCreatedAtIsSet() {
-        Instant before = Instant.now();
+    void createdAtIsNullBeforePersist() {
         Order order = new Order();
+        assertNull(order.getCreatedAt());
+    }
+
+    @Test
+    void onCreateSetsCreatedAt() {
+        Order order = new Order();
+        Instant before = Instant.now();
+        order.onCreate();
         Instant after = Instant.now();
 
         assertNotNull(order.getCreatedAt());
         assertFalse(order.getCreatedAt().isBefore(before));
         assertFalse(order.getCreatedAt().isAfter(after));
+    }
+
+    @Test
+    void onCreateDoesNotOverwriteExistingCreatedAt() {
+        Instant fixed = Instant.parse("2024-01-01T00:00:00Z");
+        Order order = new Order();
+        order.setCreatedAt(fixed);
+        order.onCreate();
+
+        assertEquals(fixed, order.getCreatedAt());
     }
 
     @Test
@@ -48,9 +66,9 @@ class OrderTest {
         order.setAssetClass("STK");
         order.setSide(Order.OrderSide.BUY);
         order.setOrderType(Order.OrderType.LIMIT);
-        order.setQuantity(100.0);
-        order.setLimitPrice(150.00);
-        order.setStopPrice(148.00);
+        order.setQuantity(new BigDecimal("100"));
+        order.setLimitPrice(new BigDecimal("150.00"));
+        order.setStopPrice(new BigDecimal("148.00"));
 
         assertEquals(signalId, order.getSignalId());
         assertEquals("AAPL", order.getSymbol());
@@ -58,9 +76,9 @@ class OrderTest {
         assertEquals("STK", order.getAssetClass());
         assertEquals(Order.OrderSide.BUY, order.getSide());
         assertEquals(Order.OrderType.LIMIT, order.getOrderType());
-        assertEquals(100.0, order.getQuantity());
-        assertEquals(150.00, order.getLimitPrice());
-        assertEquals(148.00, order.getStopPrice());
+        assertEquals(new BigDecimal("100"), order.getQuantity());
+        assertEquals(new BigDecimal("150.00"), order.getLimitPrice());
+        assertEquals(new BigDecimal("148.00"), order.getStopPrice());
     }
 
     @Test
@@ -79,15 +97,15 @@ class OrderTest {
         Order order = new Order();
         Instant fillTime = Instant.now();
         order.setStatus(Order.OrderStatus.FILLED);
-        order.setFilledQuantity(100.0);
-        order.setAvgFillPrice(150.25);
-        order.setCommission(1.50);
+        order.setFilledQuantity(new BigDecimal("100"));
+        order.setAvgFillPrice(new BigDecimal("150.25"));
+        order.setCommission(new BigDecimal("1.50"));
         order.setFilledAt(fillTime);
 
         assertEquals(Order.OrderStatus.FILLED, order.getStatus());
-        assertEquals(100.0, order.getFilledQuantity());
-        assertEquals(150.25, order.getAvgFillPrice());
-        assertEquals(1.50, order.getCommission());
+        assertEquals(new BigDecimal("100"), order.getFilledQuantity());
+        assertEquals(new BigDecimal("150.25"), order.getAvgFillPrice());
+        assertEquals(new BigDecimal("1.50"), order.getCommission());
         assertEquals(fillTime, order.getFilledAt());
     }
 

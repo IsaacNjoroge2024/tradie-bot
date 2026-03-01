@@ -1,6 +1,7 @@
 package com.tradie.common.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -13,7 +14,7 @@ public class Position {
     private UUID id;
 
     @Column(name = "opened_at", nullable = false, updatable = false)
-    private Instant openedAt = Instant.now();
+    private Instant openedAt;
 
     @Column(name = "closed_at")
     private Instant closedAt;
@@ -28,35 +29,35 @@ public class Position {
     private String assetClass;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private Order.OrderSide side;
 
-    @Column(nullable = false)
-    private Double quantity;
+    @Column(nullable = false, precision = 20, scale = 8)
+    private BigDecimal quantity;
 
-    @Column(name = "entry_price", nullable = false)
-    private Double entryPrice;
+    @Column(name = "entry_price", nullable = false, precision = 20, scale = 8)
+    private BigDecimal entryPrice;
 
-    @Column(name = "exit_price")
-    private Double exitPrice;
+    @Column(name = "exit_price", precision = 20, scale = 8)
+    private BigDecimal exitPrice;
 
-    @Column(name = "stop_loss")
-    private Double stopLoss;
+    @Column(name = "stop_loss", precision = 20, scale = 8)
+    private BigDecimal stopLoss;
 
-    @Column(name = "take_profit")
-    private Double takeProfit;
+    @Column(name = "take_profit", precision = 20, scale = 8)
+    private BigDecimal takeProfit;
 
     @Column(name = "trailing_stop_pct")
     private Double trailingStopPct;
 
-    @Column(name = "realized_pnl")
-    private Double realizedPnl;
+    @Column(name = "realized_pnl", precision = 20, scale = 8)
+    private BigDecimal realizedPnl;
 
-    @Column(name = "unrealized_pnl")
-    private Double unrealizedPnl;
+    @Column(name = "unrealized_pnl", precision = 20, scale = 8)
+    private BigDecimal unrealizedPnl;
 
-    @Column(name = "commission_total")
-    private Double commissionTotal = 0.0;
+    @Column(name = "commission_total", precision = 20, scale = 8)
+    private BigDecimal commissionTotal = BigDecimal.ZERO;
 
     @Column(length = 50)
     private String strategy;
@@ -68,10 +69,17 @@ public class Position {
     private UUID exitSignalId;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private PositionStatus status = PositionStatus.OPEN;
 
     public Position() {}
+
+    @PrePersist
+    protected void onOpen() {
+        if (openedAt == null) {
+            openedAt = Instant.now();
+        }
+    }
 
     // Getters and Setters
 
@@ -95,32 +103,32 @@ public class Position {
     public Order.OrderSide getSide() { return side; }
     public void setSide(Order.OrderSide side) { this.side = side; }
 
-    public Double getQuantity() { return quantity; }
-    public void setQuantity(Double quantity) { this.quantity = quantity; }
+    public BigDecimal getQuantity() { return quantity; }
+    public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
 
-    public Double getEntryPrice() { return entryPrice; }
-    public void setEntryPrice(Double entryPrice) { this.entryPrice = entryPrice; }
+    public BigDecimal getEntryPrice() { return entryPrice; }
+    public void setEntryPrice(BigDecimal entryPrice) { this.entryPrice = entryPrice; }
 
-    public Double getExitPrice() { return exitPrice; }
-    public void setExitPrice(Double exitPrice) { this.exitPrice = exitPrice; }
+    public BigDecimal getExitPrice() { return exitPrice; }
+    public void setExitPrice(BigDecimal exitPrice) { this.exitPrice = exitPrice; }
 
-    public Double getStopLoss() { return stopLoss; }
-    public void setStopLoss(Double stopLoss) { this.stopLoss = stopLoss; }
+    public BigDecimal getStopLoss() { return stopLoss; }
+    public void setStopLoss(BigDecimal stopLoss) { this.stopLoss = stopLoss; }
 
-    public Double getTakeProfit() { return takeProfit; }
-    public void setTakeProfit(Double takeProfit) { this.takeProfit = takeProfit; }
+    public BigDecimal getTakeProfit() { return takeProfit; }
+    public void setTakeProfit(BigDecimal takeProfit) { this.takeProfit = takeProfit; }
 
     public Double getTrailingStopPct() { return trailingStopPct; }
     public void setTrailingStopPct(Double trailingStopPct) { this.trailingStopPct = trailingStopPct; }
 
-    public Double getRealizedPnl() { return realizedPnl; }
-    public void setRealizedPnl(Double realizedPnl) { this.realizedPnl = realizedPnl; }
+    public BigDecimal getRealizedPnl() { return realizedPnl; }
+    public void setRealizedPnl(BigDecimal realizedPnl) { this.realizedPnl = realizedPnl; }
 
-    public Double getUnrealizedPnl() { return unrealizedPnl; }
-    public void setUnrealizedPnl(Double unrealizedPnl) { this.unrealizedPnl = unrealizedPnl; }
+    public BigDecimal getUnrealizedPnl() { return unrealizedPnl; }
+    public void setUnrealizedPnl(BigDecimal unrealizedPnl) { this.unrealizedPnl = unrealizedPnl; }
 
-    public Double getCommissionTotal() { return commissionTotal; }
-    public void setCommissionTotal(Double commissionTotal) { this.commissionTotal = commissionTotal; }
+    public BigDecimal getCommissionTotal() { return commissionTotal; }
+    public void setCommissionTotal(BigDecimal commissionTotal) { this.commissionTotal = commissionTotal; }
 
     public String getStrategy() { return strategy; }
     public void setStrategy(String strategy) { this.strategy = strategy; }

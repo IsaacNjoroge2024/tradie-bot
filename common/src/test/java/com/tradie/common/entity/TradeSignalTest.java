@@ -2,6 +2,7 @@ package com.tradie.common.entity;
 
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -15,14 +16,31 @@ class TradeSignalTest {
     }
 
     @Test
-    void defaultCreatedAtIsSet() {
-        Instant before = Instant.now();
+    void createdAtIsNullBeforePersist() {
         TradeSignal signal = new TradeSignal();
+        assertNull(signal.getCreatedAt());
+    }
+
+    @Test
+    void onCreateSetsCreatedAt() {
+        TradeSignal signal = new TradeSignal();
+        Instant before = Instant.now();
+        signal.onCreate();
         Instant after = Instant.now();
 
         assertNotNull(signal.getCreatedAt());
         assertFalse(signal.getCreatedAt().isBefore(before));
         assertFalse(signal.getCreatedAt().isAfter(after));
+    }
+
+    @Test
+    void onCreateDoesNotOverwriteExistingCreatedAt() {
+        Instant fixed = Instant.parse("2024-01-01T00:00:00Z");
+        TradeSignal signal = new TradeSignal();
+        signal.setCreatedAt(fixed);
+        signal.onCreate();
+
+        assertEquals(fixed, signal.getCreatedAt());
     }
 
     @Test
@@ -33,9 +51,9 @@ class TradeSignalTest {
         signal.setAction(TradeSignal.SignalAction.BUY);
         signal.setStrategy("FVG");
         signal.setSource(TradeSignal.SignalSource.TRADINGVIEW);
-        signal.setPrice(150.50);
-        signal.setStopLoss(148.00);
-        signal.setTakeProfit(155.00);
+        signal.setPrice(new BigDecimal("150.50"));
+        signal.setStopLoss(new BigDecimal("148.00"));
+        signal.setTakeProfit(new BigDecimal("155.00"));
         signal.setConfidenceScore(0.85);
         signal.setTimeframe("1h");
 
@@ -44,9 +62,9 @@ class TradeSignalTest {
         assertEquals(TradeSignal.SignalAction.BUY, signal.getAction());
         assertEquals("FVG", signal.getStrategy());
         assertEquals(TradeSignal.SignalSource.TRADINGVIEW, signal.getSource());
-        assertEquals(150.50, signal.getPrice());
-        assertEquals(148.00, signal.getStopLoss());
-        assertEquals(155.00, signal.getTakeProfit());
+        assertEquals(new BigDecimal("150.50"), signal.getPrice());
+        assertEquals(new BigDecimal("148.00"), signal.getStopLoss());
+        assertEquals(new BigDecimal("155.00"), signal.getTakeProfit());
         assertEquals(0.85, signal.getConfidenceScore());
         assertEquals("1h", signal.getTimeframe());
     }

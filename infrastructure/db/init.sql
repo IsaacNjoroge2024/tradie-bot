@@ -38,25 +38,23 @@ CREATE INDEX idx_ohlcv_exchange_symbol ON ohlcv (exchange, symbol);
 
 -- ===========================================
 -- Trade Signals Table
+-- Enum columns use VARCHAR for JPA @Enumerated(EnumType.STRING) compatibility.
+-- Monetary/price fields use NUMERIC(20,8) for financial precision.
 -- ===========================================
-CREATE TYPE signal_action AS ENUM ('BUY', 'SELL');
-CREATE TYPE signal_source AS ENUM ('TRADINGVIEW', 'INTERNAL', 'MANUAL');
-CREATE TYPE signal_status AS ENUM ('PENDING', 'VALIDATED', 'EXECUTED', 'REJECTED', 'EXPIRED');
-
 CREATE TABLE trade_signals (
-    id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at       TIMESTAMPTZ NOT NULL    DEFAULT NOW(),
-    symbol           VARCHAR(20) NOT NULL,
-    exchange         VARCHAR(20) NOT NULL,
-    action           signal_action            NOT NULL,
-    strategy         VARCHAR(50) NOT NULL,
-    source           signal_source            NOT NULL,
-    price            DOUBLE PRECISION         NOT NULL,
-    stop_loss        DOUBLE PRECISION,
-    take_profit      DOUBLE PRECISION,
+    id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at       TIMESTAMPTZ  NOT NULL    DEFAULT NOW(),
+    symbol           VARCHAR(20)  NOT NULL,
+    exchange         VARCHAR(20)  NOT NULL,
+    action           VARCHAR(20)  NOT NULL,             -- SignalAction enum
+    strategy         VARCHAR(50)  NOT NULL,
+    source           VARCHAR(20)  NOT NULL,             -- SignalSource enum
+    price            NUMERIC(20,8)            NOT NULL,
+    stop_loss        NUMERIC(20,8),
+    take_profit      NUMERIC(20,8),
     confidence_score DOUBLE PRECISION,
     timeframe        VARCHAR(10),
-    status           signal_status            NOT NULL DEFAULT 'PENDING',
+    status           VARCHAR(20)  NOT NULL    DEFAULT 'PENDING',  -- SignalStatus enum
     rejection_reason TEXT,
     raw_payload      JSONB,
 
@@ -71,33 +69,29 @@ CREATE INDEX idx_signals_strategy    ON trade_signals (strategy);
 -- ===========================================
 -- Orders Table
 -- ===========================================
-CREATE TYPE order_side   AS ENUM ('BUY', 'SELL');
-CREATE TYPE order_type   AS ENUM ('MARKET', 'LIMIT', 'STOP', 'STOP_LIMIT');
-CREATE TYPE order_status AS ENUM ('PENDING', 'SUBMITTED', 'FILLED', 'PARTIALLY_FILLED', 'CANCELLED', 'REJECTED');
-
 CREATE TABLE orders (
-    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at      TIMESTAMPTZ NOT NULL    DEFAULT NOW(),
-    signal_id       UUID        REFERENCES trade_signals(id),
+    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at      TIMESTAMPTZ  NOT NULL    DEFAULT NOW(),
+    signal_id       UUID         REFERENCES trade_signals(id),
     ib_order_id     INTEGER,
     ib_perm_id      BIGINT,
 
-    symbol          VARCHAR(20) NOT NULL,
-    exchange        VARCHAR(20) NOT NULL,
-    asset_class     VARCHAR(20) NOT NULL,  -- 'STK', 'CASH', 'FUT', 'CRYPTO'
-    side            order_side              NOT NULL,
-    order_type      order_type              NOT NULL,
-    quantity        DOUBLE PRECISION        NOT NULL,
-    limit_price     DOUBLE PRECISION,
-    stop_price      DOUBLE PRECISION,
+    symbol          VARCHAR(20)  NOT NULL,
+    exchange        VARCHAR(20)  NOT NULL,
+    asset_class     VARCHAR(20)  NOT NULL,  -- 'STK', 'CASH', 'FUT', 'CRYPTO'
+    side            VARCHAR(20)  NOT NULL,  -- OrderSide enum
+    order_type      VARCHAR(20)  NOT NULL,  -- OrderType enum
+    quantity        NUMERIC(20,8)            NOT NULL,
+    limit_price     NUMERIC(20,8),
+    stop_price      NUMERIC(20,8),
 
     parent_order_id   UUID,
-    is_bracket_parent BOOLEAN DEFAULT FALSE,
+    is_bracket_parent BOOLEAN      DEFAULT FALSE,
 
-    status           order_status           NOT NULL DEFAULT 'PENDING',
-    filled_quantity  DOUBLE PRECISION       DEFAULT 0,
-    avg_fill_price   DOUBLE PRECISION,
-    commission       DOUBLE PRECISION,
+    status           VARCHAR(20)  NOT NULL    DEFAULT 'PENDING',  -- OrderStatus enum
+    filled_quantity  NUMERIC(20,8)            DEFAULT 0,
+    avg_fill_price   NUMERIC(20,8),
+    commission       NUMERIC(20,8),
 
     submitted_at TIMESTAMPTZ,
     filled_at    TIMESTAMPTZ,
@@ -111,34 +105,32 @@ CREATE INDEX idx_orders_ib_id  ON orders (ib_order_id);
 -- ===========================================
 -- Positions Table
 -- ===========================================
-CREATE TYPE position_status AS ENUM ('OPEN', 'CLOSED');
-
 CREATE TABLE positions (
-    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    opened_at  TIMESTAMPTZ NOT NULL    DEFAULT NOW(),
+    id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    opened_at  TIMESTAMPTZ  NOT NULL    DEFAULT NOW(),
     closed_at  TIMESTAMPTZ,
 
-    symbol      VARCHAR(20) NOT NULL,
-    exchange    VARCHAR(20) NOT NULL,
-    asset_class VARCHAR(20) NOT NULL,
-    side        order_side              NOT NULL,
-    quantity    DOUBLE PRECISION        NOT NULL,
-    entry_price DOUBLE PRECISION        NOT NULL,
-    exit_price  DOUBLE PRECISION,
+    symbol      VARCHAR(20)  NOT NULL,
+    exchange    VARCHAR(20)  NOT NULL,
+    asset_class VARCHAR(20)  NOT NULL,
+    side        VARCHAR(20)  NOT NULL,  -- OrderSide enum
+    quantity    NUMERIC(20,8)            NOT NULL,
+    entry_price NUMERIC(20,8)            NOT NULL,
+    exit_price  NUMERIC(20,8),
 
-    stop_loss         DOUBLE PRECISION,
-    take_profit       DOUBLE PRECISION,
+    stop_loss         NUMERIC(20,8),
+    take_profit       NUMERIC(20,8),
     trailing_stop_pct DOUBLE PRECISION,
 
-    realized_pnl    DOUBLE PRECISION,
-    unrealized_pnl  DOUBLE PRECISION,
-    commission_total DOUBLE PRECISION DEFAULT 0,
+    realized_pnl    NUMERIC(20,8),
+    unrealized_pnl  NUMERIC(20,8),
+    commission_total NUMERIC(20,8)        DEFAULT 0,
 
     strategy         VARCHAR(50),
     entry_signal_id  UUID REFERENCES trade_signals(id),
     exit_signal_id   UUID REFERENCES trade_signals(id),
 
-    status position_status NOT NULL DEFAULT 'OPEN'
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN'  -- PositionStatus enum
 );
 
 CREATE INDEX idx_positions_status ON positions (status);
@@ -147,15 +139,13 @@ CREATE INDEX idx_positions_symbol ON positions (symbol);
 -- ===========================================
 -- Economic Events Table (for News Shield)
 -- ===========================================
-CREATE TYPE event_impact AS ENUM ('LOW', 'MEDIUM', 'HIGH');
-
 CREATE TABLE economic_events (
     id         UUID         NOT NULL DEFAULT gen_random_uuid(),
     event_time TIMESTAMPTZ  NOT NULL,
     title      VARCHAR(200) NOT NULL,
     country    VARCHAR(3)   NOT NULL,
     currency   VARCHAR(5),
-    impact     event_impact NOT NULL,
+    impact     VARCHAR(10)  NOT NULL,  -- LOW, MEDIUM, HIGH
     forecast   VARCHAR(50),
     previous   VARCHAR(50),
     actual     VARCHAR(50),
@@ -196,13 +186,16 @@ CREATE INDEX idx_news_symbols ON news_sentiment USING GIN (symbols);
 -- Trade Audit Log (Hypertable)
 -- ===========================================
 CREATE TABLE audit_log (
-    time        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    service     VARCHAR(50) NOT NULL,
+    id          UUID         NOT NULL DEFAULT gen_random_uuid(),
+    time        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    service     VARCHAR(50)  NOT NULL,
     action      VARCHAR(100) NOT NULL,
     entity_type VARCHAR(50),
     entity_id   UUID,
     details     JSONB,
-    user_id     VARCHAR(50)
+    user_id     VARCHAR(50),
+
+    PRIMARY KEY (id, time)
 );
 
 SELECT create_hypertable('audit_log', 'time');

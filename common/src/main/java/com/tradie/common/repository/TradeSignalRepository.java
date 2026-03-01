@@ -16,14 +16,15 @@ public interface TradeSignalRepository extends JpaRepository<TradeSignal, UUID> 
     List<TradeSignal> findBySymbolAndCreatedAtAfterOrderByCreatedAtDesc(
             String symbol, Instant since);
 
-    @Query(value = "SELECT * FROM trade_signals " +
-            "WHERE status = 'PENDING' AND created_at > :cutoff " +
-            "ORDER BY created_at ASC",
-            nativeQuery = true)
-    List<TradeSignal> findPendingSignals(@Param("cutoff") Instant cutoff);
+    @Query("SELECT ts FROM TradeSignal ts " +
+            "WHERE ts.status = :status AND ts.createdAt > :cutoff " +
+            "ORDER BY ts.createdAt ASC")
+    List<TradeSignal> findPendingSignals(
+            @Param("status") TradeSignal.SignalStatus status,
+            @Param("cutoff") Instant cutoff);
 
     @Query(value = "SELECT COUNT(*) FROM trade_signals " +
-            "WHERE status = 'EXECUTED' AND created_at > NOW() - INTERVAL '24 hours'",
+            "WHERE status = 'EXECUTED' AND created_at >= CURRENT_DATE",
             nativeQuery = true)
     long countExecutedToday();
 }

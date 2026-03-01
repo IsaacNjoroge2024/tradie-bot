@@ -1,6 +1,7 @@
 package com.tradie.common.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -13,7 +14,7 @@ public class TradeSignal {
     private UUID id;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt;
 
     @Column(nullable = false, length = 20)
     private String symbol;
@@ -22,24 +23,24 @@ public class TradeSignal {
     private String exchange;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private SignalAction action;
 
     @Column(nullable = false, length = 50)
     private String strategy;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private SignalSource source;
 
-    @Column(nullable = false)
-    private Double price;
+    @Column(nullable = false, precision = 20, scale = 8)
+    private BigDecimal price;
 
-    @Column(name = "stop_loss")
-    private Double stopLoss;
+    @Column(name = "stop_loss", precision = 20, scale = 8)
+    private BigDecimal stopLoss;
 
-    @Column(name = "take_profit")
-    private Double takeProfit;
+    @Column(name = "take_profit", precision = 20, scale = 8)
+    private BigDecimal takeProfit;
 
     @Column(name = "confidence_score")
     private Double confidenceScore;
@@ -48,7 +49,7 @@ public class TradeSignal {
     private String timeframe;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private SignalStatus status = SignalStatus.PENDING;
 
     @Column(name = "rejection_reason")
@@ -64,6 +65,13 @@ public class TradeSignal {
     private Instant executedAt;
 
     public TradeSignal() {}
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 
     // Getters and Setters
 
@@ -87,14 +95,14 @@ public class TradeSignal {
     public SignalSource getSource() { return source; }
     public void setSource(SignalSource source) { this.source = source; }
 
-    public Double getPrice() { return price; }
-    public void setPrice(Double price) { this.price = price; }
+    public BigDecimal getPrice() { return price; }
+    public void setPrice(BigDecimal price) { this.price = price; }
 
-    public Double getStopLoss() { return stopLoss; }
-    public void setStopLoss(Double stopLoss) { this.stopLoss = stopLoss; }
+    public BigDecimal getStopLoss() { return stopLoss; }
+    public void setStopLoss(BigDecimal stopLoss) { this.stopLoss = stopLoss; }
 
-    public Double getTakeProfit() { return takeProfit; }
-    public void setTakeProfit(Double takeProfit) { this.takeProfit = takeProfit; }
+    public BigDecimal getTakeProfit() { return takeProfit; }
+    public void setTakeProfit(BigDecimal takeProfit) { this.takeProfit = takeProfit; }
 
     public Double getConfidenceScore() { return confidenceScore; }
     public void setConfidenceScore(Double confidenceScore) { this.confidenceScore = confidenceScore; }

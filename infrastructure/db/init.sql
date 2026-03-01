@@ -72,7 +72,7 @@ CREATE INDEX idx_signals_strategy    ON trade_signals (strategy);
 CREATE TABLE orders (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at      TIMESTAMPTZ  NOT NULL    DEFAULT NOW(),
-    signal_id       UUID         REFERENCES trade_signals(id),
+    signal_id       UUID         REFERENCES trade_signals(id) ON DELETE SET NULL,
     ib_order_id     INTEGER,
     ib_perm_id      BIGINT,
 
@@ -85,7 +85,7 @@ CREATE TABLE orders (
     limit_price     NUMERIC(20,8),
     stop_price      NUMERIC(20,8),
 
-    parent_order_id   UUID,
+    parent_order_id   UUID REFERENCES orders(id) ON DELETE SET NULL,
     is_bracket_parent BOOLEAN      DEFAULT FALSE,
 
     status           VARCHAR(20)  NOT NULL    DEFAULT 'PENDING',  -- OrderStatus enum
@@ -127,8 +127,8 @@ CREATE TABLE positions (
     commission_total NUMERIC(20,8)        DEFAULT 0,
 
     strategy         VARCHAR(50),
-    entry_signal_id  UUID REFERENCES trade_signals(id),
-    exit_signal_id   UUID REFERENCES trade_signals(id),
+    entry_signal_id  UUID REFERENCES trade_signals(id) ON DELETE SET NULL,
+    exit_signal_id   UUID REFERENCES trade_signals(id) ON DELETE SET NULL,
 
     status VARCHAR(20) NOT NULL DEFAULT 'OPEN'  -- PositionStatus enum
 );

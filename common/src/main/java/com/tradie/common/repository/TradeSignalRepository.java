@@ -19,7 +19,7 @@ public interface TradeSignalRepository extends JpaRepository<TradeSignal, UUID> 
     @Query("SELECT ts FROM TradeSignal ts " +
             "WHERE ts.status = :status AND ts.createdAt > :cutoff " +
             "ORDER BY ts.createdAt ASC")
-    List<TradeSignal> findPendingSignals(
+    List<TradeSignal> findByStatusAndCreatedAtAfterOrderByCreatedAtAsc(
             @Param("status") TradeSignal.SignalStatus status,
             @Param("cutoff") Instant cutoff);
 

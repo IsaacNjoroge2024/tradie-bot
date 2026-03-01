@@ -1,3 +1,18 @@
 // common is a shared library used by all Java services.
 // Spring Boot application plugins are NOT applied here.
-// Dependencies will be added as shared DTOs and utilities are introduced in future tickets.
+
+plugins {
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:3.2.0"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}

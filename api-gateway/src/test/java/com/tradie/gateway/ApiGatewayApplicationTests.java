@@ -14,6 +14,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
         "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=none",
         "spring.flyway.enabled=false",
+        "tradie.webhook.secret=test-secret",
         // No Kafka broker needed in context load test
         "spring.autoconfigure.exclude=" +
             "org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration"

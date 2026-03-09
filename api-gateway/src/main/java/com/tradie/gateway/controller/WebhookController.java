@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Map;
 
 @RestController
@@ -33,7 +35,7 @@ public class WebhookController {
             @Valid @RequestBody TradingViewSignal signal,
             @RequestHeader(value = "X-Request-Id", required = false) String requestId) {
 
-        if (!webhookSecret.equals(signal.authToken())) {
+        if (!isValidToken(signal.authToken())) {
             log.warn("Unauthorized webhook attempt for symbol: {} from IP: {}",
                     signal.symbol(), getClientIp());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -67,6 +69,13 @@ public class WebhookController {
                 "service", "api-gateway",
                 "timestamp", java.time.Instant.now().toString()
         ));
+    }
+
+    private boolean isValidToken(String providedToken) {
+        return providedToken != null && MessageDigest.isEqual(
+                webhookSecret.getBytes(StandardCharsets.UTF_8),
+                providedToken.getBytes(StandardCharsets.UTF_8)
+        );
     }
 
     private String getClientIp() {

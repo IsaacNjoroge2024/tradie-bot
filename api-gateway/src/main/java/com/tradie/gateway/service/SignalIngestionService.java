@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 
@@ -51,16 +53,23 @@ public class SignalIngestionService {
         String messageKey = saved.getSymbol();
         String messageValue = objectMapper.writeValueAsString(saved);
 
-        kafkaTemplate.send(SIGNALS_TOPIC, messageKey, messageValue)
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish signal {} to Kafka: {}",
-                                saved.getId(), ex.getMessage());
-                    } else {
-                        log.debug("Signal {} published to Kafka partition {}",
-                                saved.getId(), result.getRecordMetadata().partition());
-                    }
-                });
+        // Publish to Kafka only after the DB transaction commits successfully,
+        // preventing divergence where Kafka has the event but the DB does not (or vice versa).
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                kafkaTemplate.send(SIGNALS_TOPIC, messageKey, messageValue)
+                        .whenComplete((result, ex) -> {
+                            if (ex != null) {
+                                log.error("Failed to publish signal {} to Kafka: {}",
+                                        saved.getId(), ex.getMessage());
+                            } else {
+                                log.debug("Signal {} published to Kafka partition {}",
+                                        saved.getId(), result.getRecordMetadata().partition());
+                            }
+                        });
+            }
+        });
 
         return saved.getId().toString();
     }

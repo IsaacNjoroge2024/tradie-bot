@@ -35,7 +35,6 @@ public record TradingViewSignal(
         String exchange,
         String timeframe,
 
-        @JsonProperty("confidence")
         @Min(0) @Max(100)
         Double confidence) {
 

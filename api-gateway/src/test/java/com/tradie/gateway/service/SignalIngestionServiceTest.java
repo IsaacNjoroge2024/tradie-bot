@@ -5,13 +5,17 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.common.repository.TradeSignalRepository;
 import com.tradie.gateway.dto.TradingViewSignal;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -33,10 +37,27 @@ class SignalIngestionServiceTest {
 
     private SignalIngestionService signalIngestionService;
 
+    // Intercepts TransactionSynchronizationManager.registerSynchronization() and
+    // immediately invokes afterCommit(), simulating a successful DB transaction commit
+    // in unit tests that have no active Spring transaction context.
+    private MockedStatic<TransactionSynchronizationManager> txSyncMock;
+
     @BeforeEach
     void setUp() {
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         signalIngestionService = new SignalIngestionService(signalRepository, kafkaTemplate, objectMapper);
+
+        txSyncMock = mockStatic(TransactionSynchronizationManager.class);
+        txSyncMock.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
+                .thenAnswer(invocation -> {
+                    ((TransactionSynchronization) invocation.getArgument(0)).afterCommit();
+                    return null;
+                });
+    }
+
+    @AfterEach
+    void tearDown() {
+        txSyncMock.close();
     }
 
     private TradingViewSignal buildValidSignal() {

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.common.repository.TradeSignalRepository;
 import com.tradie.gateway.dto.TradingViewSignal;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -42,7 +44,12 @@ class SignalIngestionServiceTest {
     // in unit tests that have no active Spring transaction context.
     private MockedStatic<TransactionSynchronizationManager> txSyncMock;
 
+    // Reusable Kafka send result that correctly simulates a successful publish,
+    // allowing the whenComplete success branch to access result.getRecordMetadata().
+    private CompletableFuture<SendResult<String, String>> successfulSend;
+
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         signalIngestionService = new SignalIngestionService(signalRepository, kafkaTemplate, objectMapper);
@@ -53,6 +60,12 @@ class SignalIngestionServiceTest {
                     ((TransactionSynchronization) invocation.getArgument(0)).afterCommit();
                     return null;
                 });
+
+        RecordMetadata metadata = mock(RecordMetadata.class);
+        when(metadata.partition()).thenReturn(0);
+        SendResult<String, String> sendResult = mock(SendResult.class);
+        when(sendResult.getRecordMetadata()).thenReturn(metadata);
+        successfulSend = CompletableFuture.completedFuture(sendResult);
     }
 
     @AfterEach
@@ -76,12 +89,10 @@ class SignalIngestionServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void processIncomingSignal_persistsSignalToDatabase() throws Exception {
         UUID signalId = UUID.randomUUID();
         when(signalRepository.save(any(TradeSignal.class))).thenReturn(buildSavedSignal(signalId, "AAPL"));
-        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
-                .thenReturn(CompletableFuture.completedFuture(null));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successfulSend);
 
         signalIngestionService.processIncomingSignal(buildValidSignal());
 
@@ -89,12 +100,10 @@ class SignalIngestionServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void processIncomingSignal_publishesToKafka() throws Exception {
         UUID signalId = UUID.randomUUID();
         when(signalRepository.save(any(TradeSignal.class))).thenReturn(buildSavedSignal(signalId, "AAPL"));
-        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
-                .thenReturn(CompletableFuture.completedFuture(null));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successfulSend);
 
         signalIngestionService.processIncomingSignal(buildValidSignal());
 
@@ -102,13 +111,11 @@ class SignalIngestionServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void processIncomingSignal_mapsFieldsCorrectly() throws Exception {
         UUID signalId = UUID.randomUUID();
         ArgumentCaptor<TradeSignal> captor = ArgumentCaptor.forClass(TradeSignal.class);
         when(signalRepository.save(captor.capture())).thenReturn(buildSavedSignal(signalId, "AAPL"));
-        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
-                .thenReturn(CompletableFuture.completedFuture(null));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successfulSend);
 
         signalIngestionService.processIncomingSignal(buildValidSignal());
 
@@ -127,12 +134,10 @@ class SignalIngestionServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void processIncomingSignal_returnsSignalId() throws Exception {
         UUID signalId = UUID.randomUUID();
         when(signalRepository.save(any(TradeSignal.class))).thenReturn(buildSavedSignal(signalId, "AAPL"));
-        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
-                .thenReturn(CompletableFuture.completedFuture(null));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successfulSend);
 
         String result = signalIngestionService.processIncomingSignal(buildValidSignal());
 
@@ -140,7 +145,6 @@ class SignalIngestionServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void processIncomingSignal_symbolIsUpperCased() throws Exception {
         TradingViewSignal lowerCaseSignal = new TradingViewSignal(
                 "aapl", "BUY", "FVG", 150.0, 148.0, 155.0,
@@ -149,8 +153,7 @@ class SignalIngestionServiceTest {
         UUID signalId = UUID.randomUUID();
         ArgumentCaptor<TradeSignal> captor = ArgumentCaptor.forClass(TradeSignal.class);
         when(signalRepository.save(captor.capture())).thenReturn(buildSavedSignal(signalId, "AAPL"));
-        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
-                .thenReturn(CompletableFuture.completedFuture(null));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successfulSend);
 
         signalIngestionService.processIncomingSignal(lowerCaseSignal);
 
@@ -158,7 +161,6 @@ class SignalIngestionServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void processIncomingSignal_nullConfidence_setsNullConfidenceScore() throws Exception {
         TradingViewSignal signalWithNoConfidence = new TradingViewSignal(
                 "AAPL", "SELL", "OrderBlock", 150.0, 148.0, 155.0,
@@ -167,8 +169,7 @@ class SignalIngestionServiceTest {
         UUID signalId = UUID.randomUUID();
         ArgumentCaptor<TradeSignal> captor = ArgumentCaptor.forClass(TradeSignal.class);
         when(signalRepository.save(captor.capture())).thenReturn(buildSavedSignal(signalId, "AAPL"));
-        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
-                .thenReturn(CompletableFuture.completedFuture(null));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successfulSend);
 
         signalIngestionService.processIncomingSignal(signalWithNoConfidence);
 

@@ -39,7 +39,7 @@ public record TradingViewSignal(
         Double confidence) {
 
     public TradingViewSignal {
-        exchange = exchange != null ? exchange : "SMART";
-        timeframe = timeframe != null ? timeframe : "15m";
+        exchange = (exchange == null || exchange.isBlank()) ? "SMART" : exchange.trim();
+        timeframe = (timeframe == null || timeframe.isBlank()) ? "15m" : timeframe.trim();
     }
 }

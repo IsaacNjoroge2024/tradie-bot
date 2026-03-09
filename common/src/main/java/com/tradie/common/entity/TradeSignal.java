@@ -1,6 +1,8 @@
 package com.tradie.common.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -55,6 +57,7 @@ public class TradeSignal {
     @Column(name = "rejection_reason")
     private String rejectionReason;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "raw_payload", columnDefinition = "jsonb")
     private String rawPayload;
 

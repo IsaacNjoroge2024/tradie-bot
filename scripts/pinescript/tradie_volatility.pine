@@ -1,0 +1,136 @@
+// scripts/pinescript/tradie_volatility.pine
+//@version=5
+indicator("Tradie - Volatility (BB + KC Squeeze)", overlay=true)
+
+// ============================================
+// INPUTS
+// ============================================
+i_bbLength      = input.int(20,  "BB Length",            group="Bollinger Bands")
+i_bbMult        = input.float(2.0, "BB Multiplier",      step=0.1, group="Bollinger Bands")
+i_kcLength      = input.int(20,  "KC Length",            group="Keltner Channels")
+i_kcMult        = input.float(1.5, "KC Multiplier",      step=0.1, group="Keltner Channels")
+i_showBands     = input.bool(true,  "Show Bands",        group="Display")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* before any if blocks)
+// ============================================
+atr = ta.atr(14)
+
+// Bollinger Bands
+[bbUpper, bbBasis, bbLower] = ta.bb(close, i_bbLength, i_bbMult)
+
+// Keltner Channels (EMA basis + ATR bands)
+kcBasis = ta.ema(close,   i_kcLength)
+kcAtr   = ta.atr(i_kcLength)
+kcUpper = kcBasis + kcAtr * i_kcMult
+kcLower = kcBasis - kcAtr * i_kcMult
+
+// EMA for trend direction
+ema50 = ta.ema(close, 50)
+
+// BB Squeeze: BB bands are inside KC bands → low volatility compression
+squeezeOn = bbUpper < kcUpper and bbLower > kcLower
+
+// Squeeze release: was in squeeze last bar, now free
+squeezeRelease = squeezeOn[1] and not squeezeOn
+
+// Momentum proxy: distance of close from BB midline
+momentum = close - bbBasis
+momentumDir = ta.linreg(momentum, 5, 0)
+
+// BB bounce (mean reversion): price tags outer band in trending market
+bbLowerBounce = low <= bbLower and close > bbLower
+bbUpperBounce = high >= bbUpper and close < bbUpper
+
+trendBull = close > ema50
+trendBear = close < ema50
+
+isBullCandle = close > open
+isBearCandle = close < open
+bodySize    = math.abs(close - open)
+lowerWick   = math.min(close, open) - low
+upperWick   = high - math.max(close, open)
+
+// ============================================
+// SIGNAL DETECTION
+// ============================================
+
+// Squeeze release signal: compression fires in trend direction
+squeezeBull = squeezeRelease and momentumDir > 0 and trendBull
+squeezeBear = squeezeRelease and momentumDir < 0 and trendBear
+
+// BB bounce signal: price tags lower band in uptrend with rejection
+bbBounceBull = bbLowerBounce and trendBull and isBullCandle and lowerWick > bodySize * 0.5
+bbBounceBear = bbUpperBounce and trendBear and isBearCandle and upperWick > bodySize * 0.5
+
+bullSignal = squeezeBull or bbBounceBull
+bearSignal = squeezeBear or bbBounceBear
+
+// Strategy name
+var string bullStrat = "VOLATILITY_BULL"
+var string bearStrat = "VOLATILITY_BEAR"
+
+if squeezeBull
+    bullStrat := "VOLATILITY_SQUEEZE_BULL"
+else if bbBounceBull
+    bullStrat := "VOLATILITY_BB_BOUNCE_BULL"
+
+if squeezeBear
+    bearStrat := "VOLATILITY_SQUEEZE_BEAR"
+else if bbBounceBear
+    bearStrat := "VOLATILITY_BB_BOUNCE_BEAR"
+
+// Confidence: squeeze release is higher probability (momentum building)
+bullConf = squeezeBull ? 78 : 68
+bearConf = squeezeBear ? 78 : 68
+
+// SL / TP
+bullSL = bbLower - atr * 0.3
+bullTP = close + (close - bullSL) * 2
+bearSL = bbUpper + atr * 0.3
+bearTP = close - (bearSL - close) * 2
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"' + bullStrat + '"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":' + str.tostring(bullConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"' + bearStrat + '"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":' + str.tostring(bearConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+plot(i_showBands ? bbUpper : na, "BB Upper", color=color.new(color.blue,  40), linewidth=1)
+plot(i_showBands ? bbBasis : na, "BB Mid",   color=color.new(color.blue,  60), linewidth=1)
+plot(i_showBands ? bbLower : na, "BB Lower", color=color.new(color.blue,  40), linewidth=1)
+plot(i_showBands ? kcUpper : na, "KC Upper", color=color.new(color.orange,40), linewidth=1)
+plot(i_showBands ? kcLower : na, "KC Lower", color=color.new(color.orange,40), linewidth=1)
+
+// Squeeze indicator dot on price (green = squeeze on, red = squeeze off/release)
+bgcolor(squeezeOn ? color.new(color.gray, 92) : na)
+
+if bullSignal
+    label.new(bar_index, low,  "BUY\n"  + bullStrat, style=label.style_label_up,   color=color.green, textcolor=color.white, size=size.small)
+
+if bearSignal
+    label.new(bar_index, high, "SELL\n" + bearStrat, style=label.style_label_down, color=color.red,   textcolor=color.white, size=size.small)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullSignal
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearSignal
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

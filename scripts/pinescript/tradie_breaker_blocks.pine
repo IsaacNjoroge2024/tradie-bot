@@ -1,0 +1,170 @@
+// scripts/pinescript/tradie_breaker_blocks.pine
+//@version=5
+indicator("Tradie - Breaker Blocks", overlay=true, max_boxes_count=100)
+
+// ============================================
+// INPUTS
+// ============================================
+i_swingLen      = input.int(5, "Swing Length", minval=2, maxval=10, group="Structure")
+i_showBreakers  = input.bool(true, "Show Breaker Boxes", group="Display")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* before any if blocks)
+// ============================================
+atr       = ta.atr(14)
+swingHigh = ta.pivothigh(high, i_swingLen, i_swingLen)
+swingLow  = ta.pivotlow(low,  i_swingLen, i_swingLen)
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// ============================================
+// SWING TRACKING
+// ============================================
+var float lastSwingHigh    = na
+var float lastSwingLow     = na
+var int   lastSwingHighBar = na
+var int   lastSwingLowBar  = na
+
+if not na(swingHigh)
+    lastSwingHigh    := swingHigh
+    lastSwingHighBar := bar_index[i_swingLen]
+
+if not na(swingLow)
+    lastSwingLow    := swingLow
+    lastSwingLowBar := bar_index[i_swingLen]
+
+// ============================================
+// BOS DETECTION
+// ============================================
+bullishBOS = not na(lastSwingHigh) and close > lastSwingHigh and (close - lastSwingHigh) > atr * 0.1
+bearishBOS = not na(lastSwingLow)  and close < lastSwingLow  and (lastSwingLow - close) > atr * 0.1
+
+var int trend = 0
+if bullishBOS
+    trend := 1
+if bearishBOS
+    trend := -1
+
+// ============================================
+// ORDER BLOCK DETECTION
+// Last opposing candle before BOS
+// ============================================
+var float bullOBHigh = na   // Bearish candle before bullish BOS → potential bearish breaker later
+var float bullOBLow  = na
+var int   bullOBBar  = na
+
+var float bearOBHigh = na   // Bullish candle before bearish BOS → potential bullish breaker later
+var float bearOBLow  = na
+var int   bearOBBar  = na
+
+if bullishBOS
+    for i = 1 to 10
+        if close[i] < open[i]
+            bullOBHigh := high[i]
+            bullOBLow  := low[i]
+            bullOBBar  := bar_index[i]
+            break
+
+if bearishBOS
+    for i = 1 to 10
+        if close[i] > open[i]
+            bearOBHigh := high[i]
+            bearOBLow  := low[i]
+            bearOBBar  := bar_index[i]
+            break
+
+// ============================================
+// BREAKER BLOCK DETECTION
+// An OB becomes a BREAKER when price trades through it
+//
+// Bullish Breaker: bearish OB (before bullish BOS) → price later drops back
+//   through the OB low → former support is now resistance → sell on retest
+//
+// Bearish Breaker: bullish OB (before bearish BOS) → price later rallies back
+//   through the OB high → former resistance is now support → buy on retest
+// ============================================
+var bool bullOBBroken = false   // Bullish OB → broken → bearish breaker
+var bool bearOBBroken = false   // Bearish OB → broken → bullish breaker
+
+// Bullish OB becomes a bearish breaker when price closes below its low
+if not na(bullOBLow) and close < bullOBLow and not bullOBBroken
+    bullOBBroken := true
+
+// Bearish OB becomes a bullish breaker when price closes above its high
+if not na(bearOBHigh) and close > bearOBHigh and not bearOBBroken
+    bearOBBroken := true
+
+// Reset when a new OB is formed
+if bullishBOS
+    bullOBBroken := false
+
+if bearishBOS
+    bearOBBroken := false
+
+// ============================================
+// RETEST SIGNALS
+// Price returns to test the breaker block and shows rejection
+// ============================================
+
+// Bearish breaker retest → SELL (price rallies back into former bullish OB zone)
+bearBreakerRetest  = bullOBBroken and not na(bullOBHigh) and not na(bullOBLow) and high >= bullOBLow and low <= bullOBHigh
+bearBreakerSignal  = bearBreakerRetest and close < open and close < bullOBLow and (open - close) > atr * 0.2
+
+// Bullish breaker retest → BUY (price drops back into former bearish OB zone)
+bullBreakerRetest  = bearOBBroken and not na(bearOBHigh) and not na(bearOBLow) and high >= bearOBLow and low <= bearOBHigh
+bullBreakerSignal  = bullBreakerRetest and close > open and close > bearOBHigh and (close - open) > atr * 0.2
+
+// SL / TP
+bullSL = low  - atr * 0.3
+bullTP = close + (close - bullSL) * 2
+bearSL = high + atr * 0.3
+bearTP = close - (bearSL - close) * 2
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"BREAKER_BLOCK_BULL"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":80,"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"BREAKER_BLOCK_BEAR"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":80,"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+// Original OB zones (before breaking)
+if bullishBOS and not na(bullOBHigh) and i_showBreakers
+    box.new(bullOBBar, bullOBHigh, bar_index + 30, bullOBLow, bgcolor=color.new(color.green, 85), border_color=color.green, border_width=1)
+
+if bearishBOS and not na(bearOBHigh) and i_showBreakers
+    box.new(bearOBBar, bearOBHigh, bar_index + 30, bearOBLow, bgcolor=color.new(color.red, 85), border_color=color.red, border_width=1)
+
+// Breaker block zones (after OB is broken — polarity flipped)
+if bullOBBroken and not na(bullOBHigh) and i_showBreakers
+    box.new(bullOBBar, bullOBHigh, bar_index + 20, bullOBLow, bgcolor=color.new(color.red, 75), border_color=color.red, border_width=2)
+
+if bearOBBroken and not na(bearOBHigh) and i_showBreakers
+    box.new(bearOBBar, bearOBHigh, bar_index + 20, bearOBLow, bgcolor=color.new(color.green, 75), border_color=color.green, border_width=2)
+
+// Signal labels
+if bullBreakerSignal
+    label.new(bar_index, low,  "BUY\nBREAKER", style=label.style_label_up,   color=color.green, textcolor=color.white)
+
+if bearBreakerSignal
+    label.new(bar_index, high, "SELL\nBREAKER", style=label.style_label_down, color=color.red,   textcolor=color.white)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullBreakerSignal
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearBreakerSignal
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

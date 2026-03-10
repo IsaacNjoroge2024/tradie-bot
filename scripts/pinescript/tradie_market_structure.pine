@@ -1,0 +1,193 @@
+// scripts/pinescript/tradie_market_structure.pine
+//@version=5
+indicator("Tradie - Market Structure & Kill Zones", overlay=true)
+
+// ============================================
+// INPUTS
+// ============================================
+// Multi-Timeframe
+i_htf = input.timeframe("D", "Higher Timeframe Trend", group="Multi-Timeframe")
+
+// Structure
+i_swingLen  = input.int(10, "Swing Length", minval=5, maxval=20, group="Structure")
+i_showMSS   = input.bool(true, "Show MSS Labels", group="Structure")
+i_showOTE   = input.bool(true, "Show OTE Zone", group="Structure")
+i_showPD    = input.bool(true, "Show Premium/Discount Mid", group="Structure")
+
+// Kill Zones
+i_showKZ    = input.bool(true, "Show Kill Zones", group="Kill Zones")
+
+// Webhook
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* and request.security before any if blocks)
+// ============================================
+atr    = ta.atr(14)
+ema50  = ta.ema(close, 50)
+
+// Higher timeframe trend via EMA50
+htfClose = request.security(syminfo.tickerid, i_htf, close)
+htfEma50 = request.security(syminfo.tickerid, i_htf, ta.ema(close, 50))
+
+htfBullish = htfClose > htfEma50
+htfBearish = htfClose < htfEma50
+
+// Swing points
+swingHigh = ta.pivothigh(high, i_swingLen, i_swingLen)
+swingLow  = ta.pivotlow(low,  i_swingLen, i_swingLen)
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// ============================================
+// SWING TRACKING
+// ============================================
+var float lastMajorHigh    = na
+var float lastMajorLow     = na
+var int   lastMajorHighBar = na
+var int   lastMajorLowBar  = na
+
+if not na(swingHigh)
+    lastMajorHigh    := swingHigh
+    lastMajorHighBar := bar_index[i_swingLen]
+
+if not na(swingLow)
+    lastMajorLow    := swingLow
+    lastMajorLowBar := bar_index[i_swingLen]
+
+// ============================================
+// BREAK OF STRUCTURE
+// ============================================
+bullishBOS = not na(lastMajorHigh) and close > lastMajorHigh and (close - lastMajorHigh) > atr * 0.1
+bearishBOS = not na(lastMajorLow)  and close < lastMajorLow  and (lastMajorLow - close) > atr * 0.1
+
+var int trend = 0  // 1 = bullish, -1 = bearish
+
+// MSS = BOS that flips the existing trend
+mssUp   = bullishBOS and trend == -1
+mssDown = bearishBOS and trend ==  1
+
+if bullishBOS
+    trend := 1
+if bearishBOS
+    trend := -1
+
+// ============================================
+// PREMIUM / DISCOUNT ZONES
+// 50% of swing range — below = discount (buy), above = premium (sell)
+// ============================================
+rangeMid    = not na(lastMajorHigh) and not na(lastMajorLow) ? (lastMajorHigh + lastMajorLow) / 2 : na
+inDiscount  = not na(rangeMid) and close < rangeMid
+inPremium   = not na(rangeMid) and close > rangeMid
+
+// ============================================
+// OTE LEVELS  (Fibonacci 0.618 – 0.786 retracement after BOS)
+// Bullish OTE: pullback into 61.8–78.6% of the bullish leg = buy zone
+// Bearish OTE: rally into 61.8–78.6% of the bearish leg = sell zone
+// ============================================
+var float oteBullHigh = na
+var float oteBullLow  = na
+var float oteBearHigh = na
+var float oteBearLow  = na
+var float swing       = na
+
+if bullishBOS and not na(lastMajorLow) and not na(lastMajorHigh)
+    swing       := lastMajorHigh - lastMajorLow
+    oteBullHigh := lastMajorHigh - swing * 0.618
+    oteBullLow  := lastMajorHigh - swing * 0.786
+
+if bearishBOS and not na(lastMajorHigh) and not na(lastMajorLow)
+    swing       := lastMajorHigh - lastMajorLow
+    oteBearLow  := lastMajorLow + swing * 0.618
+    oteBearHigh := lastMajorLow + swing * 0.786
+
+inBullOTE = not na(oteBullHigh) and not na(oteBullLow) and close <= oteBullHigh and close >= oteBullLow
+inBearOTE = not na(oteBearHigh) and not na(oteBearLow) and close >= oteBearLow  and close <= oteBearHigh
+
+// ============================================
+// KILL ZONES  (New York time)
+// London Open:    02:00 – 05:00
+// NY Open:        08:30 – 11:00
+// Silver Bullet:  10:00 – 11:00 (subset of NY Open)
+// NY PM:          13:00 – 15:00
+// ============================================
+nyHour    = hour(time, "America/New_York")
+nyMinute  = minute(time, "America/New_York")
+nyTime    = nyHour + nyMinute / 60.0
+
+londonKZ      = nyTime >= 2.0  and nyTime < 5.0
+nyOpenKZ      = nyTime >= 8.5  and nyTime < 11.0
+silverBulletKZ = nyTime >= 10.0 and nyTime < 11.0
+nyPmKZ        = nyTime >= 13.0 and nyTime < 15.0
+inKillZone    = londonKZ or nyOpenKZ or nyPmKZ
+
+// ============================================
+// HIGH-CONFLUENCE SIGNAL GENERATION
+// Buy:  HTF bullish + discount + kill zone + (MSS or OTE)
+// Sell: HTF bearish + premium  + kill zone + (MSS or OTE)
+// ============================================
+buySignal  = htfBullish and inDiscount and inKillZone and (mssUp   or inBullOTE)
+sellSignal = htfBearish and inPremium  and inKillZone and (mssDown or inBearOTE)
+
+// Confidence: higher when both MSS and OTE align
+buyConf  = mssUp   and inBullOTE ? 90 : mssUp   ? 80 : 70
+sellConf = mssDown and inBearOTE ? 90 : mssDown ? 80 : 70
+
+// SL / TP
+buySL  = low  - atr * 1.5
+buyTP  = close + (close - buySL) * 2   // 2:1 R:R
+sellSL = high + atr * 1.5
+sellTP = close - (sellSL - close) * 2  // 2:1 R:R
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+buyP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"MSS_STRUCTURE_BULLISH"'
+buyP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(buySL) + ',"take_profit":' + str.tostring(buyTP)
+buyP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+buyP4 = '","confidence":' + str.tostring(buyConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+sellP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"MSS_STRUCTURE_BEARISH"'
+sellP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(sellSL) + ',"take_profit":' + str.tostring(sellTP)
+sellP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+sellP4 = '","confidence":' + str.tostring(sellConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+// Kill zone backgrounds
+bgcolor(silverBulletKZ and i_showKZ ? color.new(color.yellow, 88) : londonKZ and i_showKZ ? color.new(color.blue, 90) : nyOpenKZ and i_showKZ ? color.new(color.green, 90) : nyPmKZ and i_showKZ ? color.new(color.orange, 92) : na)
+
+// Premium/Discount midline
+plot(i_showPD ? rangeMid : na, "P/D Midline (50%)", color=color.gray, linewidth=1, style=plot.style_line)
+
+// OTE zones
+plot(i_showOTE ? oteBullHigh : na, "OTE Bull High (61.8%)", color=color.new(color.green, 50), linewidth=1)
+plot(i_showOTE ? oteBullLow  : na, "OTE Bull Low (78.6%)",  color=color.new(color.green, 50), linewidth=1)
+plot(i_showOTE ? oteBearHigh : na, "OTE Bear High (78.6%)", color=color.new(color.red, 50),   linewidth=1)
+plot(i_showOTE ? oteBearLow  : na, "OTE Bear Low (61.8%)",  color=color.new(color.red, 50),   linewidth=1)
+
+// MSS labels
+if mssUp and i_showMSS
+    label.new(bar_index, low, "MSS↑\nBULLISH", style=label.style_label_up, color=color.blue, textcolor=color.white, size=size.small)
+
+if mssDown and i_showMSS
+    label.new(bar_index, high, "MSS↓\nBEARISH", style=label.style_label_down, color=color.orange, textcolor=color.white, size=size.small)
+
+// Signal labels
+if buySignal
+    label.new(bar_index, low, "BUY\nMSS+KZ", style=label.style_label_up, color=color.green, textcolor=color.white)
+
+if sellSignal
+    label.new(bar_index, high, "SELL\nMSS+KZ", style=label.style_label_down, color=color.red, textcolor=color.white)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if buySignal
+    alert(buyP1 + buyP2 + buyP3 + buyP4, alert.freq_once_per_bar_close)
+
+if sellSignal
+    alert(sellP1 + sellP2 + sellP3 + sellP4, alert.freq_once_per_bar_close)

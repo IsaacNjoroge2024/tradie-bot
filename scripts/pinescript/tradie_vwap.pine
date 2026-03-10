@@ -1,0 +1,132 @@
+// scripts/pinescript/tradie_vwap.pine
+//@version=5
+indicator("Tradie - VWAP & Bands", overlay=true)
+
+// ============================================
+// INPUTS
+// ============================================
+i_source      = input.source(hlc3, "Source", group="VWAP")
+i_sdMult1     = input.float(1.0, "Band 1 Multiplier", minval=0.5, step=0.5, group="Bands")
+i_sdMult2     = input.float(2.0, "Band 2 Multiplier", minval=1.0, step=0.5, group="Bands")
+i_sdMult3     = input.float(3.0, "Band 3 Multiplier", minval=1.5, step=0.5, group="Bands")
+i_showBand3   = input.bool(false, "Show Band 3", group="Bands")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* before any if blocks)
+// ============================================
+atr     = ta.atr(14)
+vwapVal = ta.vwap(i_source)
+
+// Standard deviation bands
+// Use rolling stdev of source from VWAP as band width
+stdev   = ta.stdev(i_source, 20)
+
+vwapUpper1 = vwapVal + stdev * i_sdMult1
+vwapLower1 = vwapVal - stdev * i_sdMult1
+vwapUpper2 = vwapVal + stdev * i_sdMult2
+vwapLower2 = vwapVal - stdev * i_sdMult2
+vwapUpper3 = vwapVal + stdev * i_sdMult3
+vwapLower3 = vwapVal - stdev * i_sdMult3
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// ============================================
+// SIGNAL DETECTION
+// Price relationship to VWAP and band touches
+// ============================================
+
+// Trend bias
+aboveVwap = close > vwapVal
+belowVwap = close < vwapVal
+
+// VWAP Cross
+vwapCrossUp   = ta.crossover(close,  vwapVal)
+vwapCrossDown = ta.crossunder(close, vwapVal)
+
+// Band 1 bounce signals (mean reversion toward VWAP)
+// Bullish: price touched/broke Lower Band 1 and closes back above it
+bullBand1Bounce = low <= vwapLower1 and close > vwapLower1 and close > open
+bearBand1Bounce = high >= vwapUpper1 and close < vwapUpper1 and close < open
+
+// Band 2 extreme reversal signals (high probability mean reversion)
+bullBand2Bounce = low <= vwapLower2 and close > vwapLower2 and close > open
+bearBand2Bounce = high >= vwapUpper2 and close < vwapUpper2 and close < open
+
+// VWAP reclaim (price was below, now reclaims VWAP with a bullish candle)
+vwapReclaimBull = vwapCrossUp  and close > open and (close - open) > atr * 0.3
+vwapReclaimBear = vwapCrossDown and close < open and (open - close) > atr * 0.3
+
+bullSignal = bullBand2Bounce or vwapReclaimBull
+bearSignal = bearBand2Bounce or vwapReclaimBear
+
+// Confidence
+bullConf = bullBand2Bounce ? 78 : 68
+bearConf = bearBand2Bounce ? 78 : 68
+
+// Strategy name
+var string bullStrat = "VWAP_BULL"
+var string bearStrat = "VWAP_BEAR"
+
+if bullBand2Bounce
+    bullStrat := "VWAP_BAND2_BOUNCE_BULL"
+else if vwapReclaimBull
+    bullStrat := "VWAP_RECLAIM_BULL"
+
+if bearBand2Bounce
+    bearStrat := "VWAP_BAND2_BOUNCE_BEAR"
+else if vwapReclaimBear
+    bearStrat := "VWAP_RECLAIM_BEAR"
+
+// SL / TP
+bullSL = low  - atr * 0.5
+bullTP = close + (close - bullSL) * 2
+bearSL = high + atr * 0.5
+bearTP = close - (bearSL - close) * 2
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"' + bullStrat + '"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":' + str.tostring(bullConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"' + bearStrat + '"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":' + str.tostring(bearConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+plot(vwapVal,    "VWAP",     color=color.blue,                    linewidth=2)
+plot(vwapUpper1, "+1 SD",    color=color.new(color.green, 40),    linewidth=1)
+plot(vwapLower1, "-1 SD",    color=color.new(color.green, 40),    linewidth=1)
+plot(vwapUpper2, "+2 SD",    color=color.new(color.orange, 30),   linewidth=1)
+plot(vwapLower2, "-2 SD",    color=color.new(color.orange, 30),   linewidth=1)
+plot(i_showBand3 ? vwapUpper3 : na, "+3 SD", color=color.new(color.red, 30), linewidth=1)
+plot(i_showBand3 ? vwapLower3 : na, "-3 SD", color=color.new(color.red, 30), linewidth=1)
+
+// Fill between bands
+p1u = plot(vwapUpper1, display=display.none)
+p1l = plot(vwapLower1, display=display.none)
+fill(p1u, p1l, color=color.new(color.blue, 95))
+
+// Signal labels
+if bullSignal
+    label.new(bar_index, low,  "BUY\nVWAP",  style=label.style_label_up,   color=color.green, textcolor=color.white, size=size.small)
+
+if bearSignal
+    label.new(bar_index, high, "SELL\nVWAP", style=label.style_label_down, color=color.red,   textcolor=color.white, size=size.small)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullSignal
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearSignal
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

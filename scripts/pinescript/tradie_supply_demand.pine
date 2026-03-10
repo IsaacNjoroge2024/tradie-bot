@@ -1,0 +1,130 @@
+// scripts/pinescript/tradie_supply_demand.pine
+//@version=5
+indicator("Tradie - Supply & Demand Zones", overlay=true, max_boxes_count=200)
+
+// ============================================
+// INPUTS
+// ============================================
+i_dispMult     = input.float(1.5, "Displacement Candle Size (ATR multiplier)", minval=0.5, step=0.1, group="Detection")
+i_zoneLookback = input.int(3, "Base Candles Lookback", minval=1, maxval=5, group="Detection")
+i_showZones    = input.bool(true, "Show Zones", group="Display")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* before any if blocks)
+// ============================================
+atr = ta.atr(14)
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// Candle measurements
+bodySize   = math.abs(close - open)
+isBullCandle = close > open
+isBearCandle = close < open
+
+// Strong displacement candles (institutional activity)
+// Drop-Base-Rally → demand zone: strong bull candle preceded by consolidation/drop
+// Rally-Base-Drop → supply zone: strong bear candle preceded by consolidation/rally
+strongBullDisplace = isBullCandle and bodySize > atr * i_dispMult and close > close[1]
+strongBearDisplace = isBearCandle and bodySize > atr * i_dispMult and close < close[1]
+
+// ============================================
+// ZONE TRACKING
+// Demand zone = base candle(s) just before a strong bullish displacement
+// Supply zone = base candle(s) just before a strong bearish displacement
+// ============================================
+var float demandHigh  = na
+var float demandLow   = na
+var int   demandBar   = na
+var bool  demandValid = false
+
+var float supplyHigh  = na
+var float supplyLow   = na
+var int   supplyBar   = na
+var bool  supplyValid = false
+
+// When a strong bull displacement fires, the base candle(s) before it = demand zone
+if strongBullDisplace
+    demandHigh  := math.max(open[1], close[1])
+    demandLow   := math.min(open[1], close[1])
+    demandBar   := bar_index[1]
+    demandValid := true
+
+// When a strong bear displacement fires, the base candle(s) before it = supply zone
+if strongBearDisplace
+    supplyHigh  := math.max(open[1], close[1])
+    supplyLow   := math.min(open[1], close[1])
+    supplyBar   := bar_index[1]
+    supplyValid := true
+
+// Invalidate zone when price fully breaks through it (closes beyond zone boundary)
+if demandValid and not na(demandLow) and close < demandLow
+    demandValid := false
+
+if supplyValid and not na(supplyHigh) and close > supplyHigh
+    supplyValid := false
+
+// ============================================
+// SIGNAL DETECTION
+// Price returns to test a valid zone and shows rejection
+// ============================================
+
+// Demand zone retest → BUY
+inDemandZone = demandValid and not na(demandHigh) and not na(demandLow) and low <= demandHigh and close >= demandLow
+
+// Supply zone retest → SELL
+inSupplyZone = supplyValid and not na(supplyHigh) and not na(supplyLow) and high >= supplyLow and close <= supplyHigh
+
+// Rejection candle confirmation
+bullRejection = isBullCandle and (close - open) > atr * 0.3
+bearRejection = isBearCandle and (open - close) > atr * 0.3
+
+bullSignal = inDemandZone and bullRejection
+bearSignal = inSupplyZone and bearRejection
+
+// SL / TP
+bullSL = not na(demandLow)  ? demandLow  - atr * 0.3 : low  - atr * 0.3
+bullTP = close + (close - bullSL) * 2
+bearSL = not na(supplyHigh) ? supplyHigh + atr * 0.3 : high + atr * 0.3
+bearTP = close - (bearSL - close) * 2
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"DEMAND_ZONE_RETEST"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":73,"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"SUPPLY_ZONE_RETEST"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":73,"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+// Draw zones as boxes
+if strongBullDisplace and i_showZones
+    box.new(bar_index[1], demandHigh, bar_index + 40, demandLow, bgcolor=color.new(color.green, 80), border_color=color.green, border_width=1)
+
+if strongBearDisplace and i_showZones
+    box.new(bar_index[1], supplyHigh, bar_index + 40, supplyLow, bgcolor=color.new(color.red, 80), border_color=color.red, border_width=1)
+
+// Signal labels
+if bullSignal
+    label.new(bar_index, low,  "BUY\nDEMAND",  style=label.style_label_up,   color=color.green, textcolor=color.white)
+
+if bearSignal
+    label.new(bar_index, high, "SELL\nSUPPLY", style=label.style_label_down, color=color.red,   textcolor=color.white)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullSignal
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearSignal
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

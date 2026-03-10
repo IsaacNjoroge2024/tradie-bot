@@ -1,0 +1,134 @@
+// scripts/pinescript/tradie_volume.pine
+//@version=5
+indicator("Tradie - Volume Analysis (OBV + MFI)", overlay=false)
+
+// ============================================
+// INPUTS
+// ============================================
+i_obvEmaLen     = input.int(20, "OBV EMA Smoothing",    group="OBV")
+i_mfiLength     = input.int(14, "MFI Length",            group="MFI")
+i_mfiOB         = input.int(80, "MFI Overbought",        group="MFI")
+i_mfiOS         = input.int(20, "MFI Oversold",          group="MFI")
+i_volSpikeLen   = input.int(20, "Volume Spike Lookback", group="Volume Spike")
+i_volSpikeMult  = input.float(1.5, "Volume Spike Multiplier", step=0.1, group="Volume Spike")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* before any if blocks)
+// ============================================
+atr = ta.atr(14)
+
+// OBV: On Balance Volume
+obvDelta = close >= close[1] ? volume : -volume
+obv      = ta.cum(obvDelta)
+obvEma   = ta.ema(obv, i_obvEmaLen)
+
+// OBV trend
+obvTrendBull = obv > obvEma and obv > obv[5]
+obvTrendBear = obv < obvEma and obv < obv[5]
+
+// MFI (Money Flow Index) — manual calculation
+typicalPrice  = hlc3
+rawMoneyFlow  = typicalPrice * volume
+posMF         = typicalPrice > typicalPrice[1] ? rawMoneyFlow : 0.0
+negMF         = typicalPrice < typicalPrice[1] ? rawMoneyFlow : 0.0
+posSum        = ta.sum(posMF, i_mfiLength)
+negSum        = ta.sum(negMF, i_mfiLength)
+mfi           = negSum == 0 ? 100.0 : 100.0 - (100.0 / (1.0 + posSum / negSum))
+
+// MFI level crossovers — called at top level for consistent results
+mfiExitOS = ta.crossover(mfi,  i_mfiOS)   // exits oversold → bullish
+mfiExitOB = ta.crossunder(mfi, i_mfiOB)   // exits overbought → bearish
+
+// Volume spike vs recent average
+volSma       = ta.sma(volume, i_volSpikeLen)
+volumeSpike  = volume > volSma * i_volSpikeMult
+
+// Price candle type
+isBullCandle = close > open
+isBearCandle = close < open
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// ============================================
+// SIGNAL DETECTION
+// ============================================
+
+// OBV signal: OBV trending up + volume spike + bullish candle
+obvBullSignal = obvTrendBull and volumeSpike and isBullCandle
+obvBearSignal = obvTrendBear and volumeSpike and isBearCandle
+
+// MFI signal: MFI exits extreme zone with volume confirmation
+mfiBullSignal = mfiExitOS and volumeSpike and isBullCandle
+mfiBearSignal = mfiExitOB and volumeSpike and isBearCandle
+
+bullSignal = obvBullSignal or mfiBullSignal
+bearSignal = obvBearSignal or mfiBearSignal
+
+// Strategy name
+var string bullStrat = "VOLUME_BULL"
+var string bearStrat = "VOLUME_BEAR"
+
+if obvBullSignal and mfiBullSignal
+    bullStrat := "VOLUME_OBV_MFI_BULL"
+else if mfiBullSignal
+    bullStrat := "VOLUME_MFI_BULL"
+else if obvBullSignal
+    bullStrat := "VOLUME_OBV_BULL"
+
+if obvBearSignal and mfiBearSignal
+    bearStrat := "VOLUME_OBV_MFI_BEAR"
+else if mfiBearSignal
+    bearStrat := "VOLUME_MFI_BEAR"
+else if obvBearSignal
+    bearStrat := "VOLUME_OBV_BEAR"
+
+// Confidence: both OBV + MFI agree = higher
+bullConf = obvBullSignal and mfiBullSignal ? 82 : 68
+bearConf = obvBearSignal and mfiBearSignal ? 82 : 68
+
+// SL / TP
+bullSL = low  - atr * 0.5
+bullTP = close + (close - bullSL) * 2
+bearSL = high + atr * 0.5
+bearTP = close - (bearSL - close) * 2
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"' + bullStrat + '"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":' + str.tostring(bullConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"' + bearStrat + '"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":' + str.tostring(bearConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION (separate pane — overlay=false)
+// ============================================
+// MFI plot
+mfiPlot = plot(mfi, "MFI", color=color.new(color.blue, 0), linewidth=1)
+hline(i_mfiOB, "OB",  color=color.red,   linestyle=hline.style_dashed)
+hline(50,       "Mid", color=color.gray, linestyle=hline.style_dotted)
+hline(i_mfiOS,  "OS",  color=color.green, linestyle=hline.style_dashed)
+
+// Volume spike highlight
+bgcolor(volumeSpike ? color.new(color.yellow, 88) : na)
+
+// Signal markers on MFI pane
+plotshape(bullSignal ? mfi : na, "Bull Signal", shape.labelup,   location.absolute, color.green,  size=size.small, text="V+")
+plotshape(bearSignal ? mfi : na, "Bear Signal", shape.labeldown, location.absolute, color.red,    size=size.small, text="V-")
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullSignal
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearSignal
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

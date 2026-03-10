@@ -1,0 +1,184 @@
+// scripts/pinescript/tradie_candlestick_patterns.pine
+//@version=5
+indicator("Tradie - Candlestick Patterns", overlay=true)
+
+// ============================================
+// INPUTS
+// ============================================
+i_filterByTrend = input.bool(true, "Filter Signals by Trend", group="Filters")
+i_minRangeMult  = input.float(0.3, "Min Candle Range (ATR multiplier)", minval=0.1, step=0.1, group="Filters")
+i_showLabels    = input.bool(true, "Show Pattern Labels", group="Display")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* calls before any if blocks)
+// ============================================
+atr    = ta.atr(14)
+ema50  = ta.ema(close, 50)
+ema200 = ta.ema(close, 200)
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// Trend context
+trendBull = close > ema50 and ema50 > ema200
+trendBear = close < ema50 and ema50 < ema200
+
+// Candle measurements
+bodySize   = math.abs(close - open)
+upperWick  = high - math.max(close, open)
+lowerWick  = math.min(close, open) - low
+totalRange = high - low
+midBody    = (open + close) / 2
+
+isBullCandle = close > open
+isBearCandle = close < open
+
+minRange = atr * i_minRangeMult
+
+// ============================================
+// CANDLESTICK PATTERN DETECTION
+// ============================================
+
+// 1. Bullish Engulfing — large bull candle fully engulfs prior bear candle
+bullEngulfing = isBullCandle and isBearCandle[1] and open <= close[1] and close >= open[1] and bodySize > bodySize[1] and totalRange > minRange
+
+// 2. Bearish Engulfing — large bear candle fully engulfs prior bull candle
+bearEngulfing = isBearCandle and isBullCandle[1] and open >= close[1] and close <= open[1] and bodySize > bodySize[1] and totalRange > minRange
+
+// 3. Hammer — long lower wick, tiny upper wick, small body (bullish reversal at lows)
+hammer = lowerWick > bodySize * 2.0 and upperWick < bodySize * 0.5 and totalRange > minRange
+
+// 4. Shooting Star — long upper wick, tiny lower wick, small body (bearish reversal at highs)
+shootingStar = upperWick > bodySize * 2.0 and lowerWick < bodySize * 0.5 and totalRange > minRange
+
+// 5. Bullish Pin Bar — wick rejection from lows, body in upper third
+bullPinBar = lowerWick > totalRange * 0.6 and bodySize < totalRange * 0.35 and totalRange > minRange
+
+// 6. Bearish Pin Bar — wick rejection from highs, body in lower third
+bearPinBar = upperWick > totalRange * 0.6 and bodySize < totalRange * 0.35 and totalRange > minRange
+
+// 7. Doji — near-equal open and close (indecision)
+doji = bodySize < atr * 0.1 and totalRange > minRange
+
+// 8. Morning Star — 3-candle bullish reversal (bear candle → doji → bull candle closes above midpoint of first)
+morningStar = isBearCandle[2] and bodySize[2] > atr * 0.5 and doji[1] and isBullCandle and close > (open[2] + close[2]) / 2
+
+// 9. Evening Star — 3-candle bearish reversal (bull candle → doji → bear candle closes below midpoint of first)
+eveningStar = isBullCandle[2] and bodySize[2] > atr * 0.5 and doji[1] and isBearCandle and close < (open[2] + close[2]) / 2
+
+// 10. Bullish Marubozu — strong bull candle, almost no wicks (momentum continuation)
+bullMarubozu = isBullCandle and bodySize > atr * 1.0 and upperWick < atr * 0.15 and lowerWick < atr * 0.15
+
+// 11. Bearish Marubozu — strong bear candle, almost no wicks
+bearMarubozu = isBearCandle and bodySize > atr * 1.0 and upperWick < atr * 0.15 and lowerWick < atr * 0.15
+
+// 12. Inside Bar — full range contained within prior candle (coiling before breakout)
+insideBar = high < high[1] and low > low[1]
+
+// Inside Bar breakout confirmation
+insideBullBreak = insideBar[1] and close > high[1] and isBullCandle
+insideBearBreak = insideBar[1] and close < low[1]  and isBearCandle
+
+// ============================================
+// TREND-FILTERED SIGNALS
+// ============================================
+bullPatternRaw = bullEngulfing or hammer or bullPinBar or morningStar or bullMarubozu or insideBullBreak
+bearPatternRaw = bearEngulfing or shootingStar or bearPinBar or eveningStar or bearMarubozu or insideBearBreak
+
+// Apply trend filter: bull patterns only in uptrend (or no clear trend), bear patterns in downtrend
+bullPattern = i_filterByTrend ? bullPatternRaw and not trendBear : bullPatternRaw
+bearPattern = i_filterByTrend ? bearPatternRaw and not trendBull : bearPatternRaw
+
+// ============================================
+// PATTERN NAME (for strategy field in payload)
+// ============================================
+var string bullName = "CANDLE_BULL"
+var string bearName = "CANDLE_BEAR"
+
+if bullEngulfing
+    bullName := "BULL_ENGULFING"
+else if morningStar
+    bullName := "MORNING_STAR"
+else if hammer
+    bullName := "HAMMER"
+else if bullPinBar
+    bullName := "BULL_PIN_BAR"
+else if bullMarubozu
+    bullName := "BULL_MARUBOZU"
+else if insideBullBreak
+    bullName := "INSIDE_BAR_BULL"
+
+if bearEngulfing
+    bearName := "BEAR_ENGULFING"
+else if eveningStar
+    bearName := "EVENING_STAR"
+else if shootingStar
+    bearName := "SHOOTING_STAR"
+else if bearPinBar
+    bearName := "BEAR_PIN_BAR"
+else if bearMarubozu
+    bearName := "BEAR_MARUBOZU"
+else if insideBearBreak
+    bearName := "INSIDE_BAR_BEAR"
+
+// Confidence: higher when trend aligns
+bullConf = trendBull ? 75 : 60
+bearConf = trendBear ? 75 : 60
+
+// ============================================
+// SL / TP
+// ============================================
+bullSL = low  - atr * 0.3
+bullTP = close + (close - bullSL) * 2   // 2:1 R:R
+
+bearSL = high + atr * 0.3
+bearTP = close - (bearSL - close) * 2   // 2:1 R:R
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"CANDLE_' + bullName + '"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":' + str.tostring(bullConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"CANDLE_' + bearName + '"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":' + str.tostring(bearConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+// EMAs for trend context
+plot(ema50,  "EMA 50",  color=color.orange, linewidth=1)
+plot(ema200, "EMA 200", color=color.purple, linewidth=2)
+
+// Pattern shapes
+plotshape(bullEngulfing, "Bull Engulfing", shape.triangleup,   location.belowbar, color.green,  size=size.small)
+plotshape(bearEngulfing, "Bear Engulfing", shape.triangledown, location.abovebar, color.red,    size=size.small)
+plotshape(hammer,        "Hammer",         shape.circle,       location.belowbar, color.lime,   size=size.tiny)
+plotshape(shootingStar,  "Shooting Star",  shape.circle,       location.abovebar, color.orange, size=size.tiny)
+plotshape(bullPinBar,    "Bull Pin Bar",   shape.diamond,      location.belowbar, color.green,  size=size.tiny)
+plotshape(bearPinBar,    "Bear Pin Bar",   shape.diamond,      location.abovebar, color.red,    size=size.tiny)
+plotshape(morningStar,   "Morning Star",   shape.star,         location.belowbar, color.green,  size=size.small)
+plotshape(eveningStar,   "Evening Star",   shape.star,         location.abovebar, color.red,    size=size.small)
+plotshape(insideBar,     "Inside Bar",     shape.square,       location.abovebar, color.gray,   size=size.tiny)
+
+// Signal labels (only for filtered signals)
+if bullPattern and i_showLabels
+    label.new(bar_index, low, "BUY\n" + bullName, style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+
+if bearPattern and i_showLabels
+    label.new(bar_index, high, "SELL\n" + bearName, style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullPattern
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearPattern
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

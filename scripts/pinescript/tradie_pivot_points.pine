@@ -1,0 +1,166 @@
+// scripts/pinescript/tradie_pivot_points.pine
+//@version=5
+indicator("Tradie - Pivot Points", overlay=true)
+
+// ============================================
+// INPUTS
+// ============================================
+i_pivotType     = input.string("Classic", "Pivot Type", options=["Classic", "Fibonacci", "Woodie"], group="Pivots")
+i_showLevels    = input.bool(true, "Show Levels", group="Display")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* before any if blocks)
+// ============================================
+atr = ta.atr(14)
+
+// Previous Day OHLC (via daily security request)
+prevHigh  = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_off)
+prevLow   = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_off)
+prevClose = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_off)
+
+// Common pivot point (all methods share this)
+pp = (prevHigh + prevLow + prevClose) / 3
+
+// Classic Pivot Levels
+classicR1 = pp * 2 - prevLow
+classicR2 = pp + (prevHigh - prevLow)
+classicR3 = prevHigh + 2 * (pp - prevLow)
+classicS1 = pp * 2 - prevHigh
+classicS2 = pp - (prevHigh - prevLow)
+classicS3 = prevLow - 2 * (prevHigh - pp)
+
+// Fibonacci Pivot Levels
+fibRange = prevHigh - prevLow
+fibR1 = pp + fibRange * 0.382
+fibR2 = pp + fibRange * 0.618
+fibR3 = pp + fibRange * 1.000
+fibS1 = pp - fibRange * 0.382
+fibS2 = pp - fibRange * 0.618
+fibS3 = pp - fibRange * 1.000
+
+// Woodie Pivot Levels
+woodiePP = (prevHigh + prevLow + close * 2) / 4
+woodieR1 = woodiePP * 2 - prevLow
+woodieR2 = woodiePP + (prevHigh - prevLow)
+woodieS1 = woodiePP * 2 - prevHigh
+woodieS2 = woodiePP - (prevHigh - prevLow)
+
+// Active levels based on selected type
+activeR1 = i_pivotType == "Fibonacci" ? fibR1 : i_pivotType == "Woodie" ? woodieR1 : classicR1
+activeR2 = i_pivotType == "Fibonacci" ? fibR2 : i_pivotType == "Woodie" ? woodieR2 : classicR2
+activeR3 = i_pivotType == "Fibonacci" ? fibR3 : classicR3
+activeS1 = i_pivotType == "Fibonacci" ? fibS1 : i_pivotType == "Woodie" ? woodieS1 : classicS1
+activeS2 = i_pivotType == "Fibonacci" ? fibS2 : i_pivotType == "Woodie" ? woodieS2 : classicS2
+activeS3 = i_pivotType == "Fibonacci" ? fibS3 : classicS3
+
+// EMA for trend direction
+ema50 = ta.ema(close, 50)
+
+trendBull = close > ema50
+trendBear = close < ema50
+
+isBullCandle = close > open
+isBearCandle = close < open
+bodySize     = math.abs(close - open)
+lowerWick    = math.min(close, open) - low
+upperWick    = high - math.max(close, open)
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// ============================================
+// SIGNAL DETECTION
+// Helper: price is touching a pivot level within ATR tolerance
+// ============================================
+nearLevel(level) => not na(level) and math.abs(close - level) < atr * 0.3
+
+// Resistance levels — SELL on rejection with bearish candle
+atR1Bear = nearLevel(activeR1) and isBearCandle and upperWick > bodySize * 0.5
+atR2Bear = nearLevel(activeR2) and isBearCandle and upperWick > bodySize * 0.5
+atR3Bear = nearLevel(activeR3) and isBearCandle and upperWick > bodySize * 0.5
+
+// Support levels — BUY on bounce with bullish candle
+atS1Bull = nearLevel(activeS1) and isBullCandle and lowerWick > bodySize * 0.5
+atS2Bull = nearLevel(activeS2) and isBullCandle and lowerWick > bodySize * 0.5
+atS3Bull = nearLevel(activeS3) and isBullCandle and lowerWick > bodySize * 0.5
+
+// PP level — acts as support/resistance depending on price position
+atPPBull = nearLevel(pp) and trendBull and isBullCandle and lowerWick > bodySize * 0.5
+atPPBear = nearLevel(pp) and trendBear and isBearCandle and upperWick > bodySize * 0.5
+
+bullSignal = atS1Bull or atS2Bull or atS3Bull or atPPBull
+bearSignal = atR1Bear or atR2Bear or atR3Bear or atPPBear
+
+// Strategy name
+var string bullStrat = "PIVOT_BULL"
+var string bearStrat = "PIVOT_BEAR"
+
+if atS3Bull
+    bullStrat := "PIVOT_S3_BULL"
+else if atS2Bull
+    bullStrat := "PIVOT_S2_BULL"
+else if atS1Bull
+    bullStrat := "PIVOT_S1_BULL"
+else if atPPBull
+    bullStrat := "PIVOT_PP_BULL"
+
+if atR3Bear
+    bearStrat := "PIVOT_R3_BEAR"
+else if atR2Bear
+    bearStrat := "PIVOT_R2_BEAR"
+else if atR1Bear
+    bearStrat := "PIVOT_R1_BEAR"
+else if atPPBear
+    bearStrat := "PIVOT_PP_BEAR"
+
+// Confidence: outer levels (S2/S3, R2/R3) = stronger extension = higher conviction
+bullConf = atS3Bull or atS2Bull ? 80 : 70
+bearConf = atR3Bear or atR2Bear ? 80 : 70
+
+// SL / TP
+bullSL = low  - atr * 0.3
+bullTP = close + (close - bullSL) * 2
+bearSL = high + atr * 0.3
+bearTP = close - (bearSL - close) * 2
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"' + bullStrat + '"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":' + str.tostring(bullConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"' + bearStrat + '"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":' + str.tostring(bearConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+plot(i_showLevels ? pp       : na, "PP",  color=color.new(color.gray,   0), linewidth=2, style=plot.style_circles)
+plot(i_showLevels ? activeR1 : na, "R1",  color=color.new(color.red,   20), linewidth=1)
+plot(i_showLevels ? activeR2 : na, "R2",  color=color.new(color.red,    0), linewidth=1)
+plot(i_showLevels ? activeR3 : na, "R3",  color=color.new(color.red,   40), linewidth=1)
+plot(i_showLevels ? activeS1 : na, "S1",  color=color.new(color.green, 20), linewidth=1)
+plot(i_showLevels ? activeS2 : na, "S2",  color=color.new(color.green,  0), linewidth=1)
+plot(i_showLevels ? activeS3 : na, "S3",  color=color.new(color.green, 40), linewidth=1)
+
+// Signal labels
+if bullSignal
+    label.new(bar_index, low,  "BUY\n"  + bullStrat, style=label.style_label_up,   color=color.green, textcolor=color.white, size=size.small)
+
+if bearSignal
+    label.new(bar_index, high, "SELL\n" + bearStrat, style=label.style_label_down, color=color.red,   textcolor=color.white, size=size.small)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullSignal
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearSignal
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

@@ -1,0 +1,90 @@
+// scripts/pinescript/tradie_fvg_detector.pine
+//@version=5
+indicator("Tradie - FVG Detector", overlay=true, max_boxes_count=500)
+
+// ============================================
+// INPUTS
+// ============================================
+i_showBullishFVG = input.bool(true, "Show Bullish FVG", group="Display")
+i_showBearishFVG = input.bool(true, "Show Bearish FVG", group="Display")
+i_minFVGSize = input.float(0.5, "Minimum FVG Size (ATR multiplier)", minval=0.1, step=0.1, group="Filters")
+i_maxFVGAge = input.int(50, "Max FVG Age (bars)", minval=10, group="Filters")
+i_alertOnNew = input.bool(true, "Alert on New FVG", group="Alerts")
+
+// Webhook Configuration
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS
+// ============================================
+atr = ta.atr(14)
+minGapSize = atr * i_minFVGSize
+
+// Bullish FVG: Gap between candle 1 high and candle 3 low
+bullishFVG_bottom = high[2]
+bullishFVG_top = low[0]
+bullishFVG_exists = bullishFVG_top > bullishFVG_bottom
+bullishFVG_size = bullishFVG_top - bullishFVG_bottom
+bullishFVG_valid = bullishFVG_exists and bullishFVG_size >= minGapSize
+
+// Confirm with displacement (strong middle candle)
+bullishDisplacement = close[1] > open[1] and (close[1] - open[1]) > atr * 0.5
+
+// Bearish FVG: Gap between candle 1 low and candle 3 high
+bearishFVG_top = low[2]
+bearishFVG_bottom = high[0]
+bearishFVG_exists = bearishFVG_top > bearishFVG_bottom
+bearishFVG_size = bearishFVG_top - bearishFVG_bottom
+bearishFVG_valid = bearishFVG_exists and bearishFVG_size >= minGapSize
+
+// Confirm with displacement
+bearishDisplacement = close[1] < open[1] and (open[1] - close[1]) > atr * 0.5
+
+// Final signals
+bullishSignal = bullishFVG_valid and bullishDisplacement
+bearishSignal = bearishFVG_valid and bearishDisplacement
+
+// ============================================
+// VISUALIZATION
+// ============================================
+var box[] bullishBoxes = array.new_box()
+var box[] bearishBoxes = array.new_box()
+
+if bullishSignal and i_showBullishFVG
+    newBox = box.new(bar_index[2], bullishFVG_top, bar_index + 10, bullishFVG_bottom, bgcolor=color.new(color.green, 80), border_color=color.green)
+    array.push(bullishBoxes, newBox)
+
+if bearishSignal and i_showBearishFVG
+    newBox = box.new(bar_index[2], bearishFVG_top, bar_index + 10, bearishFVG_bottom, bgcolor=color.new(color.red, 80), border_color=color.red)
+    array.push(bearishBoxes, newBox)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+// Calculate stop loss and take profit
+bullishSL = bullishFVG_bottom - (atr * 0.5)
+bullishTP = close + ((close - bullishSL) * 2)  // 2:1 R:R
+
+bearishSL = bearishFVG_top + (atr * 0.5)
+bearishTP = close - ((bearishSL - close) * 2)  // 2:1 R:R
+
+// Build JSON payloads
+bullishPayload = '{"symbol":"' + syminfo.ticker + '","action":"BUY","strategy":"FVG_BULLISH","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullishSL) + ',"take_profit":' + str.tostring(bullishTP) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":' + str.tostring(math.round(bullishFVG_size / atr * 50)) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+bearishPayload = '{"symbol":"' + syminfo.ticker + '","action":"SELL","strategy":"FVG_BEARISH","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearishSL) + ',"take_profit":' + str.tostring(bearishTP) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":' + str.tostring(math.round(bearishFVG_size / atr * 50)) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// Fire alerts
+if bullishSignal and i_alertOnNew
+    alert(bullishPayload, alert.freq_once_per_bar_close)
+
+if bearishSignal and i_alertOnNew
+    alert(bearishPayload, alert.freq_once_per_bar_close)
+
+// ============================================
+// DEBUG LABELS
+// ============================================
+if bullishSignal
+    label.new(bar_index, low, "BUY\nFVG", style=label.style_label_up, color=color.green, textcolor=color.white)
+
+if bearishSignal
+    label.new(bar_index, high, "SELL\nFVG", style=label.style_label_down, color=color.red, textcolor=color.white)

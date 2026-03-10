@@ -1,0 +1,169 @@
+// scripts/pinescript/tradie_sessions.pine
+//@version=5
+indicator("Tradie - Sessions & Key Levels", overlay=true)
+
+// ============================================
+// INPUTS
+// ============================================
+i_showPDHL      = input.bool(true, "Show Previous Day H/L/C", group="Previous Day")
+i_showWeekly    = input.bool(true, "Show Weekly Open",         group="Weekly")
+i_showMonthly   = input.bool(true, "Show Monthly Open",        group="Monthly")
+i_showAsia      = input.bool(true, "Show Asia Session Range",  group="Asia Session")
+i_showMidnight  = input.bool(true, "Show NY Midnight Open",    group="NY Midnight")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* and request.security before any if blocks)
+// ============================================
+atr = ta.atr(14)
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// ---- Previous Day H / L / C ----
+pdHigh  = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_off)
+pdLow   = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_off)
+pdClose = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_off)
+
+// ---- Weekly & Monthly Open (institutional reference levels) ----
+weeklyOpen  = request.security(syminfo.tickerid, "W", open, lookahead=barmerge.lookahead_off)
+monthlyOpen = request.security(syminfo.tickerid, "M", open, lookahead=barmerge.lookahead_off)
+
+// ---- NY Time ----
+nyHour   = hour(time,   "America/New_York")
+nyMinute = minute(time, "America/New_York")
+nyTime   = nyHour + nyMinute / 60.0
+
+// ---- NY Midnight Open (ICT daily bias reference) ----
+// Capture the open of the 12 AM NY candle
+var float midnightOpen = na
+isMidnightCandle = nyHour == 0 and nyHour[1] != 0
+if isMidnightCandle
+    midnightOpen := open
+
+// ---- Asia Session Range  (8 PM – 4 AM NY) ----
+// Asia high/low = liquidity pools that London/NY frequently sweep first
+inAsia = nyHour >= 20 or nyHour < 4
+
+var float asiaHigh      = na
+var float asiaLow       = na
+var float asiaHighFinal = na
+var float asiaLowFinal  = na
+var bool  inAsiaPrev    = false
+
+asiaJustStarted = inAsia and not inAsiaPrev
+
+if asiaJustStarted
+    asiaHigh := high
+    asiaLow  := low
+
+if inAsia
+    asiaHigh := math.max(nz(asiaHigh, high), high)
+    asiaLow  := math.min(nz(asiaLow,  low),  low)
+
+asiaJustEnded = not inAsia and inAsiaPrev
+
+if asiaJustEnded
+    asiaHighFinal := asiaHigh
+    asiaLowFinal  := asiaLow
+
+inAsiaPrev := inAsia
+
+// ============================================
+// SIGNAL DETECTION
+// Price touch + rejection at key session levels
+// ============================================
+
+// Candle properties
+isBullCandle = close > open
+isBearCandle = close < open
+bodySize     = math.abs(close - open)
+upperWick    = high - math.max(close, open)
+lowerWick    = math.min(close, open) - low
+
+// Bullish rejection at PDL, Asia Low, or Midnight Open (price wicked below and closed back above)
+bullRejectPDL      = not na(pdLow)      and low < pdLow      and close > pdLow      and lowerWick > bodySize
+bullRejectAsiaLow  = not na(asiaLowFinal) and low < asiaLowFinal and close > asiaLowFinal and lowerWick > bodySize
+bullRejectMidnight = not na(midnightOpen) and low < midnightOpen and close > midnightOpen and isBullCandle
+
+// Bearish rejection at PDH, Asia High, or Midnight Open
+bearRejectPDH      = not na(pdHigh)     and high > pdHigh     and close < pdHigh     and upperWick > bodySize
+bearRejectAsiaHigh = not na(asiaHighFinal) and high > asiaHighFinal and close < asiaHighFinal and upperWick > bodySize
+bearRejectMidnight = not na(midnightOpen) and high > midnightOpen and close < midnightOpen and isBearCandle
+
+bullSignal = bullRejectPDL or bullRejectAsiaLow or bullRejectMidnight
+bearSignal = bearRejectPDH or bearRejectAsiaHigh or bearRejectMidnight
+
+// Strategy name
+var string bullStrategy = "SESSION_BULL"
+var string bearStrategy = "SESSION_BEAR"
+
+if bullRejectPDL
+    bullStrategy := "SESSION_PDL_REJECT"
+else if bullRejectAsiaLow
+    bullStrategy := "SESSION_ASIA_LOW_REJECT"
+else if bullRejectMidnight
+    bullStrategy := "SESSION_MIDNIGHT_BULL"
+
+if bearRejectPDH
+    bearStrategy := "SESSION_PDH_REJECT"
+else if bearRejectAsiaHigh
+    bearStrategy := "SESSION_ASIA_HIGH_REJECT"
+else if bearRejectMidnight
+    bearStrategy := "SESSION_MIDNIGHT_BEAR"
+
+// SL / TP
+bullSL = low  - atr * 0.3
+bullTP = close + (close - bullSL) * 2
+bearSL = high + atr * 0.3
+bearTP = close - (bearSL - close) * 2
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"' + bullStrategy + '"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":72,"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"' + bearStrategy + '"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":72,"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+// Previous Day levels
+plot(i_showPDHL ? pdHigh  : na, "PDH",   color=color.red,    linewidth=1, style=plot.style_line)
+plot(i_showPDHL ? pdLow   : na, "PDL",   color=color.green,  linewidth=1, style=plot.style_line)
+plot(i_showPDHL ? pdClose : na, "PDC",   color=color.gray,   linewidth=1, style=plot.style_stepline)
+
+// Weekly and Monthly Open
+plot(i_showWeekly  ? weeklyOpen  : na, "Weekly Open",  color=color.blue,   linewidth=1, style=plot.style_line)
+plot(i_showMonthly ? monthlyOpen : na, "Monthly Open", color=color.purple, linewidth=2, style=plot.style_line)
+
+// Midnight Open
+plot(i_showMidnight ? midnightOpen : na, "NY Midnight Open", color=color.orange, linewidth=1, style=plot.style_line)
+
+// Asia session background and range lines
+bgcolor(inAsia and i_showAsia ? color.new(color.blue, 93) : na)
+plot(i_showAsia ? asiaHighFinal : na, "Asia High", color=color.new(color.teal, 20), linewidth=1, style=plot.style_line)
+plot(i_showAsia ? asiaLowFinal  : na, "Asia Low",  color=color.new(color.teal, 20), linewidth=1, style=plot.style_line)
+
+// Signal labels
+if bullSignal
+    label.new(bar_index, low, "BUY\n" + bullStrategy, style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+
+if bearSignal
+    label.new(bar_index, high, "SELL\n" + bearStrategy, style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullSignal
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearSignal
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

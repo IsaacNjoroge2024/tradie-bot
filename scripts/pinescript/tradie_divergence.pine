@@ -1,0 +1,175 @@
+// scripts/pinescript/tradie_divergence.pine
+//@version=5
+indicator("Tradie - Divergence", overlay=false)
+
+// ============================================
+// INPUTS
+// ============================================
+i_rsiLength    = input.int(14, "RSI Length",    group="RSI")
+i_pivotLen     = input.int(5,  "Pivot Length",  minval=2, maxval=10, group="Detection")
+i_showRegular  = input.bool(true, "Show Regular Divergence",  group="Display")
+i_showHidden   = input.bool(true, "Show Hidden Divergence",   group="Display")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* before any if blocks)
+// ============================================
+rsi = ta.rsi(close, i_rsiLength)
+
+// MACD for additional divergence confirmation
+[macdLine, signalLine, histMacd] = ta.macd(close, 12, 26, 9)
+
+atr = ta.atr(14)
+
+// Pivot detection on PRICE
+priceSwingHigh = ta.pivothigh(high, i_pivotLen, i_pivotLen)
+priceSwingLow  = ta.pivotlow(low,  i_pivotLen, i_pivotLen)
+
+// RSI value AT the pivot bar (i_pivotLen bars ago = when the pivot actually occurred)
+rsiAtPivotHigh  = not na(priceSwingHigh) ? rsi[i_pivotLen]  : na
+rsiAtPivotLow   = not na(priceSwingLow)  ? rsi[i_pivotLen]  : na
+
+// MACD value AT the pivot bar
+macdAtPivotHigh = not na(priceSwingHigh) ? macdLine[i_pivotLen] : na
+macdAtPivotLow  = not na(priceSwingLow)  ? macdLine[i_pivotLen] : na
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// ============================================
+// DIVERGENCE DETECTION
+// Compare current pivot to the previous pivot
+// ============================================
+var float prevPriceHigh = na
+var float prevRsiHigh   = na
+var float prevMacdHigh  = na
+var float prevPriceLow  = na
+var float prevRsiLow    = na
+var float prevMacdLow   = na
+
+// Divergence flags (reset each bar) — RSI-based
+regBullDiv     = false   // Regular Bullish:  price lower low,  RSI higher low  → reversal up
+regBearDiv     = false   // Regular Bearish:  price higher high, RSI lower high  → reversal down
+hidBullDiv     = false   // Hidden Bullish:   price higher low,  RSI lower low   → continuation up
+hidBearDiv     = false   // Hidden Bearish:   price lower high,  RSI higher high → continuation down
+
+// MACD divergence flags (reset each bar)
+regBullDivMacd = false   // Regular Bullish MACD: price lower low,  MACD higher low
+regBearDivMacd = false   // Regular Bearish MACD: price higher high, MACD lower high
+hidBullDivMacd = false   // Hidden Bullish MACD:  price higher low,  MACD lower low
+hidBearDivMacd = false   // Hidden Bearish MACD:  price lower high,  MACD higher high
+
+if not na(priceSwingHigh)
+    if not na(prevPriceHigh) and not na(prevRsiHigh)
+        regBearDiv     := priceSwingHigh > prevPriceHigh and rsiAtPivotHigh  < prevRsiHigh
+        hidBearDiv     := priceSwingHigh < prevPriceHigh and rsiAtPivotHigh  > prevRsiHigh
+    if not na(prevPriceHigh) and not na(prevMacdHigh)
+        regBearDivMacd := priceSwingHigh > prevPriceHigh and macdAtPivotHigh < prevMacdHigh
+        hidBearDivMacd := priceSwingHigh < prevPriceHigh and macdAtPivotHigh > prevMacdHigh
+    prevPriceHigh := priceSwingHigh
+    prevRsiHigh   := rsiAtPivotHigh
+    prevMacdHigh  := macdAtPivotHigh
+
+if not na(priceSwingLow)
+    if not na(prevPriceLow) and not na(prevRsiLow)
+        regBullDiv     := priceSwingLow < prevPriceLow and rsiAtPivotLow  > prevRsiLow
+        hidBullDiv     := priceSwingLow > prevPriceLow and rsiAtPivotLow  < prevRsiLow
+    if not na(prevPriceLow) and not na(prevMacdLow)
+        regBullDivMacd := priceSwingLow < prevPriceLow and macdAtPivotLow > prevMacdLow
+        hidBullDivMacd := priceSwingLow > prevPriceLow and macdAtPivotLow < prevMacdLow
+    prevPriceLow  := priceSwingLow
+    prevRsiLow    := rsiAtPivotLow
+    prevMacdLow   := macdAtPivotLow
+
+bullSignal = regBullDiv or hidBullDiv or regBullDivMacd or hidBullDivMacd
+bearSignal = regBearDiv or hidBearDiv or regBearDivMacd or hidBearDivMacd
+
+// Strategy name — RSI+MACD agreement takes highest priority
+var string bullStrat = "DIVERGENCE_BULL"
+var string bearStrat = "DIVERGENCE_BEAR"
+
+if regBullDiv and regBullDivMacd
+    bullStrat := "REG_BULL_DIVERGENCE"
+else if hidBullDiv and hidBullDivMacd
+    bullStrat := "HID_BULL_DIVERGENCE"
+else if regBullDiv
+    bullStrat := "REG_BULL_DIVERGENCE"
+else if hidBullDiv
+    bullStrat := "HID_BULL_DIVERGENCE"
+else if regBullDivMacd
+    bullStrat := "REG_BULL_DIVERGENCE"
+else if hidBullDivMacd
+    bullStrat := "HID_BULL_DIVERGENCE"
+
+if regBearDiv and regBearDivMacd
+    bearStrat := "REG_BEAR_DIVERGENCE"
+else if hidBearDiv and hidBearDivMacd
+    bearStrat := "HID_BEAR_DIVERGENCE"
+else if regBearDiv
+    bearStrat := "REG_BEAR_DIVERGENCE"
+else if hidBearDiv
+    bearStrat := "HID_BEAR_DIVERGENCE"
+else if regBearDivMacd
+    bearStrat := "REG_BEAR_DIVERGENCE"
+else if hidBearDivMacd
+    bearStrat := "HID_BEAR_DIVERGENCE"
+
+// Confidence: RSI + MACD both confirm = 88; regular RSI only = 78; hidden/MACD only = 65
+rsiBullConfirm  = regBullDiv or hidBullDiv
+macdBullConfirm = regBullDivMacd or hidBullDivMacd
+rsiBearConfirm  = regBearDiv or hidBearDiv
+macdBearConfirm = regBearDivMacd or hidBearDivMacd
+
+bullConf = rsiBullConfirm and macdBullConfirm ? 88 : regBullDiv ? 78 : 65
+bearConf = rsiBearConfirm and macdBearConfirm ? 88 : regBearDiv ? 78 : 65
+
+// SL / TP
+bullSL = low[i_pivotLen]  - atr * 0.3
+bullTP = close + (close - bullSL) * 2
+bearSL = high[i_pivotLen] + atr * 0.3
+bearTP = close - (bearSL - close) * 2
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"' + bullStrat + '"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":' + str.tostring(bullConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"' + bearStrat + '"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":' + str.tostring(bearConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION (RSI pane)
+// ============================================
+rsiPlot = plot(rsi, "RSI", color=color.new(color.blue, 0), linewidth=1)
+
+// Overbought / Oversold levels
+hline(70, "OB", color=color.red,   linestyle=hline.style_dashed)
+hline(50, "Mid", color=color.gray, linestyle=hline.style_dotted)
+hline(30, "OS", color=color.green, linestyle=hline.style_dashed)
+
+// RSI divergence labels (shown on the RSI pane at pivot level)
+plotshape(i_showRegular and regBullDiv     ? rsi[i_pivotLen] : na, "Reg Bull Div",      shape.labelup,   location.absolute, color.green,  size=size.small, text="RB")
+plotshape(i_showRegular and regBearDiv     ? rsi[i_pivotLen] : na, "Reg Bear Div",      shape.labeldown, location.absolute, color.red,    size=size.small, text="RB")
+plotshape(i_showHidden  and hidBullDiv     ? rsi[i_pivotLen] : na, "Hid Bull Div",      shape.labelup,   location.absolute, color.lime,   size=size.small, text="HB")
+plotshape(i_showHidden  and hidBearDiv     ? rsi[i_pivotLen] : na, "Hid Bear Div",      shape.labeldown, location.absolute, color.orange, size=size.small, text="HB")
+
+// MACD divergence labels (M = MACD confirmation marker)
+plotshape(i_showRegular and regBullDivMacd ? rsi[i_pivotLen] : na, "Reg Bull MACD Div", shape.triangleup,   location.absolute, color.teal,   size=size.tiny, text="M")
+plotshape(i_showRegular and regBearDivMacd ? rsi[i_pivotLen] : na, "Reg Bear MACD Div", shape.triangledown, location.absolute, color.maroon, size=size.tiny, text="M")
+plotshape(i_showHidden  and hidBullDivMacd ? rsi[i_pivotLen] : na, "Hid Bull MACD Div", shape.triangleup,   location.absolute, color.aqua,   size=size.tiny, text="M")
+plotshape(i_showHidden  and hidBearDivMacd ? rsi[i_pivotLen] : na, "Hid Bear MACD Div", shape.triangledown, location.absolute, color.fuchsia,size=size.tiny, text="M")
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullSignal
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearSignal
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

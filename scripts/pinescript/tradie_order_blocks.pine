@@ -1,0 +1,122 @@
+// scripts/pinescript/tradie_order_blocks.pine
+//@version=5
+indicator("Tradie - Order Blocks & BOS", overlay=true, max_boxes_count=500)
+
+// ============================================
+// INPUTS
+// ============================================
+i_swingLength = input.int(5, "Swing Length", minval=2, maxval=10, group="Structure")
+i_showOB = input.bool(true, "Show Order Blocks", group="Display")
+i_showBOS = input.bool(true, "Show BOS/CHoCH", group="Display")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// SWING POINT DETECTION
+// ============================================
+swingHigh = ta.pivothigh(high, i_swingLength, i_swingLength)
+swingLow = ta.pivotlow(low, i_swingLength, i_swingLength)
+atr = ta.atr(17)
+
+var float lastSwingHigh = na
+var float lastSwingLow = na
+var int lastSwingHighBar = na
+var int lastSwingLowBar = na
+
+if not na(swingHigh)
+    lastSwingHigh := swingHigh
+    lastSwingHighBar := bar_index[i_swingLength]
+
+if not na(swingLow)
+    lastSwingLow := swingLow
+    lastSwingLowBar := bar_index[i_swingLength]
+
+// ============================================
+// BREAK OF STRUCTURE (BOS) DETECTION
+// ============================================
+
+// Bullish BOS: Close above last swing high with significance
+bullishBOS = not na(lastSwingHigh) and close > lastSwingHigh and (close - lastSwingHigh) > atr * 0.1
+
+// Bearish BOS: Close below last swing low with significance
+bearishBOS = not na(lastSwingLow) and close < lastSwingLow and (lastSwingLow - close) > atr * 0.1
+
+// Track trend for CHoCH detection
+var int trend = 0  // 1 = bullish, -1 = bearish
+
+bullishCHoCH = bullishBOS and trend == -1
+bearishCHoCH = bearishBOS and trend == 1
+
+if bullishBOS
+    trend := 1
+if bearishBOS
+    trend := -1
+
+// ============================================
+// ORDER BLOCK DETECTION
+// ============================================
+// Bullish OB: Last bearish candle before bullish BOS
+var float bullishOB_high = na
+var float bullishOB_low = na
+var int bullishOB_bar = na
+
+// Bearish OB: Last bullish candle before bearish BOS
+var float bearishOB_high = na
+var float bearishOB_low = na
+var int bearishOB_bar = na
+
+// Find last opposite candle before BOS
+if bullishBOS
+    for i = 1 to 10
+        if close[i] < open[i]  // Found bearish candle
+            bullishOB_high := high[i]
+            bullishOB_low := low[i]
+            bullishOB_bar := bar_index[i]
+            break
+
+if bearishBOS
+    for i = 1 to 10
+        if close[i] > open[i]  // Found bullish candle
+            bearishOB_high := high[i]
+            bearishOB_low := low[i]
+            bearishOB_bar := bar_index[i]
+            break
+
+// ============================================
+// VISUALIZATION
+// ============================================
+// BOS Lines
+if bullishBOS and i_showBOS
+    line.new(lastSwingHighBar, lastSwingHigh, bar_index, lastSwingHigh, color=bullishCHoCH ? color.blue : color.green, style=line.style_dashed)
+    label.new(bar_index, lastSwingHigh, bullishCHoCH ? "CHoCH" : "BOS", style=label.style_label_down, color=bullishCHoCH ? color.blue : color.green, textcolor=color.white, size=size.small)
+
+if bearishBOS and i_showBOS
+    line.new(lastSwingLowBar, lastSwingLow, bar_index, lastSwingLow, color=bearishCHoCH ? color.orange : color.red, style=line.style_dashed)
+    label.new(bar_index, lastSwingLow, bearishCHoCH ? "CHoCH" : "BOS", style=label.style_label_up, color=bearishCHoCH ? color.orange : color.red, textcolor=color.white, size=size.small)
+
+// Order Block Boxes
+if bullishBOS and not na(bullishOB_high) and i_showOB
+    box.new(bullishOB_bar, bullishOB_high, bar_index + 20, bullishOB_low, bgcolor=color.new(color.green, 85), border_color=color.green, border_width=2)
+
+if bearishBOS and not na(bearishOB_high) and i_showOB
+    box.new(bearishOB_bar, bearishOB_high, bar_index + 20, bearishOB_low, bgcolor=color.new(color.red, 85), border_color=color.red, border_width=2)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+// CHoCH signals (higher probability - trend reversal)
+if bullishCHoCH
+    chochPayload = '{"symbol":"' + syminfo.ticker + '","action":"BUY","strategy":"CHOCH_BULLISH","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullishOB_low - atr * 0.5) + ',"take_profit":' + str.tostring(close + (close - bullishOB_low) * 2) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":80,"auth_token":"' + i_webhookSecret + '"}'
+    alert(chochPayload, alert.freq_once_per_bar_close)
+
+if bearishCHoCH
+    chochPayload = '{"symbol":"' + syminfo.ticker + '","action":"SELL","strategy":"CHOCH_BEARISH","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearishOB_high + atr * 0.5) + ',"take_profit":' + str.tostring(close - (bearishOB_high - close) * 2) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":80,"auth_token":"' + i_webhookSecret + '"}'
+    alert(chochPayload, alert.freq_once_per_bar_close)
+
+// Regular BOS with OB (continuation signals)
+if bullishBOS and not bullishCHoCH and not na(bullishOB_high)
+    bosPayload = '{"symbol":"' + syminfo.ticker + '","action":"BUY","strategy":"BOS_BULLISH_OB","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullishOB_low - atr * 0.3) + ',"take_profit":' + str.tostring(close + (close - bullishOB_low) * 1.5) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":65,"auth_token":"' + i_webhookSecret + '"}'
+    alert(bosPayload, alert.freq_once_per_bar_close)
+
+if bearishBOS and not bearishCHoCH and not na(bearishOB_high)
+    bosPayload = '{"symbol":"' + syminfo.ticker + '","action":"SELL","strategy":"BOS_BEARISH_OB","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearishOB_high + atr * 0.3) + ',"take_profit":' + str.tostring(close - (bearishOB_high - close) * 1.5) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":65,"auth_token":"' + i_webhookSecret + '"}'
+    alert(bosPayload, alert.freq_once_per_bar_close)

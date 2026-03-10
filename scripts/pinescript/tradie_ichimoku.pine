@@ -1,0 +1,124 @@
+// scripts/pinescript/tradie_ichimoku.pine
+//@version=5
+indicator("Tradie - Ichimoku Cloud", overlay=true)
+
+// ============================================
+// INPUTS
+// ============================================
+i_tenkanLen     = input.int(9,  "Tenkan (Conversion) Length", group="Ichimoku")
+i_kijunLen      = input.int(26, "Kijun (Base) Length",        group="Ichimoku")
+i_senkouBLen    = input.int(52, "Senkou B Length",             group="Ichimoku")
+i_displacement  = input.int(26, "Cloud Displacement",          group="Ichimoku")
+i_showCloud     = input.bool(true, "Show Cloud",               group="Display")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS (all ta.* before any if blocks)
+// ============================================
+atr = ta.atr(14)
+
+// Ichimoku lines
+tenkan  = math.avg(ta.highest(high, i_tenkanLen),  ta.lowest(low, i_tenkanLen))
+kijun   = math.avg(ta.highest(high, i_kijunLen),   ta.lowest(low, i_kijunLen))
+senkouA = math.avg(tenkan, kijun)
+senkouB = math.avg(ta.highest(high, i_senkouBLen), ta.lowest(low, i_senkouBLen))
+
+// Cloud at CURRENT price bar (displaced back by i_displacement bars)
+cloudTop    = math.max(senkouA[i_displacement], senkouB[i_displacement])
+cloudBottom = math.min(senkouA[i_displacement], senkouB[i_displacement])
+
+// Chikou span: current close plotted i_displacement bars back
+// For signal: compare current close to close i_displacement bars ago
+chikouConfirmBull = close > close[i_displacement]
+chikouConfirmBear = close < close[i_displacement]
+
+// TK Cross — called at top level for consistent results
+tkCrossUp   = ta.crossover(tenkan,  kijun)
+tkCrossDown = ta.crossunder(tenkan, kijun)
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// ============================================
+// SIGNAL DETECTION
+// ============================================
+
+// Price position relative to cloud
+aboveCloud = close > cloudTop
+belowCloud = close < cloudBottom
+
+// Cloud color: green cloud (bullish) = senkouA > senkouB
+cloudBull = senkouA > senkouB
+cloudBear = senkouA < senkouB
+
+// Bullish TK cross above cloud with bullish cloud color = strongest buy
+tkBullStrong = tkCrossUp and aboveCloud and cloudBull
+// Bullish TK cross anywhere with cloud support
+tkBullWeak   = tkCrossUp and not belowCloud
+
+// Bearish TK cross below cloud with bearish cloud color = strongest sell
+tkBearStrong = tkCrossDown and belowCloud and cloudBear
+// Bearish TK cross anywhere with cloud resistance
+tkBearWeak   = tkCrossDown and not aboveCloud
+
+bullSignal = tkBullStrong or tkBullWeak
+bearSignal = tkBearStrong or tkBearWeak
+
+// Strategy / confidence
+var string bullStrat = "ICHIMOKU_TK_CROSS_BULL"
+var string bearStrat = "ICHIMOKU_TK_CROSS_BEAR"
+
+// Confidence tiers: strong setup (above cloud + cloud bullish + chikou) = 85
+// Strong setup without chikou = 78; weak setup = 65
+bullConf = tkBullStrong and chikouConfirmBull ? 85 : tkBullStrong ? 78 : 65
+bearConf = tkBearStrong and chikouConfirmBear ? 85 : tkBearStrong ? 78 : 65
+
+// SL / TP
+bullSL = kijun - atr * 0.5
+bullTP = close + (close - bullSL) * 2
+bearSL = kijun + atr * 0.5
+bearTP = close - (bearSL - close) * 2
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"' + bullStrat + '"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":' + str.tostring(bullConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"' + bearStrat + '"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":' + str.tostring(bearConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+plot(tenkan, "Tenkan",  color=color.new(color.blue,   0), linewidth=1)
+plot(kijun,  "Kijun",   color=color.new(color.red,    0), linewidth=2)
+
+// Senkou A/B displaced forward by i_displacement bars for the future cloud
+senkouAPlot = plot(i_showCloud ? senkouA : na, "Senkou A", color=color.new(color.green, 40), offset=i_displacement, linewidth=1)
+senkouBPlot = plot(i_showCloud ? senkouB : na, "Senkou B", color=color.new(color.red,   40), offset=i_displacement, linewidth=1)
+fill(senkouAPlot, senkouBPlot, color=senkouA >= senkouB ? color.new(color.green, 80) : color.new(color.red, 80))
+
+// Chikou span displaced backward
+plot(close, "Chikou", color=color.new(color.purple, 20), offset=-i_displacement, linewidth=1)
+
+// Signal labels
+if bullSignal
+    label.new(bar_index, low,  "BUY\nICHIMOKU",  style=label.style_label_up,   color=color.green, textcolor=color.white, size=size.small)
+
+if bearSignal
+    label.new(bar_index, high, "SELL\nICHIMOKU", style=label.style_label_down, color=color.red,   textcolor=color.white, size=size.small)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullSignal
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearSignal
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

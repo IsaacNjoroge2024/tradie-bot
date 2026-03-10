@@ -1,0 +1,116 @@
+// scripts/pinescript/tradie_liquidity_sweeps.pine
+//@version=5
+indicator("Tradie - Liquidity Sweeps", overlay=true)
+
+// ============================================
+// INPUTS
+// ============================================
+i_swingLen     = input.int(10, "Swing Length", minval=5, maxval=20, group="Detection")
+i_sweepBuffer  = input.float(0.5, "Sweep Buffer (ATR multiplier)", minval=0.1, step=0.1, group="Detection")
+i_eqBuffer     = input.float(0.2, "Equal H/L Buffer (ATR multiplier)", minval=0.05, step=0.05, group="Detection")
+i_showEqualHL  = input.bool(true, "Show Equal Highs/Lows (BSL/SSL)", group="Display")
+i_showSweeps   = input.bool(true, "Show Liquidity Sweeps", group="Display")
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS  (all ta.* calls before any if blocks)
+// ============================================
+atr        = ta.atr(14)
+swingHigh  = ta.pivothigh(high, i_swingLen, i_swingLen)
+swingLow   = ta.pivotlow(low, i_swingLen, i_swingLen)
+
+sym = syminfo.ticker
+pfx = syminfo.prefix
+tf  = timeframe.period
+
+// Track last two swing highs and lows for equal level detection
+var float prevSwingHigh  = na
+var float lastSwingHigh  = na
+var int   lastSwingHighBar = na
+
+var float prevSwingLow   = na
+var float lastSwingLow   = na
+var int   lastSwingLowBar = na
+
+if not na(swingHigh)
+    prevSwingHigh    := lastSwingHigh
+    lastSwingHigh    := swingHigh
+    lastSwingHighBar := bar_index[i_swingLen]
+
+if not na(swingLow)
+    prevSwingLow    := lastSwingLow
+    lastSwingLow    := swingLow
+    lastSwingLowBar := bar_index[i_swingLen]
+
+// ============================================
+// EQUAL HIGHS / EQUAL LOWS (BSL / SSL)
+// Buy Side Liquidity rests above equal highs
+// Sell Side Liquidity rests below equal lows
+// ============================================
+equalHighs = not na(prevSwingHigh) and not na(lastSwingHigh) and math.abs(lastSwingHigh - prevSwingHigh) < atr * i_eqBuffer
+equalLows  = not na(prevSwingLow)  and not na(lastSwingLow)  and math.abs(lastSwingLow  - prevSwingLow)  < atr * i_eqBuffer
+
+equalHighLevel = equalHighs ? (lastSwingHigh + prevSwingHigh) / 2 : na
+equalLowLevel  = equalLows  ? (lastSwingLow  + prevSwingLow)  / 2 : na
+
+// ============================================
+// LIQUIDITY SWEEP DETECTION
+// Bullish sweep: wick below swing low → closes back above (stop hunt below lows → buy)
+// Bearish sweep: wick above swing high → closes back below (stop hunt above highs → sell)
+// ============================================
+bullishSweep = not na(lastSwingLow)  and low  < lastSwingLow  and close > lastSwingLow  and (close - low)  > atr * i_sweepBuffer
+bearishSweep = not na(lastSwingHigh) and high > lastSwingHigh and close < lastSwingHigh and (high - close) > atr * i_sweepBuffer
+
+// Confirmation: reversal candle after the sweep
+bullishSweepConfirmed = bullishSweep and close > open and (close - open) > atr * 0.3
+bearishSweepConfirmed = bearishSweep and close < open and (open - close) > atr * 0.3
+
+// ============================================
+// SL / TP
+// ============================================
+bullSL = low  - atr * 0.3
+bullTP = close + (close - bullSL) * 2   // 2:1 R:R
+
+bearSL = high + atr * 0.3
+bearTP = close - (bearSL - close) * 2   // 2:1 R:R
+
+// ============================================
+// PAYLOAD BUILDING (top-level)
+// ============================================
+bullP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"LIQUIDITY_SWEEP_BULLISH"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullSL) + ',"take_profit":' + str.tostring(bullTP)
+bullP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bullP4 = '","confidence":75,"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"LIQUIDITY_SWEEP_BEARISH"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearSL) + ',"take_profit":' + str.tostring(bearTP)
+bearP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
+bearP4 = '","confidence":75,"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+// Equal highs/lows lines (BSL above, SSL below)
+if equalHighs and i_showEqualHL
+    line.new(lastSwingHighBar, equalHighLevel, bar_index, equalHighLevel, color=color.orange, style=line.style_dashed, width=1)
+    label.new(bar_index, equalHighLevel, "BSL", style=label.style_label_left, color=color.orange, textcolor=color.white, size=size.small)
+
+if equalLows and i_showEqualHL
+    line.new(lastSwingLowBar, equalLowLevel, bar_index, equalLowLevel, color=color.purple, style=line.style_dashed, width=1)
+    label.new(bar_index, equalLowLevel, "SSL", style=label.style_label_left, color=color.purple, textcolor=color.white, size=size.small)
+
+// Sweep labels
+if bullishSweepConfirmed and i_showSweeps
+    label.new(bar_index, low, "SWEEP\nBUY", style=label.style_label_up, color=color.green, textcolor=color.white)
+
+if bearishSweepConfirmed and i_showSweeps
+    label.new(bar_index, high, "SWEEP\nSELL", style=label.style_label_down, color=color.red, textcolor=color.white)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if bullishSweepConfirmed
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if bearishSweepConfirmed
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

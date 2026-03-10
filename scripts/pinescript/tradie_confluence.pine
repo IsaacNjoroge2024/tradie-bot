@@ -1,0 +1,178 @@
+// scripts/pinescript/tradie_confluence.pine
+//@version=5
+indicator("Tradie - Confluence Signals", overlay=true)
+
+// ============================================
+// INPUTS
+// ============================================
+// Trend Inputs
+i_emaFast = input.int(9, "Fast EMA", group="Trend")
+i_emaSlow = input.int(21, "Slow EMA", group="Trend")
+i_emaTrend = input.int(50, "Trend EMA", group="Trend")
+
+// Momentum Inputs
+i_rsiLength = input.int(14, "RSI Length", group="Momentum")
+i_rsiOB = input.int(70, "RSI Overbought", group="Momentum")
+i_rsiOS = input.int(30, "RSI Oversold", group="Momentum")
+
+// ADX Inputs
+i_adxLength = input.int(14, "ADX Length", group="Trend Strength")
+i_adxThreshold = input.int(25, "ADX Trending Threshold", group="Trend Strength")
+
+// Confluence Requirements
+i_minConfluence = input.int(3, "Minimum Confluence Score", minval=2, maxval=6, group="Confluence")
+
+// Webhook
+i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+
+// ============================================
+// CALCULATIONS
+// ============================================
+// EMAs
+emaFast = ta.ema(close, i_emaFast)
+emaSlow = ta.ema(close, i_emaSlow)
+emaTrend = ta.ema(close, i_emaTrend)
+
+// MA Ribbon (5/8/13 EMA — short-term momentum alignment)
+emaRibbon5  = ta.ema(close, 5)
+emaRibbon8  = ta.ema(close, 8)
+emaRibbon13 = ta.ema(close, 13)
+
+// EMA crossovers — must be top-level for consistent results
+emaCrossUp   = ta.crossover(emaFast, emaSlow)
+emaCrossDown = ta.crossunder(emaFast, emaSlow)
+
+// RSI
+rsi = ta.rsi(close, i_rsiLength)
+
+// MACD
+[macdLine, signalLine, histogram] = ta.macd(close, 12, 26, 9)
+
+// ADX
+[diPlus, diMinus, adx] = ta.dmi(i_adxLength, i_adxLength)
+
+// ATR for stops
+atr = ta.atr(14)
+
+// ============================================
+// CONFLUENCE SCORING
+// ============================================
+var int bullishScore = 0
+var int bearishScore = 0
+
+// Reset scores
+bullishScore := 0
+bearishScore := 0
+
+// 1. EMA Alignment (Fast > Slow > Trend for bullish)
+if emaFast > emaSlow and emaSlow > emaTrend
+    bullishScore += 1
+if emaFast < emaSlow and emaSlow < emaTrend
+    bearishScore += 1
+
+// 2. Price above/below trend EMA
+if close > emaTrend
+    bullishScore += 1
+if close < emaTrend
+    bearishScore += 1
+
+// 3. EMA Crossover (recent)
+if emaCrossUp[1] or emaCrossUp[2] or emaCrossUp[3]
+    bullishScore += 1
+if emaCrossDown[1] or emaCrossDown[2] or emaCrossDown[3]
+    bearishScore += 1
+
+// 4. RSI Momentum
+if rsi > 50 and rsi < i_rsiOB
+    bullishScore += 1
+if rsi < 50 and rsi > i_rsiOS
+    bearishScore += 1
+
+// 5. MACD Bullish/Bearish
+if macdLine > signalLine and histogram > 0
+    bullishScore += 1
+if macdLine < signalLine and histogram < 0
+    bearishScore += 1
+
+// 6. ADX Confirms Trend
+trendStrong = adx > i_adxThreshold
+if trendStrong and diPlus > diMinus
+    bullishScore += 1
+if trendStrong and diMinus > diPlus
+    bearishScore += 1
+
+// 7. MA Ribbon (5/8/13 EMA short-term momentum alignment)
+if emaRibbon5 > emaRibbon8 and emaRibbon8 > emaRibbon13
+    bullishScore += 1
+if emaRibbon5 < emaRibbon8 and emaRibbon8 < emaRibbon13
+    bearishScore += 1
+
+// ============================================
+// SIGNAL GENERATION
+// ============================================
+bullishSignal = bullishScore >= i_minConfluence and bullishScore > bearishScore
+bearishSignal = bearishScore >= i_minConfluence and bearishScore > bullishScore
+
+// Prevent repeated signals
+var bool lastWasBullish = false
+var bool lastWasBearish = false
+
+newBullishSignal = bullishSignal and not lastWasBullish
+newBearishSignal = bearishSignal and not lastWasBearish
+
+if bullishSignal
+    lastWasBullish := true
+    lastWasBearish := false
+if bearishSignal
+    lastWasBearish := true
+    lastWasBullish := false
+if not bullishSignal and not bearishSignal
+    lastWasBullish := false
+    lastWasBearish := false
+
+// ============================================
+// WEBHOOK PAYLOAD BUILDING (top-level — same pattern as FVG script)
+// ============================================
+bullishSL   = close - (atr * 2)
+bullishTP   = close + (atr * 4)  // 2:1 R:R
+bullishConf = math.round(bullishScore / 7 * 100)
+
+bearishSL   = close + (atr * 2)
+bearishTP   = close - (atr * 4)  // 2:1 R:R
+bearishConf = math.round(bearishScore / 7 * 100)
+
+bullP1 = '{"symbol":"' + syminfo.ticker + '","action":"BUY","strategy":"CONFLUENCE_BULLISH"'
+bullP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullishSL) + ',"take_profit":' + str.tostring(bullishTP)
+bullP3 = ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period
+bullP4 = '","confidence":' + str.tostring(bullishConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+bearP1 = '{"symbol":"' + syminfo.ticker + '","action":"SELL","strategy":"CONFLUENCE_BEARISH"'
+bearP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearishSL) + ',"take_profit":' + str.tostring(bearishTP)
+bearP3 = ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period
+bearP4 = '","confidence":' + str.tostring(bearishConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// ============================================
+// VISUALIZATION
+// ============================================
+plot(emaFast, "Fast EMA", color=color.blue, linewidth=1)
+plot(emaSlow, "Slow EMA", color=color.orange, linewidth=1)
+plot(emaTrend, "Trend EMA", color=color.purple, linewidth=2)
+
+// Confluence score display
+bgcolor(bullishScore >= i_minConfluence ? color.new(color.green, 90) : bearishScore >= i_minConfluence ? color.new(color.red, 90) : na)
+
+// Signal labels
+if newBullishSignal
+    label.new(bar_index, low, "BUY\n" + str.tostring(bullishScore) + "/7", style=label.style_label_up, color=color.green, textcolor=color.white)
+
+if newBearishSignal
+    label.new(bar_index, high, "SELL\n" + str.tostring(bearishScore) + "/7", style=label.style_label_down, color=color.red, textcolor=color.white)
+
+// ============================================
+// WEBHOOK ALERTS
+// ============================================
+if newBullishSignal
+    alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
+
+if newBearishSignal
+    alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

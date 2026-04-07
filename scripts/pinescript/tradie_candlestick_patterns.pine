@@ -8,7 +8,7 @@ indicator("Tradie - Candlestick Patterns", overlay=true)
 i_filterByTrend = input.bool(true, "Filter Signals by Trend", group="Filters")
 i_minRangeMult  = input.float(0.3, "Min Candle Range (ATR multiplier)", minval=0.1, step=0.1, group="Filters")
 i_showLabels    = input.bool(true, "Show Pattern Labels", group="Display")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* calls before any if blocks)
@@ -177,8 +177,8 @@ if bearPattern and i_showLabels
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullPattern
+if bullPattern and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearPattern
+if bearPattern and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

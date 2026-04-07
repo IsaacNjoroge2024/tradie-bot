@@ -23,7 +23,7 @@ i_adxThreshold = input.int(25, "ADX Trending Threshold", group="Trend Strength")
 i_minConfluence = input.int(3, "Minimum Confluence Score", minval=2, maxval=6, group="Confluence")
 
 // Webhook
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS
@@ -57,12 +57,8 @@ atr = ta.atr(14)
 // ============================================
 // CONFLUENCE SCORING
 // ============================================
-var int bullishScore = 0
-var int bearishScore = 0
-
-// Reset scores
-bullishScore := 0
-bearishScore := 0
+int bullishScore = 0
+int bearishScore = 0
 
 // 1. EMA Alignment (Fast > Slow > Trend for bullish)
 if emaFast > emaSlow and emaSlow > emaTrend
@@ -120,15 +116,14 @@ var bool lastWasBearish = false
 newBullishSignal = bullishSignal and not lastWasBullish
 newBearishSignal = bearishSignal and not lastWasBearish
 
+// Only reset the flag on an opposing signal — prevents re-triggering in choppy markets
+// where confluence briefly dips below threshold then recovers on the same side
 if bullishSignal
     lastWasBullish := true
     lastWasBearish := false
 if bearishSignal
     lastWasBearish := true
     lastWasBullish := false
-if not bullishSignal and not bearishSignal
-    lastWasBullish := false
-    lastWasBearish := false
 
 // ============================================
 // WEBHOOK PAYLOAD BUILDING (top-level — same pattern as FVG script)
@@ -171,8 +166,8 @@ if newBearishSignal
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if newBullishSignal
+if newBullishSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if newBearishSignal
+if newBearishSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

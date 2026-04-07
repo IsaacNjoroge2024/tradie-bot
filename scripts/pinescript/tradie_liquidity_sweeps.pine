@@ -10,7 +10,7 @@ i_sweepBuffer  = input.float(0.5, "Sweep Buffer (ATR multiplier)", minval=0.1, s
 i_eqBuffer     = input.float(0.2, "Equal H/L Buffer (ATR multiplier)", minval=0.05, step=0.05, group="Detection")
 i_showEqualHL  = input.bool(true, "Show Equal Highs/Lows (BSL/SSL)", group="Display")
 i_showSweeps   = input.bool(true, "Show Liquidity Sweeps", group="Display")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS  (all ta.* calls before any if blocks)
@@ -90,14 +90,30 @@ bearP4 = '","confidence":75,"auth_token":"' + i_webhookSecret + '"}'
 // ============================================
 // VISUALIZATION
 // ============================================
-// Equal highs/lows lines (BSL above, SSL below)
+// Persistent BSL/SSL drawing objects — update instead of creating every bar
+// Prevents hitting Pine Script's ~500 object limit
+var line  bslLine  = na
+var label bslLabel = na
+var line  sslLine  = na
+var label sslLabel = na
+
 if equalHighs and i_showEqualHL
-    line.new(lastSwingHighBar, equalHighLevel, bar_index, equalHighLevel, color=color.orange, style=line.style_dashed, width=1)
-    label.new(bar_index, equalHighLevel, "BSL", style=label.style_label_left, color=color.orange, textcolor=color.white, size=size.small)
+    if na(bslLine)
+        bslLine  := line.new(lastSwingHighBar, equalHighLevel, bar_index, equalHighLevel, color=color.orange, style=line.style_dashed, width=1)
+        bslLabel := label.new(bar_index, equalHighLevel, "BSL", style=label.style_label_left, color=color.orange, textcolor=color.white, size=size.small)
+    else
+        line.set_xy1(bslLine, lastSwingHighBar, equalHighLevel)
+        line.set_xy2(bslLine, bar_index, equalHighLevel)
+        label.set_xy(bslLabel, bar_index, equalHighLevel)
 
 if equalLows and i_showEqualHL
-    line.new(lastSwingLowBar, equalLowLevel, bar_index, equalLowLevel, color=color.purple, style=line.style_dashed, width=1)
-    label.new(bar_index, equalLowLevel, "SSL", style=label.style_label_left, color=color.purple, textcolor=color.white, size=size.small)
+    if na(sslLine)
+        sslLine  := line.new(lastSwingLowBar, equalLowLevel, bar_index, equalLowLevel, color=color.purple, style=line.style_dashed, width=1)
+        sslLabel := label.new(bar_index, equalLowLevel, "SSL", style=label.style_label_left, color=color.purple, textcolor=color.white, size=size.small)
+    else
+        line.set_xy1(sslLine, lastSwingLowBar, equalLowLevel)
+        line.set_xy2(sslLine, bar_index, equalLowLevel)
+        label.set_xy(sslLabel, bar_index, equalLowLevel)
 
 // Sweep labels
 if bullishSweepConfirmed and i_showSweeps
@@ -109,8 +125,8 @@ if bearishSweepConfirmed and i_showSweeps
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullishSweepConfirmed
+if bullishSweepConfirmed and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearishSweepConfirmed
+if bearishSweepConfirmed and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

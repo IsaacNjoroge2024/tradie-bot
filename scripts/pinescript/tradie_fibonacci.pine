@@ -13,7 +13,7 @@ i_show618      = input.bool(true,  "Show 0.618 (Golden)", group="Levels")
 i_show786      = input.bool(true,  "Show 0.786", group="Levels")
 i_showExt1272  = input.bool(true,  "Show 1.272 Extension", group="Extensions")
 i_showExt1618  = input.bool(true,  "Show 1.618 Extension", group="Extensions")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* before any if blocks)
@@ -51,7 +51,11 @@ if not na(swingLow)
 // Retracement: pulling back toward previous origin
 // Extension:   projecting beyond swing high/low (take profit targets)
 // ============================================
-fibRange = not na(fibHigh) and not na(fibLow) ? fibHigh - fibLow : na
+// Validate that the anchors belong to the same swing by checking bar order
+hasOrderedSwing = not na(fibHigh) and not na(fibLow) and not na(fibHighBar) and not na(fibLowBar)
+bullLeg = hasOrderedSwing and fibLowBar < fibHighBar   // Low formed before high → bullish retracement
+bearLeg = hasOrderedSwing and fibHighBar < fibLowBar   // High formed before low → bearish retracement
+fibRange = bullLeg or bearLeg ? math.abs(fibHigh - fibLow) : na
 
 // Retracement levels (measured from the bottom of the range up)
 fib0    = not na(fibLow)   ? fibLow                           : na
@@ -82,20 +86,24 @@ trendBear = close < ema50
 // Helper: is price touching a fib level (within ATR tolerance)
 touchFib(level) => not na(level) and math.abs(close - level) < atr * 0.3
 
-// Bullish signals: price touches 0.382, 0.500, 0.618, or 0.786 in an uptrend and bounces
-atFib382Bull = touchFib(fib382) and trendBull and isBullCandle and lowerWick > bodySize
-atFib500Bull = touchFib(fib500) and trendBull and isBullCandle and lowerWick > bodySize
-atFib618Bull = touchFib(fib618) and trendBull and isBullCandle and lowerWick > bodySize
-atFib786Bull = touchFib(fib786) and trendBull and isBullCandle and lowerWick > bodySize
+// Bullish signals: valid bull leg + price touches retracement level in uptrend and bounces
+atFib382Bull = bullLeg and touchFib(fib382) and trendBull and isBullCandle and lowerWick > bodySize
+atFib500Bull = bullLeg and touchFib(fib500) and trendBull and isBullCandle and lowerWick > bodySize
+atFib618Bull = bullLeg and touchFib(fib618) and trendBull and isBullCandle and lowerWick > bodySize
+atFib786Bull = bullLeg and touchFib(fib786) and trendBull and isBullCandle and lowerWick > bodySize
 
-// Bearish signals: price touches 0.382, 0.500, 0.618, or 0.786 in a downtrend and rejects
-atFib382Bear = touchFib(fib382) and trendBear and isBearCandle and upperWick > bodySize
-atFib500Bear = touchFib(fib500) and trendBear and isBearCandle and upperWick > bodySize
-atFib618Bear = touchFib(fib618) and trendBear and isBearCandle and upperWick > bodySize
-atFib786Bear = touchFib(fib786) and trendBear and isBearCandle and upperWick > bodySize
+// Bearish signals: valid bear leg + price touches retracement level in downtrend and rejects
+atFib382Bear = bearLeg and touchFib(fib382) and trendBear and isBearCandle and upperWick > bodySize
+atFib500Bear = bearLeg and touchFib(fib500) and trendBear and isBearCandle and upperWick > bodySize
+atFib618Bear = bearLeg and touchFib(fib618) and trendBear and isBearCandle and upperWick > bodySize
+atFib786Bear = bearLeg and touchFib(fib786) and trendBear and isBearCandle and upperWick > bodySize
 
 bullSignal = atFib382Bull or atFib500Bull or atFib618Bull or atFib786Bull
 bearSignal = atFib382Bear or atFib500Bear or atFib618Bear or atFib786Bear
+
+// Edge-trigger: only fire on the first bar the signal becomes true, not every bar it stays true
+bullTrigger = bullSignal and not bullSignal[1]
+bearTrigger = bearSignal and not bearSignal[1]
 
 // Strategy / level name
 var string bullStrat = "FIB_BULL"
@@ -155,18 +163,18 @@ plot(fib100, "1.000",  color=color.new(color.gray,   0), linewidth=1)
 plot(i_showExt1272 ? fib1272 : na, "1.272", color=color.new(color.purple, 20), linewidth=1)
 plot(i_showExt1618 ? fib1618 : na, "1.618", color=color.new(color.purple,  0), linewidth=2)
 
-// Signal labels
-if bullSignal
+// Signal labels — only on the trigger bar (edge)
+if bullTrigger
     label.new(bar_index, low,  "BUY\n" + bullStrat,  style=label.style_label_up,   color=color.green, textcolor=color.white, size=size.small)
 
-if bearSignal
+if bearTrigger
     label.new(bar_index, high, "SELL\n" + bearStrat, style=label.style_label_down, color=color.red,   textcolor=color.white, size=size.small)
 
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal
+if bullTrigger and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal
+if bearTrigger and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

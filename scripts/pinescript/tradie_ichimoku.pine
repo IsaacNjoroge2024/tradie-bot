@@ -10,7 +10,7 @@ i_kijunLen      = input.int(26, "Kijun (Base) Length",        group="Ichimoku")
 i_senkouBLen    = input.int(52, "Senkou B Length",             group="Ichimoku")
 i_displacement  = input.int(26, "Cloud Displacement",          group="Ichimoku")
 i_showCloud     = input.bool(true, "Show Cloud",               group="Display")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* before any if blocks)
@@ -74,10 +74,10 @@ var string bearStrat = "ICHIMOKU_TK_CROSS_BEAR"
 bullConf = tkBullStrong and chikouConfirmBull ? 85 : tkBullStrong ? 78 : 65
 bearConf = tkBearStrong and chikouConfirmBear ? 85 : tkBearStrong ? 78 : 65
 
-// SL / TP
-bullSL = kijun - atr * 0.5
+// SL / TP — guard ensures SL is always on the correct side of entry (handles gap scenarios)
+bullSL = math.min(kijun - atr * 0.5, close - atr * 0.25)
 bullTP = close + (close - bullSL) * 2
-bearSL = kijun + atr * 0.5
+bearSL = math.max(kijun + atr * 0.5, close + atr * 0.25)
 bearTP = close - (bearSL - close) * 2
 
 // ============================================
@@ -117,8 +117,8 @@ if bearSignal
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal
+if bullSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal
+if bearSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

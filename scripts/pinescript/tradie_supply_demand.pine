@@ -8,7 +8,7 @@ indicator("Tradie - Supply & Demand Zones", overlay=true, max_boxes_count=200)
 i_dispMult     = input.float(1.5, "Displacement Candle Size (ATR multiplier)", minval=0.5, step=0.1, group="Detection")
 i_zoneLookback = input.int(3, "Base Candles Lookback", minval=1, maxval=5, group="Detection")
 i_showZones    = input.bool(true, "Show Zones", group="Display")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* before any if blocks)
@@ -46,16 +46,17 @@ var int   supplyBar   = na
 var bool  supplyValid = false
 
 // When a strong bull displacement fires, the base candle(s) before it = demand zone
+// Zone spans i_zoneLookback candles to honour the configured lookback
 if strongBullDisplace
-    demandHigh  := math.max(open[1], close[1])
-    demandLow   := math.min(open[1], close[1])
+    demandHigh  := ta.highest(math.max(open, close), i_zoneLookback)[1]
+    demandLow   := ta.lowest(math.min(open, close),  i_zoneLookback)[1]
     demandBar   := bar_index[1]
     demandValid := true
 
 // When a strong bear displacement fires, the base candle(s) before it = supply zone
 if strongBearDisplace
-    supplyHigh  := math.max(open[1], close[1])
-    supplyLow   := math.min(open[1], close[1])
+    supplyHigh  := ta.highest(math.max(open, close), i_zoneLookback)[1]
+    supplyLow   := ta.lowest(math.min(open, close),  i_zoneLookback)[1]
     supplyBar   := bar_index[1]
     supplyValid := true
 
@@ -72,10 +73,11 @@ if supplyValid and not na(supplyHigh) and close > supplyHigh
 // ============================================
 
 // Demand zone retest → BUY
-inDemandZone = demandValid and not na(demandHigh) and not na(demandLow) and low <= demandHigh and close >= demandLow
+// bar_index > demandBar + 1 ensures the displacement candle itself cannot trigger the retest signal
+inDemandZone = demandValid and not na(demandBar) and bar_index > demandBar + 1 and not na(demandHigh) and not na(demandLow) and low <= demandHigh and close >= demandLow
 
 // Supply zone retest → SELL
-inSupplyZone = supplyValid and not na(supplyHigh) and not na(supplyLow) and high >= supplyLow and close <= supplyHigh
+inSupplyZone = supplyValid and not na(supplyBar) and bar_index > supplyBar + 1 and not na(supplyHigh) and not na(supplyLow) and high >= supplyLow and close <= supplyHigh
 
 // Rejection candle confirmation
 bullRejection = isBullCandle and (close - open) > atr * 0.3
@@ -123,8 +125,8 @@ if bearSignal
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal
+if bullSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal
+if bearSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

@@ -11,7 +11,7 @@ i_mfiOB         = input.int(80, "MFI Overbought",        group="MFI")
 i_mfiOS         = input.int(20, "MFI Oversold",          group="MFI")
 i_volSpikeLen   = input.int(20, "Volume Spike Lookback", group="Volume Spike")
 i_volSpikeMult  = input.float(1.5, "Volume Spike Multiplier", step=0.1, group="Volume Spike")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* before any if blocks)
@@ -19,7 +19,7 @@ i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webho
 atr = ta.atr(14)
 
 // OBV: On Balance Volume
-obvDelta = close >= close[1] ? volume : -volume
+obvDelta = close > close[1] ? volume : close < close[1] ? -volume : 0
 obv      = ta.cum(obvDelta)
 obvEma   = ta.ema(obv, i_obvEmaLen)
 
@@ -127,8 +127,8 @@ plotshape(bearSignal ? mfi : na, "Bear Signal", shape.labeldown, location.absolu
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal
+if bullSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal
+if bearSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

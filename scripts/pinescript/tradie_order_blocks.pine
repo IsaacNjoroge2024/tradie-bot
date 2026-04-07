@@ -8,14 +8,14 @@ indicator("Tradie - Order Blocks & BOS", overlay=true, max_boxes_count=500)
 i_swingLength = input.int(5, "Swing Length", minval=2, maxval=10, group="Structure")
 i_showOB = input.bool(true, "Show Order Blocks", group="Display")
 i_showBOS = input.bool(true, "Show BOS/CHoCH", group="Display")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // SWING POINT DETECTION
 // ============================================
 swingHigh = ta.pivothigh(high, i_swingLength, i_swingLength)
 swingLow = ta.pivotlow(low, i_swingLength, i_swingLength)
-atr = ta.atr(17)
+atr = ta.atr(14)
 
 var float lastSwingHigh = na
 var float lastSwingLow = na
@@ -104,19 +104,20 @@ if bearishBOS and not na(bearishOB_high) and i_showOB
 // WEBHOOK ALERTS
 // ============================================
 // CHoCH signals (higher probability - trend reversal)
-if bullishCHoCH
+// Guard ensures OB was found (for-loop may not find a candle, leaving OB as na → NaN in payload)
+if bullishCHoCH and not na(bullishOB_low) and i_webhookSecret != ""
     chochPayload = '{"symbol":"' + syminfo.ticker + '","action":"BUY","strategy":"CHOCH_BULLISH","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullishOB_low - atr * 0.5) + ',"take_profit":' + str.tostring(close + (close - bullishOB_low) * 2) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":80,"auth_token":"' + i_webhookSecret + '"}'
     alert(chochPayload, alert.freq_once_per_bar_close)
 
-if bearishCHoCH
+if bearishCHoCH and not na(bearishOB_high) and i_webhookSecret != ""
     chochPayload = '{"symbol":"' + syminfo.ticker + '","action":"SELL","strategy":"CHOCH_BEARISH","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearishOB_high + atr * 0.5) + ',"take_profit":' + str.tostring(close - (bearishOB_high - close) * 2) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":80,"auth_token":"' + i_webhookSecret + '"}'
     alert(chochPayload, alert.freq_once_per_bar_close)
 
 // Regular BOS with OB (continuation signals)
-if bullishBOS and not bullishCHoCH and not na(bullishOB_high)
+if bullishBOS and not bullishCHoCH and not na(bullishOB_high) and i_webhookSecret != ""
     bosPayload = '{"symbol":"' + syminfo.ticker + '","action":"BUY","strategy":"BOS_BULLISH_OB","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullishOB_low - atr * 0.3) + ',"take_profit":' + str.tostring(close + (close - bullishOB_low) * 1.5) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":65,"auth_token":"' + i_webhookSecret + '"}'
     alert(bosPayload, alert.freq_once_per_bar_close)
 
-if bearishBOS and not bearishCHoCH and not na(bearishOB_high)
+if bearishBOS and not bearishCHoCH and not na(bearishOB_high) and i_webhookSecret != ""
     bosPayload = '{"symbol":"' + syminfo.ticker + '","action":"SELL","strategy":"BOS_BEARISH_OB","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearishOB_high + atr * 0.3) + ',"take_profit":' + str.tostring(close - (bearishOB_high - close) * 1.5) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":65,"auth_token":"' + i_webhookSecret + '"}'
     alert(bosPayload, alert.freq_once_per_bar_close)

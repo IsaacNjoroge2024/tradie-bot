@@ -18,7 +18,7 @@ i_showPD    = input.bool(true, "Show Premium/Discount Mid", group="Structure")
 i_showKZ    = input.bool(true, "Show Kill Zones", group="Kill Zones")
 
 // Webhook
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* and request.security before any if blocks)
@@ -27,8 +27,8 @@ atr    = ta.atr(14)
 ema50  = ta.ema(close, 50)
 
 // Higher timeframe trend via EMA50
-htfClose = request.security(syminfo.tickerid, i_htf, close)
-htfEma50 = request.security(syminfo.tickerid, i_htf, ta.ema(close, 50))
+htfClose = request.security(syminfo.tickerid, i_htf, close, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+htfEma50 = request.security(syminfo.tickerid, i_htf, ta.ema(close, 50), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
 
 htfBullish = htfClose > htfEma50
 htfBearish = htfClose < htfEma50
@@ -158,7 +158,8 @@ sellP4 = '","confidence":' + str.tostring(sellConf) + ',"auth_token":"' + i_webh
 // VISUALIZATION
 // ============================================
 // Kill zone backgrounds
-bgcolor(silverBulletKZ and i_showKZ ? color.new(color.yellow, 88) : londonKZ and i_showKZ ? color.new(color.blue, 90) : nyOpenKZ and i_showKZ ? color.new(color.green, 90) : nyPmKZ and i_showKZ ? color.new(color.orange, 92) : na)
+kzColor = silverBulletKZ and i_showKZ ? color.new(color.yellow, 88) : londonKZ and i_showKZ ? color.new(color.blue, 90) : nyOpenKZ and i_showKZ ? color.new(color.green, 90) : nyPmKZ and i_showKZ ? color.new(color.orange, 92) : na
+bgcolor(kzColor)
 
 // Premium/Discount midline
 plot(i_showPD ? rangeMid : na, "P/D Midline (50%)", color=color.gray, linewidth=1, style=plot.style_line)
@@ -186,8 +187,8 @@ if sellSignal
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if buySignal
+if buySignal and i_webhookSecret != ""
     alert(buyP1 + buyP2 + buyP3 + buyP4, alert.freq_once_per_bar_close)
 
-if sellSignal
+if sellSignal and i_webhookSecret != ""
     alert(sellP1 + sellP2 + sellP3 + sellP4, alert.freq_once_per_bar_close)

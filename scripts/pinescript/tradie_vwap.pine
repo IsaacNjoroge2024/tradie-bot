@@ -10,7 +10,7 @@ i_sdMult1     = input.float(1.0, "Band 1 Multiplier", minval=0.5, step=0.5, grou
 i_sdMult2     = input.float(2.0, "Band 2 Multiplier", minval=1.0, step=0.5, group="Bands")
 i_sdMult3     = input.float(3.0, "Band 3 Multiplier", minval=1.5, step=0.5, group="Bands")
 i_showBand3   = input.bool(false, "Show Band 3", group="Bands")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* before any if blocks)
@@ -125,8 +125,8 @@ if bearSignal
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal
+if bullSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal
+if bearSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

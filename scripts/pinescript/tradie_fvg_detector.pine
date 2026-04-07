@@ -12,7 +12,7 @@ i_maxFVGAge = input.int(50, "Max FVG Age (bars)", minval=10, group="Filters")
 i_alertOnNew = input.bool(true, "Alert on New FVG", group="Alerts")
 
 // Webhook Configuration
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS
@@ -51,11 +51,11 @@ var box[] bullishBoxes = array.new_box()
 var box[] bearishBoxes = array.new_box()
 
 if bullishSignal and i_showBullishFVG
-    newBox = box.new(bar_index[2], bullishFVG_top, bar_index + 10, bullishFVG_bottom, bgcolor=color.new(color.green, 80), border_color=color.green)
+    newBox = box.new(bar_index[2], bullishFVG_top, bar_index + i_maxFVGAge, bullishFVG_bottom, bgcolor=color.new(color.green, 80), border_color=color.green)
     array.push(bullishBoxes, newBox)
 
 if bearishSignal and i_showBearishFVG
-    newBox = box.new(bar_index[2], bearishFVG_top, bar_index + 10, bearishFVG_bottom, bgcolor=color.new(color.red, 80), border_color=color.red)
+    newBox = box.new(bar_index[2], bearishFVG_top, bar_index + i_maxFVGAge, bearishFVG_bottom, bgcolor=color.new(color.red, 80), border_color=color.red)
     array.push(bearishBoxes, newBox)
 
 // ============================================
@@ -68,16 +68,19 @@ bullishTP = close + ((close - bullishSL) * 2)  // 2:1 R:R
 bearishSL = bearishFVG_top + (atr * 0.5)
 bearishTP = close - ((bearishSL - close) * 2)  // 2:1 R:R
 
-// Build JSON payloads
-bullishPayload = '{"symbol":"' + syminfo.ticker + '","action":"BUY","strategy":"FVG_BULLISH","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullishSL) + ',"take_profit":' + str.tostring(bullishTP) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":' + str.tostring(math.round(bullishFVG_size / atr * 50)) + ',"auth_token":"' + i_webhookSecret + '"}'
+// Build JSON payloads — confidence clamped to [0, 100]
+bullConf = math.min(100, math.max(0, math.round(bullishFVG_size / atr * 50)))
+bearConf = math.min(100, math.max(0, math.round(bearishFVG_size / atr * 50)))
 
-bearishPayload = '{"symbol":"' + syminfo.ticker + '","action":"SELL","strategy":"FVG_BEARISH","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearishSL) + ',"take_profit":' + str.tostring(bearishTP) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":' + str.tostring(math.round(bearishFVG_size / atr * 50)) + ',"auth_token":"' + i_webhookSecret + '"}'
+bullishPayload = '{"symbol":"' + syminfo.ticker + '","action":"BUY","strategy":"FVG_BULLISH","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullishSL) + ',"take_profit":' + str.tostring(bullishTP) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":' + str.tostring(bullConf) + ',"auth_token":"' + i_webhookSecret + '"}'
 
-// Fire alerts
-if bullishSignal and i_alertOnNew
+bearishPayload = '{"symbol":"' + syminfo.ticker + '","action":"SELL","strategy":"FVG_BEARISH","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearishSL) + ',"take_profit":' + str.tostring(bearishTP) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":' + str.tostring(bearConf) + ',"auth_token":"' + i_webhookSecret + '"}'
+
+// Fire alerts — fail closed when secret is not configured
+if bullishSignal and i_alertOnNew and i_webhookSecret != ""
     alert(bullishPayload, alert.freq_once_per_bar_close)
 
-if bearishSignal and i_alertOnNew
+if bearishSignal and i_alertOnNew and i_webhookSecret != ""
     alert(bearishPayload, alert.freq_once_per_bar_close)
 
 // ============================================

@@ -9,7 +9,7 @@ i_rsiLength    = input.int(14, "RSI Length",    group="RSI")
 i_pivotLen     = input.int(5,  "Pivot Length",  minval=2, maxval=10, group="Detection")
 i_showRegular  = input.bool(true, "Show Regular Divergence",  group="Display")
 i_showHidden   = input.bool(true, "Show Hidden Divergence",   group="Display")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* before any if blocks)
@@ -82,8 +82,22 @@ if not na(priceSwingLow)
     prevRsiLow    := rsiAtPivotLow
     prevMacdLow   := macdAtPivotLow
 
-bullSignal = regBullDiv or hidBullDiv or regBullDivMacd or hidBullDivMacd
-bearSignal = regBearDiv or hidBearDiv or regBearDivMacd or hidBearDivMacd
+// Confidence must be calculated before mutual exclusion (used to break ties)
+rsiBullConfirm  = regBullDiv or hidBullDiv
+macdBullConfirm = regBullDivMacd or hidBullDivMacd
+rsiBearConfirm  = regBearDiv or hidBearDiv
+macdBearConfirm = regBearDivMacd or hidBearDivMacd
+
+bullConf = rsiBullConfirm and macdBullConfirm ? 88 : regBullDiv ? 78 : 65
+bearConf = rsiBearConfirm and macdBearConfirm ? 88 : regBearDiv ? 78 : 65
+
+bullSignalRaw = regBullDiv or hidBullDiv or regBullDivMacd or hidBullDivMacd
+bearSignalRaw = regBearDiv or hidBearDiv or regBearDivMacd or hidBearDivMacd
+
+// Mutual exclusion: both highs and lows can rarely fire on the same bar with certain pivot configs.
+// Prefer the higher confidence signal; if tied, prefer bull (conservative: avoid false shorts).
+bullSignal = bullSignalRaw and (not bearSignalRaw or bullConf >= bearConf)
+bearSignal = bearSignalRaw and not bullSignal
 
 // Strategy name — RSI+MACD agreement takes highest priority
 var string bullStrat = "DIVERGENCE_BULL"
@@ -114,15 +128,6 @@ else if regBearDivMacd
     bearStrat := "REG_BEAR_DIVERGENCE"
 else if hidBearDivMacd
     bearStrat := "HID_BEAR_DIVERGENCE"
-
-// Confidence: RSI + MACD both confirm = 88; regular RSI only = 78; hidden/MACD only = 65
-rsiBullConfirm  = regBullDiv or hidBullDiv
-macdBullConfirm = regBullDivMacd or hidBullDivMacd
-rsiBearConfirm  = regBearDiv or hidBearDiv
-macdBearConfirm = regBearDivMacd or hidBearDivMacd
-
-bullConf = rsiBullConfirm and macdBullConfirm ? 88 : regBullDiv ? 78 : 65
-bearConf = rsiBearConfirm and macdBearConfirm ? 88 : regBearDiv ? 78 : 65
 
 // SL / TP
 bullSL = low[i_pivotLen]  - atr * 0.3
@@ -168,8 +173,8 @@ plotshape(i_showHidden  and hidBearDivMacd ? rsi[i_pivotLen] : na, "Hid Bear MAC
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal
+if bullSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal
+if bearSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

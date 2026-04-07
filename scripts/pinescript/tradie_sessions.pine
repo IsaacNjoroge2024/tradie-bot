@@ -10,7 +10,7 @@ i_showWeekly    = input.bool(true, "Show Weekly Open",         group="Weekly")
 i_showMonthly   = input.bool(true, "Show Monthly Open",        group="Monthly")
 i_showAsia      = input.bool(true, "Show Asia Session Range",  group="Asia Session")
 i_showMidnight  = input.bool(true, "Show NY Midnight Open",    group="NY Midnight")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* and request.security before any if blocks)
@@ -162,8 +162,8 @@ if bearSignal
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal
+if bullSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal
+if bearSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

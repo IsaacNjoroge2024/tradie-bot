@@ -7,17 +7,19 @@ indicator("Tradie - Pivot Points", overlay=true)
 // ============================================
 i_pivotType     = input.string("Classic", "Pivot Type", options=["Classic", "Fibonacci", "Woodie"], group="Pivots")
 i_showLevels    = input.bool(true, "Show Levels", group="Display")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* before any if blocks)
 // ============================================
 atr = ta.atr(14)
 
-// Previous Day OHLC (via daily security request)
+// Previous Day OHLC and today's session open (via daily security request)
 prevHigh  = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_off)
 prevLow   = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_off)
 prevClose = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_off)
+// Today's open: fixed at session start — required for correct Woodie pivot formula
+todayOpen = request.security(syminfo.tickerid, "D", open,     lookahead=barmerge.lookahead_off)
 
 // Common pivot point (all methods share this)
 pp = (prevHigh + prevLow + prevClose) / 3
@@ -39,20 +41,24 @@ fibS1 = pp - fibRange * 0.382
 fibS2 = pp - fibRange * 0.618
 fibS3 = pp - fibRange * 1.000
 
-// Woodie Pivot Levels
-woodiePP = (prevHigh + prevLow + close * 2) / 4
+// Woodie Pivot Levels — uses today's session open (fixed at day start, not live close)
+woodiePP = (prevHigh + prevLow + todayOpen * 2) / 4
 woodieR1 = woodiePP * 2 - prevLow
 woodieR2 = woodiePP + (prevHigh - prevLow)
+woodieR3 = woodieR1 + (prevHigh - prevLow)
 woodieS1 = woodiePP * 2 - prevHigh
 woodieS2 = woodiePP - (prevHigh - prevLow)
+woodieS3 = woodieS1 - (prevHigh - prevLow)
 
 // Active levels based on selected type
+// Fibonacci and Classic share the same PP; Woodie uses its own woodiePP
+activePP = i_pivotType == "Woodie" ? woodiePP : pp
 activeR1 = i_pivotType == "Fibonacci" ? fibR1 : i_pivotType == "Woodie" ? woodieR1 : classicR1
 activeR2 = i_pivotType == "Fibonacci" ? fibR2 : i_pivotType == "Woodie" ? woodieR2 : classicR2
-activeR3 = i_pivotType == "Fibonacci" ? fibR3 : classicR3
+activeR3 = i_pivotType == "Fibonacci" ? fibR3 : i_pivotType == "Woodie" ? woodieR3 : classicR3
 activeS1 = i_pivotType == "Fibonacci" ? fibS1 : i_pivotType == "Woodie" ? woodieS1 : classicS1
 activeS2 = i_pivotType == "Fibonacci" ? fibS2 : i_pivotType == "Woodie" ? woodieS2 : classicS2
-activeS3 = i_pivotType == "Fibonacci" ? fibS3 : classicS3
+activeS3 = i_pivotType == "Fibonacci" ? fibS3 : i_pivotType == "Woodie" ? woodieS3 : classicS3
 
 // EMA for trend direction
 ema50 = ta.ema(close, 50)
@@ -87,8 +93,8 @@ atS2Bull = nearLevel(activeS2) and isBullCandle and lowerWick > bodySize * 0.5
 atS3Bull = nearLevel(activeS3) and isBullCandle and lowerWick > bodySize * 0.5
 
 // PP level — acts as support/resistance depending on price position
-atPPBull = nearLevel(pp) and trendBull and isBullCandle and lowerWick > bodySize * 0.5
-atPPBear = nearLevel(pp) and trendBear and isBearCandle and upperWick > bodySize * 0.5
+atPPBull = nearLevel(activePP) and trendBull and isBullCandle and lowerWick > bodySize * 0.5
+atPPBear = nearLevel(activePP) and trendBear and isBearCandle and upperWick > bodySize * 0.5
 
 bullSignal = atS1Bull or atS2Bull or atS3Bull or atPPBull
 bearSignal = atR1Bear or atR2Bear or atR3Bear or atPPBear
@@ -141,7 +147,7 @@ bearP4 = '","confidence":' + str.tostring(bearConf) + ',"auth_token":"' + i_webh
 // ============================================
 // VISUALIZATION
 // ============================================
-plot(i_showLevels ? pp       : na, "PP",  color=color.new(color.gray,   0), linewidth=2, style=plot.style_circles)
+plot(i_showLevels ? activePP : na, "PP",  color=color.new(color.gray,   0), linewidth=2, style=plot.style_circles)
 plot(i_showLevels ? activeR1 : na, "R1",  color=color.new(color.red,   20), linewidth=1)
 plot(i_showLevels ? activeR2 : na, "R2",  color=color.new(color.red,    0), linewidth=1)
 plot(i_showLevels ? activeR3 : na, "R3",  color=color.new(color.red,   40), linewidth=1)
@@ -159,8 +165,8 @@ if bearSignal
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal
+if bullSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal
+if bearSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

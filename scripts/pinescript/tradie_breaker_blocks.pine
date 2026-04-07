@@ -7,7 +7,7 @@ indicator("Tradie - Breaker Blocks", overlay=true, max_boxes_count=100)
 // ============================================
 i_swingLen      = input.int(5, "Swing Length", minval=2, maxval=10, group="Structure")
 i_showBreakers  = input.bool(true, "Show Breaker Boxes", group="Display")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* before any if blocks)
@@ -86,23 +86,29 @@ if bearishBOS
 // Bearish Breaker: bullish OB (before bearish BOS) → price later rallies back
 //   through the OB high → former resistance is now support → buy on retest
 // ============================================
-var bool bullOBBroken = false   // Bullish OB → broken → bearish breaker
-var bool bearOBBroken = false   // Bearish OB → broken → bullish breaker
+var bool bullOBBroken     = false   // Bullish OB → broken → bearish breaker
+var bool bearOBBroken     = false   // Bearish OB → broken → bullish breaker
+var bool bullBreakerDrawn = false   // Tracks whether the bearish-breaker box was already drawn
+var bool bearBreakerDrawn = false   // Tracks whether the bullish-breaker box was already drawn
 
 // Bullish OB becomes a bearish breaker when price closes below its low
 if not na(bullOBLow) and close < bullOBLow and not bullOBBroken
-    bullOBBroken := true
+    bullOBBroken     := true
+    bullBreakerDrawn := false
 
 // Bearish OB becomes a bullish breaker when price closes above its high
 if not na(bearOBHigh) and close > bearOBHigh and not bearOBBroken
-    bearOBBroken := true
+    bearOBBroken     := true
+    bearBreakerDrawn := false
 
 // Reset when a new OB is formed
 if bullishBOS
-    bullOBBroken := false
+    bullOBBroken     := false
+    bullBreakerDrawn := false
 
 if bearishBOS
-    bearOBBroken := false
+    bearOBBroken     := false
+    bearBreakerDrawn := false
 
 // ============================================
 // RETEST SIGNALS
@@ -147,11 +153,14 @@ if bearishBOS and not na(bearOBHigh) and i_showBreakers
     box.new(bearOBBar, bearOBHigh, bar_index + 30, bearOBLow, bgcolor=color.new(color.red, 85), border_color=color.red, border_width=1)
 
 // Breaker block zones (after OB is broken — polarity flipped)
-if bullOBBroken and not na(bullOBHigh) and i_showBreakers
+// Draw once per break event to avoid exhausting max_boxes_count
+if bullOBBroken and not bullBreakerDrawn and not na(bullOBHigh) and i_showBreakers
     box.new(bullOBBar, bullOBHigh, bar_index + 20, bullOBLow, bgcolor=color.new(color.red, 75), border_color=color.red, border_width=2)
+    bullBreakerDrawn := true
 
-if bearOBBroken and not na(bearOBHigh) and i_showBreakers
+if bearOBBroken and not bearBreakerDrawn and not na(bearOBHigh) and i_showBreakers
     box.new(bearOBBar, bearOBHigh, bar_index + 20, bearOBLow, bgcolor=color.new(color.green, 75), border_color=color.green, border_width=2)
+    bearBreakerDrawn := true
 
 // Signal labels
 if bullBreakerSignal
@@ -163,8 +172,8 @@ if bearBreakerSignal
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullBreakerSignal
+if bullBreakerSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearBreakerSignal
+if bearBreakerSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

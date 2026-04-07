@@ -10,7 +10,7 @@ i_bbMult        = input.float(2.0, "BB Multiplier",      step=0.1, group="Bollin
 i_kcLength      = input.int(20,  "KC Length",            group="Keltner Channels")
 i_kcMult        = input.float(1.5, "KC Multiplier",      step=0.1, group="Keltner Channels")
 i_showBands     = input.bool(true,  "Show Bands",        group="Display")
-i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webhook")
+i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
 // ============================================
 // CALCULATIONS (all ta.* before any if blocks)
@@ -18,7 +18,7 @@ i_webhookSecret = input.string("TRADIE_SEC_9982", "Webhook Secret", group="Webho
 atr = ta.atr(14)
 
 // Bollinger Bands
-[bbUpper, bbBasis, bbLower] = ta.bb(close, i_bbLength, i_bbMult)
+[bbBasis, bbUpper, bbLower] = ta.bb(close, i_bbLength, i_bbMult)
 
 // Keltner Channels (EMA basis + ATR bands)
 kcBasis = ta.ema(close,   i_kcLength)
@@ -129,8 +129,8 @@ if bearSignal
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal
+if bullSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal
+if bearSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

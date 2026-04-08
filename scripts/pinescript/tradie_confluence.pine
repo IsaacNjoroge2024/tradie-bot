@@ -20,7 +20,7 @@ i_adxLength = input.int(14, "ADX Length", group="Trend Strength")
 i_adxThreshold = input.int(25, "ADX Trending Threshold", group="Trend Strength")
 
 // Confluence Requirements
-i_minConfluence = input.int(3, "Minimum Confluence Score", minval=2, maxval=6, group="Confluence")
+i_minConfluence = input.int(3, "Minimum Confluence Score", minval=2, maxval=7, group="Confluence")
 
 // Webhook
 i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")

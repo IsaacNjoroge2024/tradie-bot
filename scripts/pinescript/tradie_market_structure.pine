@@ -74,6 +74,20 @@ if bullishBOS
 if bearishBOS
     trend := -1
 
+// Persist MSS state so the buy/sell gate can be satisfied on the pullback bar.
+// mssUp/mssDown are one-bar pulses that fire only on the BOS bar, which is always
+// above lastMajorHigh (or below lastMajorLow) — so inDiscount/inPremium is false
+// on that exact bar, making the MSS branch dead without persistent state.
+var bool mssUpActive   = false
+var bool mssDownActive = false
+
+if mssUp
+    mssUpActive   := true
+    mssDownActive := false
+if mssDown
+    mssDownActive  := true
+    mssUpActive   := false
+
 // ============================================
 // PREMIUM / DISCOUNT ZONES
 // 50% of swing range — below = discount (buy), above = premium (sell)
@@ -97,11 +111,15 @@ if bullishBOS and not na(lastMajorLow) and not na(lastMajorHigh)
     swing       := lastMajorHigh - lastMajorLow
     oteBullHigh := lastMajorHigh - swing * 0.618
     oteBullLow  := lastMajorHigh - swing * 0.786
+    oteBearHigh := na
+    oteBearLow  := na
 
 if bearishBOS and not na(lastMajorHigh) and not na(lastMajorLow)
     swing       := lastMajorHigh - lastMajorLow
     oteBearLow  := lastMajorLow + swing * 0.618
     oteBearHigh := lastMajorLow + swing * 0.786
+    oteBullHigh := na
+    oteBullLow  := na
 
 inBullOTE = not na(oteBullHigh) and not na(oteBullLow) and close <= oteBullHigh and close >= oteBullLow
 inBearOTE = not na(oteBearHigh) and not na(oteBearLow) and close >= oteBearLow  and close <= oteBearHigh
@@ -128,12 +146,16 @@ inKillZone    = londonKZ or nyOpenKZ or nyPmKZ
 // Buy:  HTF bullish + discount + kill zone + (MSS or OTE)
 // Sell: HTF bearish + premium  + kill zone + (MSS or OTE)
 // ============================================
-buySignal  = htfBullish and inDiscount and inKillZone and (mssUp   or inBullOTE)
-sellSignal = htfBearish and inPremium  and inKillZone and (mssDown or inBearOTE)
+buySignal  = htfBullish and inDiscount and inKillZone and (mssUpActive   or inBullOTE)
+sellSignal = htfBearish and inPremium  and inKillZone and (mssDownActive or inBearOTE)
+
+// Edge-trigger: only fire on the first bar the signal becomes true
+buyTrigger  = buySignal and not buySignal[1]
+sellTrigger = sellSignal and not sellSignal[1]
 
 // Confidence: higher when both MSS and OTE align
-buyConf  = mssUp   and inBullOTE ? 90 : mssUp   ? 80 : 70
-sellConf = mssDown and inBearOTE ? 90 : mssDown ? 80 : 70
+buyConf  = mssUpActive   and inBullOTE ? 90 : mssUpActive   ? 80 : 70
+sellConf = mssDownActive and inBearOTE ? 90 : mssDownActive ? 80 : 70
 
 // SL / TP
 buySL  = low  - atr * 1.5
@@ -178,17 +200,17 @@ if mssDown and i_showMSS
     label.new(bar_index, high, "MSS↓\nBEARISH", style=label.style_label_down, color=color.orange, textcolor=color.white, size=size.small)
 
 // Signal labels
-if buySignal
+if buyTrigger
     label.new(bar_index, low, "BUY\nMSS+KZ", style=label.style_label_up, color=color.green, textcolor=color.white)
 
-if sellSignal
+if sellTrigger
     label.new(bar_index, high, "SELL\nMSS+KZ", style=label.style_label_down, color=color.red, textcolor=color.white)
 
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if buySignal and i_webhookSecret != ""
+if buyTrigger and i_webhookSecret != ""
     alert(buyP1 + buyP2 + buyP3 + buyP4, alert.freq_once_per_bar_close)
 
-if sellSignal and i_webhookSecret != ""
+if sellTrigger and i_webhookSecret != ""
     alert(sellP1 + sellP2 + sellP3 + sellP4, alert.freq_once_per_bar_close)

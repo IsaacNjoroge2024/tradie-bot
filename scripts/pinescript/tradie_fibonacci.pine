@@ -57,19 +57,19 @@ bullLeg = hasOrderedSwing and fibLowBar < fibHighBar   // Low formed before high
 bearLeg = hasOrderedSwing and fibHighBar < fibLowBar   // High formed before low → bearish retracement
 fibRange = bullLeg or bearLeg ? math.abs(fibHigh - fibLow) : na
 
-// Retracement levels (measured from the bottom of the range up)
-fib0    = not na(fibLow)   ? fibLow                           : na
-// Bullish leg: levels measured from low upward; bearish leg: from high downward.
+// Retracement levels — all gated by an ordered swing so nothing plots on unordered pivots.
+// Bullish leg: measured from low upward; bearish leg: from high downward.
 // This ensures atFib618Bear fires at the true 61.8% retracement from the HIGH,
 // not the 38.2% retracement that upward-only math would produce.
+fib0    = bullLeg or bearLeg ? fibLow  : na
 fib236  = bullLeg ? fibLow + fibRange * 0.236 : bearLeg ? fibHigh - fibRange * 0.236 : na
 fib382  = bullLeg ? fibLow + fibRange * 0.382 : bearLeg ? fibHigh - fibRange * 0.382 : na
 fib500  = bullLeg ? fibLow + fibRange * 0.500 : bearLeg ? fibHigh - fibRange * 0.500 : na
 fib618  = bullLeg ? fibLow + fibRange * 0.618 : bearLeg ? fibHigh - fibRange * 0.618 : na
 fib786  = bullLeg ? fibLow + fibRange * 0.786 : bearLeg ? fibHigh - fibRange * 0.786 : na
-fib100  = not na(fibHigh)  ? fibHigh                          : na
+fib100  = bullLeg or bearLeg ? fibHigh : na
 
-// Extension levels (beyond the swing — bullish extends above high; bearish extends below low)
+// Extension levels — 1.272 is the webhook TP target; 1.618 is plotted as an informational breakout level
 fib1272 = bullLeg ? fibHigh + fibRange * 0.272 : bearLeg ? fibLow - fibRange * 0.272 : na
 fib1618 = bullLeg ? fibHigh + fibRange * 0.618 : bearLeg ? fibLow - fibRange * 0.618 : na
 
@@ -134,11 +134,12 @@ else if atFib382Bear
 bullConf = atFib618Bull or atFib786Bull ? 80 : 68
 bearConf = atFib618Bear or atFib786Bear ? 80 : 68
 
-// SL / TP
+// SL / TP — use 1.272 extension as primary TP (aligns "take profit target" with the plot);
+// fall back to the swing anchor, then ATR-based 2:1 when both are na
 bullSL = low  - atr * 0.5
-bullTP = not na(fib100)  ? fib100  : close + (close - bullSL) * 2
+bullTP = not na(fib1272) ? fib1272 : not na(fib100) ? fib100 : close + (close - bullSL) * 2
 bearSL = high + atr * 0.5
-bearTP = not na(fib0)    ? fib0    : close - (bearSL - close) * 2
+bearTP = not na(fib1272) ? fib1272 : not na(fib0)   ? fib0   : close - (bearSL - close) * 2
 
 // ============================================
 // PAYLOAD BUILDING (top-level)

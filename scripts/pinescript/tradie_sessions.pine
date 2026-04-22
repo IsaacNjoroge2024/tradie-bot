@@ -38,8 +38,10 @@ nyTime   = nyHour + nyMinute / 60.0
 // ---- NY Midnight Open (ICT daily bias reference) ----
 // Capture the open of the 12 AM NY candle
 var float midnightOpen = na
-isMidnightCandle = nyHour == 0 and nyHour[1] != 0
-if isMidnightCandle
+// Detect the first bar of a new NY day regardless of what hour the bar starts on.
+// Hour-based detection (nyHour == 0) misses charts where no bar lands exactly at midnight.
+isNewNyDay = dayofmonth(time, "America/New_York") != dayofmonth(time[1], "America/New_York")
+if isNewNyDay
     midnightOpen := open
 
 // ---- Asia Session Range  (8 PM – 4 AM NY) ----
@@ -92,8 +94,13 @@ bearRejectPDH      = not na(pdHigh)     and high > pdHigh     and close < pdHigh
 bearRejectAsiaHigh = not na(asiaHighFinal) and high > asiaHighFinal and close < asiaHighFinal and upperWick > bodySize
 bearRejectMidnight = not na(midnightOpen) and high > midnightOpen and close < midnightOpen and isBearCandle
 
-bullSignal = bullRejectPDL or bullRejectAsiaLow or bullRejectMidnight
-bearSignal = bearRejectPDH or bearRejectAsiaHigh or bearRejectMidnight
+// Mutual exclusion: if both directions fire simultaneously (ambiguous candle touching two
+// levels at once), suppress both to avoid sending contradictory webhooks.
+bullSignalRaw = bullRejectPDL or bullRejectAsiaLow or bullRejectMidnight
+bearSignalRaw = bearRejectPDH or bearRejectAsiaHigh or bearRejectMidnight
+bothSignal    = bullSignalRaw and bearSignalRaw
+bullSignal = bullSignalRaw and not bothSignal
+bearSignal = bearSignalRaw and not bothSignal
 
 // Strategy name
 var string bullStrategy = "SESSION_BULL"

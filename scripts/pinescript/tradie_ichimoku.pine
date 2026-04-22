@@ -8,7 +8,7 @@ indicator("Tradie - Ichimoku Cloud", overlay=true)
 i_tenkanLen     = input.int(9,  "Tenkan (Conversion) Length", group="Ichimoku")
 i_kijunLen      = input.int(26, "Kijun (Base) Length",        group="Ichimoku")
 i_senkouBLen    = input.int(52, "Senkou B Length",             group="Ichimoku")
-i_displacement  = input.int(26, "Cloud Displacement",          group="Ichimoku")
+i_displacement  = input.int(26, "Cloud Displacement", minval=1, group="Ichimoku")
 i_showCloud     = input.bool(true, "Show Cloud",               group="Display")
 i_webhookSecret = input.string("", "Webhook Secret", tooltip="Required: Enter your unique webhook secret", group="Webhook")
 
@@ -26,6 +26,11 @@ senkouB = math.avg(ta.highest(high, i_senkouBLen), ta.lowest(low, i_senkouBLen))
 // Cloud at CURRENT price bar (displaced back by i_displacement bars)
 cloudTop    = math.max(senkouA[i_displacement], senkouB[i_displacement])
 cloudBottom = math.min(senkouA[i_displacement], senkouB[i_displacement])
+
+// Guard: cloud and chikou context must be fully available before evaluating signals.
+// During the first i_displacement bars, senkouA/B are na → comparisons default to false,
+// which can make tkBullWeak fire falsely (not belowCloud = true when belowCloud is na-false).
+hasContext = not na(cloudTop) and not na(cloudBottom) and not na(close[i_displacement])
 
 // Chikou span: current close plotted i_displacement bars back
 // For signal: compare current close to close i_displacement bars ago
@@ -45,12 +50,13 @@ tf  = timeframe.period
 // ============================================
 
 // Price position relative to cloud
-aboveCloud = close > cloudTop
-belowCloud = close < cloudBottom
+aboveCloud = hasContext and close > cloudTop
+belowCloud = hasContext and close < cloudBottom
 
-// Cloud color: green cloud (bullish) = senkouA > senkouB
-cloudBull = senkouA > senkouB
-cloudBear = senkouA < senkouB
+// Cloud color using displaced Senkou — matches the context window used by cloudTop/cloudBottom.
+// Non-displaced senkouA/B reflect the projected future cloud, not the current price context.
+cloudBull = not na(senkouA[i_displacement]) and senkouA[i_displacement] > senkouB[i_displacement]
+cloudBear = not na(senkouA[i_displacement]) and senkouA[i_displacement] < senkouB[i_displacement]
 
 // Bullish TK cross above cloud with bullish cloud color = strongest buy
 tkBullStrong = tkCrossUp and aboveCloud and cloudBull
@@ -62,8 +68,8 @@ tkBearStrong = tkCrossDown and belowCloud and cloudBear
 // Bearish TK cross anywhere with cloud resistance
 tkBearWeak   = tkCrossDown and not aboveCloud
 
-bullSignal = tkBullStrong or tkBullWeak
-bearSignal = tkBearStrong or tkBearWeak
+bullSignal = hasContext and (tkBullStrong or tkBullWeak)
+bearSignal = hasContext and (tkBearStrong or tkBearWeak)
 
 // Strategy / confidence
 var string bullStrat = "ICHIMOKU_TK_CROSS_BULL"
@@ -107,18 +113,18 @@ fill(senkouAPlot, senkouBPlot, color=senkouA >= senkouB ? color.new(color.green,
 // Chikou span displaced backward
 plot(close, "Chikou", color=color.new(color.purple, 20), offset=-i_displacement, linewidth=1)
 
-// Signal labels
-if bullSignal
+// Signal labels — barstate.isconfirmed prevents duplicate labels on intrabar ticks
+if barstate.isconfirmed and bullSignal
     label.new(bar_index, low,  "BUY\nICHIMOKU",  style=label.style_label_up,   color=color.green, textcolor=color.white, size=size.small)
 
-if bearSignal
+if barstate.isconfirmed and bearSignal
     label.new(bar_index, high, "SELL\nICHIMOKU", style=label.style_label_down, color=color.red,   textcolor=color.white, size=size.small)
 
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal and i_webhookSecret != ""
+if barstate.isconfirmed and bullSignal and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal and i_webhookSecret != ""
+if barstate.isconfirmed and bearSignal and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

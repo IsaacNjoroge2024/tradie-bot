@@ -100,8 +100,8 @@ bullSignal = atS1Bull or atS2Bull or atS3Bull or atPPBull
 bearSignal = atR1Bear or atR2Bear or atR3Bear or atPPBear
 
 // Strategy name
-var string bullStrat = "PIVOT_BULL"
-var string bearStrat = "PIVOT_BEAR"
+string bullStrat = "PIVOT_BULL"
+string bearStrat = "PIVOT_BEAR"
 
 if atS3Bull
     bullStrat := "PIVOT_S3_BULL"

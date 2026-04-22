@@ -40,15 +40,21 @@ bullishBOS = not na(lastSwingHigh) and close > lastSwingHigh and (close - lastSw
 // Bearish BOS: Close below last swing low with significance
 bearishBOS = not na(lastSwingLow) and close < lastSwingLow and (lastSwingLow - close) > atr * 0.1
 
+// Edge-trigger: react only on the first bar the BOS condition becomes true.
+// bullishBOS stays true on every bar that remains above lastSwingHigh — without this,
+// OB rescans, box draws, and webhook alerts repeat on every subsequent bar.
+bullishBOSTrigger = bullishBOS and not bullishBOS[1]
+bearishBOSTrigger = bearishBOS and not bearishBOS[1]
+
 // Track trend for CHoCH detection
 var int trend = 0  // 1 = bullish, -1 = bearish
 
-bullishCHoCH = bullishBOS and trend == -1
-bearishCHoCH = bearishBOS and trend == 1
+bullishCHoCH = bullishBOSTrigger and trend == -1
+bearishCHoCH = bearishBOSTrigger and trend == 1
 
-if bullishBOS
+if bullishBOSTrigger
     trend := 1
-if bearishBOS
+if bearishBOSTrigger
     trend := -1
 
 // ============================================
@@ -64,40 +70,47 @@ var float bearishOB_high = na
 var float bearishOB_low = na
 var int bearishOB_bar = na
 
-// Find last opposite candle before BOS
-if bullishBOS
+// Find last opposite candle before BOS — reset vars first so a scan that finds nothing
+// does not reuse a stale OB from a previous structure break
+if bullishBOSTrigger
+    bullishOB_high := na
+    bullishOB_low  := na
+    bullishOB_bar  := na
     for i = 1 to 10
         if close[i] < open[i]  // Found bearish candle
             bullishOB_high := high[i]
-            bullishOB_low := low[i]
-            bullishOB_bar := bar_index[i]
+            bullishOB_low  := low[i]
+            bullishOB_bar  := bar_index[i]
             break
 
-if bearishBOS
+if bearishBOSTrigger
+    bearishOB_high := na
+    bearishOB_low  := na
+    bearishOB_bar  := na
     for i = 1 to 10
         if close[i] > open[i]  // Found bullish candle
             bearishOB_high := high[i]
-            bearishOB_low := low[i]
-            bearishOB_bar := bar_index[i]
+            bearishOB_low  := low[i]
+            bearishOB_bar  := bar_index[i]
             break
 
 // ============================================
 // VISUALIZATION
 // ============================================
 // BOS Lines
-if bullishBOS and i_showBOS
+if bullishBOSTrigger and i_showBOS
     line.new(lastSwingHighBar, lastSwingHigh, bar_index, lastSwingHigh, color=bullishCHoCH ? color.blue : color.green, style=line.style_dashed)
     label.new(bar_index, lastSwingHigh, bullishCHoCH ? "CHoCH" : "BOS", style=label.style_label_down, color=bullishCHoCH ? color.blue : color.green, textcolor=color.white, size=size.small)
 
-if bearishBOS and i_showBOS
+if bearishBOSTrigger and i_showBOS
     line.new(lastSwingLowBar, lastSwingLow, bar_index, lastSwingLow, color=bearishCHoCH ? color.orange : color.red, style=line.style_dashed)
     label.new(bar_index, lastSwingLow, bearishCHoCH ? "CHoCH" : "BOS", style=label.style_label_up, color=bearishCHoCH ? color.orange : color.red, textcolor=color.white, size=size.small)
 
 // Order Block Boxes
-if bullishBOS and not na(bullishOB_high) and i_showOB
+if bullishBOSTrigger and not na(bullishOB_high) and i_showOB
     box.new(bullishOB_bar, bullishOB_high, bar_index + 20, bullishOB_low, bgcolor=color.new(color.green, 85), border_color=color.green, border_width=2)
 
-if bearishBOS and not na(bearishOB_high) and i_showOB
+if bearishBOSTrigger and not na(bearishOB_high) and i_showOB
     box.new(bearishOB_bar, bearishOB_high, bar_index + 20, bearishOB_low, bgcolor=color.new(color.red, 85), border_color=color.red, border_width=2)
 
 // ============================================
@@ -114,10 +127,10 @@ if bearishCHoCH and not na(bearishOB_high) and i_webhookSecret != ""
     alert(chochPayload, alert.freq_once_per_bar_close)
 
 // Regular BOS with OB (continuation signals)
-if bullishBOS and not bullishCHoCH and not na(bullishOB_high) and i_webhookSecret != ""
+if bullishBOSTrigger and not bullishCHoCH and not na(bullishOB_high) and i_webhookSecret != ""
     bosPayload = '{"symbol":"' + syminfo.ticker + '","action":"BUY","strategy":"BOS_BULLISH_OB","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bullishOB_low - atr * 0.3) + ',"take_profit":' + str.tostring(close + (close - bullishOB_low) * 1.5) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":65,"auth_token":"' + i_webhookSecret + '"}'
     alert(bosPayload, alert.freq_once_per_bar_close)
 
-if bearishBOS and not bearishCHoCH and not na(bearishOB_high) and i_webhookSecret != ""
+if bearishBOSTrigger and not bearishCHoCH and not na(bearishOB_high) and i_webhookSecret != ""
     bosPayload = '{"symbol":"' + syminfo.ticker + '","action":"SELL","strategy":"BOS_BEARISH_OB","price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(bearishOB_high + atr * 0.3) + ',"take_profit":' + str.tostring(close - (bearishOB_high - close) * 1.5) + ',"exchange":"' + syminfo.prefix + '","timeframe":"' + timeframe.period + '","confidence":65,"auth_token":"' + i_webhookSecret + '"}'
     alert(bosPayload, alert.freq_once_per_bar_close)

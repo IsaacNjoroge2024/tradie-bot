@@ -59,16 +59,19 @@ fibRange = bullLeg or bearLeg ? math.abs(fibHigh - fibLow) : na
 
 // Retracement levels (measured from the bottom of the range up)
 fib0    = not na(fibLow)   ? fibLow                           : na
-fib236  = not na(fibRange) ? fibLow + fibRange * 0.236        : na
-fib382  = not na(fibRange) ? fibLow + fibRange * 0.382        : na
-fib500  = not na(fibRange) ? fibLow + fibRange * 0.500        : na
-fib618  = not na(fibRange) ? fibLow + fibRange * 0.618        : na
-fib786  = not na(fibRange) ? fibLow + fibRange * 0.786        : na
+// Bullish leg: levels measured from low upward; bearish leg: from high downward.
+// This ensures atFib618Bear fires at the true 61.8% retracement from the HIGH,
+// not the 38.2% retracement that upward-only math would produce.
+fib236  = bullLeg ? fibLow + fibRange * 0.236 : bearLeg ? fibHigh - fibRange * 0.236 : na
+fib382  = bullLeg ? fibLow + fibRange * 0.382 : bearLeg ? fibHigh - fibRange * 0.382 : na
+fib500  = bullLeg ? fibLow + fibRange * 0.500 : bearLeg ? fibHigh - fibRange * 0.500 : na
+fib618  = bullLeg ? fibLow + fibRange * 0.618 : bearLeg ? fibHigh - fibRange * 0.618 : na
+fib786  = bullLeg ? fibLow + fibRange * 0.786 : bearLeg ? fibHigh - fibRange * 0.786 : na
 fib100  = not na(fibHigh)  ? fibHigh                          : na
 
-// Extension levels (beyond the high — take profit targets)
-fib1272 = not na(fibRange) ? fibHigh + fibRange * 0.272       : na
-fib1618 = not na(fibRange) ? fibHigh + fibRange * 0.618       : na
+// Extension levels (beyond the swing — bullish extends above high; bearish extends below low)
+fib1272 = bullLeg ? fibHigh + fibRange * 0.272 : bearLeg ? fibLow - fibRange * 0.272 : na
+fib1618 = bullLeg ? fibHigh + fibRange * 0.618 : bearLeg ? fibLow - fibRange * 0.618 : na
 
 // ============================================
 // SIGNAL DETECTION

@@ -68,8 +68,8 @@ bullSignal = squeezeBull or bbBounceBull
 bearSignal = squeezeBear or bbBounceBear
 
 // Strategy name
-var string bullStrat = "VOLATILITY_BULL"
-var string bearStrat = "VOLATILITY_BEAR"
+string bullStrat = "VOLATILITY_BULL"
+string bearStrat = "VOLATILITY_BEAR"
 
 if squeezeBull
     bullStrat := "VOLATILITY_SQUEEZE_BULL"

@@ -159,18 +159,22 @@ bgcolor(inAsia and i_showAsia ? color.new(color.blue, 93) : na)
 plot(i_showAsia ? asiaHighFinal : na, "Asia High", color=color.new(color.teal, 20), linewidth=1, style=plot.style_line)
 plot(i_showAsia ? asiaLowFinal  : na, "Asia Low",  color=color.new(color.teal, 20), linewidth=1, style=plot.style_line)
 
+// Edge-trigger: only fire on the first bar the resolved signal becomes true
+bullTrigger = bullSignal and not bullSignal[1]
+bearTrigger = bearSignal and not bearSignal[1]
+
 // Signal labels
-if bullSignal
+if bullTrigger
     label.new(bar_index, low, "BUY\n" + bullStrategy, style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
 
-if bearSignal
+if bearTrigger
     label.new(bar_index, high, "SELL\n" + bearStrategy, style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
 
 // ============================================
 // WEBHOOK ALERTS
 // ============================================
-if bullSignal and i_webhookSecret != ""
+if bullTrigger and i_webhookSecret != ""
     alert(bullP1 + bullP2 + bullP3 + bullP4, alert.freq_once_per_bar_close)
 
-if bearSignal and i_webhookSecret != ""
+if bearTrigger and i_webhookSecret != ""
     alert(bearP1 + bearP2 + bearP3 + bearP4, alert.freq_once_per_bar_close)

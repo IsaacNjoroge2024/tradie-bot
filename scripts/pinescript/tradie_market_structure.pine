@@ -9,8 +9,10 @@ indicator("Tradie - Market Structure & Kill Zones", overlay=true)
 i_htf = input.timeframe("D", "Higher Timeframe Trend", group="Multi-Timeframe")
 
 // Structure
-i_swingLen  = input.int(10, "Swing Length", minval=5, maxval=20, group="Structure")
-i_showMSS   = input.bool(true, "Show MSS Labels", group="Structure")
+i_swingLen   = input.int(10,  "Swing Length",           minval=5, maxval=20,   group="Structure")
+i_bosAtrMult = input.float(0.3, "BOS ATR Multiplier",  minval=0.0, step=0.05, group="Structure")
+i_mssTTL     = input.int(50,  "MSS State TTL (bars)",  minval=5,              group="Structure")
+i_showMSS    = input.bool(true, "Show MSS Labels", group="Structure")
 i_showOTE   = input.bool(true, "Show OTE Zone", group="Structure")
 i_showPD    = input.bool(true, "Show Premium/Discount Mid", group="Structure")
 
@@ -60,8 +62,8 @@ if not na(swingLow)
 // ============================================
 // BREAK OF STRUCTURE
 // ============================================
-bullishBOS = not na(lastMajorHigh) and close > lastMajorHigh and (close - lastMajorHigh) > atr * 0.1
-bearishBOS = not na(lastMajorLow)  and close < lastMajorLow  and (lastMajorLow - close) > atr * 0.1
+bullishBOS = not na(lastMajorHigh) and close > lastMajorHigh and (close - lastMajorHigh) > atr * i_bosAtrMult
+bearishBOS = not na(lastMajorLow)  and close < lastMajorLow  and (lastMajorLow - close) > atr * i_bosAtrMult
 
 var int trend = 0  // 1 = bullish, -1 = bearish
 
@@ -80,13 +82,24 @@ if bearishBOS
 // on that exact bar, making the MSS branch dead without persistent state.
 var bool mssUpActive   = false
 var bool mssDownActive = false
+var int  mssUpBar      = na
+var int  mssDownBar    = na
 
 if mssUp
     mssUpActive   := true
     mssDownActive := false
+    mssUpBar      := bar_index
 if mssDown
     mssDownActive  := true
     mssUpActive   := false
+    mssDownBar     := bar_index
+
+// Expire stale MSS state after i_mssTTL bars to prevent old events from generating
+// 80/90-confidence signals indefinitely on every subsequent pullback
+if not na(mssUpBar)   and bar_index - mssUpBar   > i_mssTTL
+    mssUpActive   := false
+if not na(mssDownBar) and bar_index - mssDownBar > i_mssTTL
+    mssDownActive := false
 
 // ============================================
 // PREMIUM / DISCOUNT ZONES
@@ -166,12 +179,17 @@ sellTP = close - (sellSL - close) * 2  // 2:1 R:R
 // ============================================
 // PAYLOAD BUILDING (top-level)
 // ============================================
-buyP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"MSS_STRUCTURE_BULLISH"'
+// Derive strategy from the actual trigger condition so OTE-only entries are not
+// misattributed to MSS in downstream logs and per-strategy PnL analytics
+buyStrategy  = mssUpActive   ? "MSS_STRUCTURE_BULLISH" : "OTE_STRUCTURE_BULLISH"
+sellStrategy = mssDownActive ? "MSS_STRUCTURE_BEARISH" : "OTE_STRUCTURE_BEARISH"
+
+buyP1 = '{"symbol":"' + sym + '","action":"BUY","strategy":"' + buyStrategy + '"'
 buyP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(buySL) + ',"take_profit":' + str.tostring(buyTP)
 buyP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
 buyP4 = '","confidence":' + str.tostring(buyConf) + ',"auth_token":"' + i_webhookSecret + '"}'
 
-sellP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"MSS_STRUCTURE_BEARISH"'
+sellP1 = '{"symbol":"' + sym + '","action":"SELL","strategy":"' + sellStrategy + '"'
 sellP2 = ',"price":' + str.tostring(close) + ',"stop_loss":' + str.tostring(sellSL) + ',"take_profit":' + str.tostring(sellTP)
 sellP3 = ',"exchange":"' + pfx + '","timeframe":"' + tf
 sellP4 = '","confidence":' + str.tostring(sellConf) + ',"auth_token":"' + i_webhookSecret + '"}'

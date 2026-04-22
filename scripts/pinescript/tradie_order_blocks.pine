@@ -1,6 +1,6 @@
 // scripts/pinescript/tradie_order_blocks.pine
 //@version=5
-indicator("Tradie - Order Blocks & BOS", overlay=true, max_boxes_count=500)
+indicator("Tradie - Order Blocks & BOS", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 // ============================================
 // INPUTS

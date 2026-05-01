@@ -1,6 +1,6 @@
 import httpx
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import ClassVar, List, Optional
 from pydantic import BaseModel
 from enum import Enum
 import logging
@@ -33,7 +33,7 @@ class EventCalendarService:
     Identifies high-impact events that should pause trading.
     """
 
-    HIGH_IMPACT_KEYWORDS = [
+    HIGH_IMPACT_KEYWORDS: ClassVar[tuple[str, ...]] = (
         "nonfarm payroll",
         "nfp",
         "fomc",
@@ -52,22 +52,30 @@ class EventCalendarService:
         "boe",
         "boj",
         "rba",  # Central bank decisions
-    ]
+    )
 
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=30.0)
         self.base_url = "https://finnhub.io/api/v1"
 
+    async def aclose(self) -> None:
+        await self.client.aclose()
+
     async def get_upcoming_events(self, hours_ahead: int = 24) -> List[EconomicEvent]:
         """Fetch economic calendar events for the next N hours."""
+        if not settings.finnhub_api_key:
+            logger.warning("FINNHUB_API_KEY not configured; returning empty events")
+            return []
+
         now_utc = datetime.now(timezone.utc)
-        today = now_utc.strftime("%Y-%m-%d")
-        tomorrow = (now_utc + timedelta(days=1)).strftime("%Y-%m-%d")
+        cutoff = now_utc + timedelta(hours=hours_ahead)
+        from_date = now_utc.strftime("%Y-%m-%d")
+        to_date = cutoff.strftime("%Y-%m-%d")
 
         try:
             response = await self.client.get(
                 f"{self.base_url}/calendar/economic",
-                params={"from": today, "to": tomorrow, "token": settings.finnhub_api_key},
+                params={"from": from_date, "to": to_date, "token": settings.finnhub_api_key},
             )
             response.raise_for_status()
             data = response.json()
@@ -93,10 +101,9 @@ class EventCalendarService:
                 except Exception as e:
                     logger.warning(f"Skipping malformed event entry: {e}")
 
-            cutoff = now_utc + timedelta(hours=hours_ahead)
             return [e for e in events if e.event_time <= cutoff]
 
-        except Exception as e:
+        except (httpx.HTTPError, ValueError) as e:
             logger.error(f"Failed to fetch economic calendar: {e}")
             return []
 

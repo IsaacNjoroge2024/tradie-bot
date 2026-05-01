@@ -1,6 +1,6 @@
 import httpx
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import ClassVar, List, Optional
 from pydantic import BaseModel
 import logging
 
@@ -34,7 +34,7 @@ class SentimentAnalyzer:
     Provides market sentiment score for trading decisions.
     """
 
-    FINANCIAL_LEXICON = {
+    FINANCIAL_LEXICON: ClassVar[dict[str, float]] = {
         "bullish": 2.0,
         "bearish": -2.0,
         "rally": 1.5,
@@ -60,6 +60,9 @@ class SentimentAnalyzer:
         self.vader: Optional[SentimentIntensityAnalyzer] = None
         self.finbert_model = None  # Optional: for higher accuracy
 
+    async def aclose(self) -> None:
+        await self.client.aclose()
+
     async def initialize(self):
         """Initialize NLP models."""
         try:
@@ -77,30 +80,45 @@ class SentimentAnalyzer:
         category: str = "general",
     ) -> List[NewsItem]:
         """Fetch recent market news from Finnhub."""
-        try:
-            params = {"category": category, "token": settings.finnhub_api_key}
+        if not settings.finnhub_api_key:
+            logger.warning("FINNHUB_API_KEY not configured; returning empty news")
+            return []
 
-            response = await self.client.get(
-                "https://finnhub.io/api/v1/news",
-                params=params,
-            )
+        try:
+            if symbol:
+                today = datetime.now(timezone.utc).date()
+                params = {
+                    "symbol": symbol,
+                    "from": (today - timedelta(days=7)).isoformat(),
+                    "to": today.isoformat(),
+                    "token": settings.finnhub_api_key,
+                }
+                url = "https://finnhub.io/api/v1/company-news"
+            else:
+                params = {"category": category, "token": settings.finnhub_api_key}
+                url = "https://finnhub.io/api/v1/news"
+
+            response = await self.client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
 
             news_items = []
             for item in data[:20]:  # Limit to 20 most recent
+                raw_ts = item.get("datetime")
+                if not raw_ts:
+                    continue
                 news = NewsItem(
                     headline=item.get("headline", ""),
                     summary=item.get("summary"),
                     source=item.get("source", "unknown"),
-                    published_at=datetime.fromtimestamp(item.get("datetime", 0)),
+                    published_at=datetime.fromtimestamp(raw_ts, tz=timezone.utc),
                     url=item.get("url"),
                 )
                 news_items.append(news)
 
             return news_items
 
-        except Exception as e:
+        except (httpx.HTTPError, ValueError) as e:
             logger.error(f"Failed to fetch news: {e}")
             return []
 

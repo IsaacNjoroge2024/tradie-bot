@@ -1,7 +1,7 @@
+import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
@@ -59,6 +59,15 @@ def _setup_state(events=None, sentiment=None):
     app.state.sentiment_analyzer = mock_sentiment_analyzer
 
 
+@pytest.fixture(autouse=True)
+def restore_app_state():
+    prev_event = getattr(app.state, "event_service", None)
+    prev_sent = getattr(app.state, "sentiment_analyzer", None)
+    yield
+    app.state.event_service = prev_event
+    app.state.sentiment_analyzer = prev_sent
+
+
 class TestMarketStatusEndpoint:
     def test_safe_when_no_events_and_neutral_sentiment(self):
         _setup_state()
@@ -82,10 +91,7 @@ class TestMarketStatusEndpoint:
 
     def test_unsafe_on_danger_sentiment(self):
         _setup_state(sentiment=NEGATIVE_SENTIMENT)
-
-        # Override is_event_imminent to return False (no imminent events)
         app.state.event_service.is_event_imminent = MagicMock(return_value=False)
-
         response = client.get("/api/market-status")
         assert response.status_code == 200
         body = response.json()
@@ -96,7 +102,6 @@ class TestMarketStatusEndpoint:
     def test_medium_risk_on_caution_sentiment(self):
         _setup_state(sentiment=CAUTION_SENTIMENT)
         app.state.event_service.is_event_imminent = MagicMock(return_value=False)
-
         response = client.get("/api/market-status")
         assert response.status_code == 200
         body = response.json()
@@ -145,10 +150,16 @@ class TestEventsEndpoint:
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_get_high_impact_events(self):
-        _setup_state()
+    def test_get_high_impact_events_returns_list(self):
+        event = _high_impact_event(minutes_from_now=60)
+        _setup_state(events=[event])
         response = client.get("/api/events/high-impact")
         assert response.status_code == 200
+        body = response.json()
+        assert isinstance(body, list)
+        assert len(body) == 1
+        assert body[0]["title"] == "FOMC Rate Decision"
+        assert body[0]["impact"] == EventImpact.HIGH.value
 
 
 class TestSentimentEndpoint:

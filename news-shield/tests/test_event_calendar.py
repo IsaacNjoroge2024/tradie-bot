@@ -1,3 +1,4 @@
+import httpx
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,7 +12,7 @@ PAST_EVENT_TIME = datetime.now(timezone.utc) - timedelta(hours=2)
 
 def _make_event(
     impact: EventImpact = EventImpact.HIGH,
-    event_time: datetime = None,
+    event_time: datetime | None = None,
     title: str = "FOMC Rate Decision",
 ) -> EconomicEvent:
     return EconomicEvent(
@@ -76,7 +77,10 @@ class TestIsEventImminent:
         assert self.service.is_event_imminent(event, pause_minutes_after=60) is False
 
     def test_naive_event_time_handled(self):
-        naive_time = datetime.now() + timedelta(minutes=10)  # intentionally naive for this test
+        # Build a naive datetime equivalent to UTC+10min by stripping tzinfo.
+        # Service normalises naive datetimes to UTC, so the result is deterministic.
+        utc_plus_10 = datetime.now(timezone.utc) + timedelta(minutes=10)
+        naive_time = utc_plus_10.replace(tzinfo=None)
         event = EconomicEvent(
             event_time=naive_time,
             title="Test",
@@ -87,19 +91,26 @@ class TestIsEventImminent:
             previous=None,
             actual=None,
         )
-        # Should not raise TypeError
-        result = self.service.is_event_imminent(event, pause_minutes_before=30)
-        assert isinstance(result, bool)
+        # 10 min ahead (treated as UTC) is within the 30-min pre-event window
+        assert self.service.is_event_imminent(event, pause_minutes_before=30) is True
 
 
 class TestGetUpcomingEvents:
+    @pytest.fixture(autouse=True)
+    def set_api_key(self):
+        with patch("src.services.event_calendar.settings") as mock_settings:
+            mock_settings.finnhub_api_key = "test-key"
+            yield mock_settings
+
     @pytest.fixture
-    def service(self):
-        return EventCalendarService()
+    async def service(self):
+        s = EventCalendarService()
+        yield s
+        await s.aclose()
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_on_api_error(self, service):
-        with patch.object(service.client, "get", side_effect=Exception("Network error")):
+        with patch.object(service.client, "get", side_effect=httpx.HTTPError("Network error")):
             result = await service.get_upcoming_events()
         assert result == []
 

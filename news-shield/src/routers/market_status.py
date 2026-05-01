@@ -42,10 +42,17 @@ async def get_market_status(
     risk_level = "LOW"
     safe_to_trade = True
 
-    # 1. Check for imminent high-impact events
-    high_impact_events = await event_service.get_high_impact_events()
-    imminent_events = []
+    # 1. Check for imminent high-impact events — fail closed on upstream error
+    try:
+        high_impact_events = await event_service.get_high_impact_events()
+    except Exception:
+        logger.exception("Failed to fetch events, failing closed")
+        high_impact_events = []
+        reasons.append("Event data unavailable (failing closed)")
+        safe_to_trade = False
+        risk_level = "HIGH"
 
+    imminent_events = []
     for event in high_impact_events:
         if event_service.is_event_imminent(
             event,
@@ -57,18 +64,27 @@ async def get_market_status(
             safe_to_trade = False
             risk_level = "EXTREME"
 
-    # 2. Check news sentiment
-    sentiment = await sentiment_analyzer.get_market_sentiment(symbol=symbol)
-
-    if sentiment.overall_score <= settings.sentiment_danger_threshold:
-        reasons.append(f"Extremely negative sentiment: {sentiment.overall_score}")
+    # 2. Check news sentiment — fail closed on upstream error
+    sentiment: Optional[SentimentResult] = None
+    try:
+        sentiment = await sentiment_analyzer.get_market_sentiment(symbol=symbol)
+    except Exception:
+        logger.exception("Failed to fetch sentiment, failing closed")
+        reasons.append("Sentiment data unavailable (failing closed)")
         safe_to_trade = False
-        if risk_level != "EXTREME":
+        if risk_level not in ("EXTREME", "HIGH"):
             risk_level = "HIGH"
-    elif sentiment.overall_score <= settings.sentiment_caution_threshold:
-        reasons.append(f"Negative sentiment detected: {sentiment.overall_score}")
-        if risk_level == "LOW":
-            risk_level = "MEDIUM"
+
+    if sentiment is not None:
+        if sentiment.overall_score <= settings.sentiment_danger_threshold:
+            reasons.append(f"Extremely negative sentiment: {sentiment.overall_score}")
+            safe_to_trade = False
+            if risk_level != "EXTREME":
+                risk_level = "HIGH"
+        elif sentiment.overall_score <= settings.sentiment_caution_threshold:
+            reasons.append(f"Negative sentiment detected: {sentiment.overall_score}")
+            if risk_level == "LOW":
+                risk_level = "MEDIUM"
 
     # 3. TODO: Add VIX check (requires market data subscription)
     vix_level = None  # Would fetch from IBKR or data provider
@@ -81,7 +97,7 @@ async def get_market_status(
         risk_level=risk_level,
         reasons=reasons,
         sentiment=sentiment,
-        upcoming_events=high_impact_events[:5],  # Next 5 high-impact events
+        upcoming_events=sorted(high_impact_events, key=lambda e: e.event_time)[:5],
         vix_level=vix_level,
         timestamp=datetime.now(timezone.utc),
     )
@@ -95,7 +111,11 @@ async def quick_market_check(request: Request):
     """
     event_service: EventCalendarService = request.app.state.event_service
 
-    high_impact_events = await event_service.get_high_impact_events()
+    try:
+        high_impact_events = await event_service.get_high_impact_events()
+    except Exception:
+        logger.exception("Failed to fetch events for quick-check, failing closed")
+        return {"safe_to_trade": False, "reason": "Event data unavailable"}
 
     for event in high_impact_events:
         if event_service.is_event_imminent(

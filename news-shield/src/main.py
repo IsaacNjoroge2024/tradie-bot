@@ -6,6 +6,7 @@ import logging
 from .routers import market_status, events, sentiment
 from .services.event_calendar import EventCalendarService
 from .services.sentiment_analyzer import SentimentAnalyzer
+from .config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,6 +21,8 @@ async def lifespan(app: FastAPI):
     logger.info("News Shield ready")
     yield
     logger.info("Shutting down News Shield...")
+    await app.state.sentiment_analyzer.aclose()
+    await app.state.event_service.aclose()
 
 
 app = FastAPI(
@@ -31,7 +34,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

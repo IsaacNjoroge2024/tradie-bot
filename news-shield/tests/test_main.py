@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 
@@ -9,7 +10,6 @@ client = TestClient(app)
 
 
 def _setup_app_state():
-    """Attach mocked services to app state for tests that hit routed endpoints."""
     mock_event_service = MagicMock(spec=EventCalendarService)
     mock_event_service.get_high_impact_events = AsyncMock(return_value=[])
 
@@ -25,6 +25,15 @@ def _setup_app_state():
 
     app.state.event_service = mock_event_service
     app.state.sentiment_analyzer = mock_sentiment_analyzer
+
+
+@pytest.fixture(autouse=True)
+def restore_app_state():
+    prev_event = getattr(app.state, "event_service", None)
+    prev_sent = getattr(app.state, "sentiment_analyzer", None)
+    yield
+    app.state.event_service = prev_event
+    app.state.sentiment_analyzer = prev_sent
 
 
 def test_health():

@@ -1,4 +1,5 @@
-from datetime import datetime
+import httpx
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,7 +11,8 @@ from src.services.sentiment_analyzer import SentimentAnalyzer, SentimentResult
 async def analyzer():
     a = SentimentAnalyzer()
     await a.initialize()
-    return a
+    yield a
+    await a.aclose()
 
 
 class TestSentimentAnalyzerInit:
@@ -20,6 +22,7 @@ class TestSentimentAnalyzerInit:
         assert a.vader is None
         await a.initialize()
         assert a.vader is not None
+        await a.aclose()
 
     @pytest.mark.asyncio
     async def test_financial_lexicon_applied(self, analyzer):
@@ -50,6 +53,7 @@ class TestAnalyzeSentiment:
         a = SentimentAnalyzer()
         score = a.analyze_sentiment("This should return 0.0")
         assert score == 0.0
+        await a.aclose()
 
     @pytest.mark.asyncio
     async def test_financial_lexicon_boost(self, analyzer):
@@ -59,13 +63,21 @@ class TestAnalyzeSentiment:
 
 
 class TestFetchMarketNews:
+    @pytest.fixture(autouse=True)
+    def set_api_key(self):
+        with patch("src.services.sentiment_analyzer.settings") as mock_settings:
+            mock_settings.finnhub_api_key = "test-key"
+            yield mock_settings
+
     @pytest.fixture
-    def service(self):
-        return SentimentAnalyzer()
+    async def service(self):
+        s = SentimentAnalyzer()
+        yield s
+        await s.aclose()
 
     @pytest.mark.asyncio
     async def test_returns_empty_on_api_error(self, service):
-        with patch.object(service.client, "get", side_effect=Exception("Network error")):
+        with patch.object(service.client, "get", side_effect=httpx.HTTPError("Network error")):
             result = await service.fetch_market_news()
         assert result == []
 
@@ -90,13 +102,20 @@ class TestFetchMarketNews:
         assert result[0].headline == "S&P 500 surges to all-time high"
         assert result[0].source == "Reuters"
         assert result[0].url == "https://example.com/article"
+        assert result[0].published_at.tzinfo == timezone.utc
 
     @pytest.mark.asyncio
     async def test_limits_to_20_items(self, service):
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
         mock_response.json.return_value = [
-            {"headline": f"News {i}", "summary": None, "source": "Test", "datetime": 0, "url": None}
+            {
+                "headline": f"News {i}",
+                "summary": None,
+                "source": "Test",
+                "datetime": 1700000000,
+                "url": None,
+            }
             for i in range(30)
         ]
 
@@ -104,6 +123,36 @@ class TestFetchMarketNews:
             result = await service.fetch_market_news()
 
         assert len(result) == 20
+
+    @pytest.mark.asyncio
+    async def test_symbol_uses_company_news_endpoint(self, service):
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = []
+
+        with patch.object(
+            service.client, "get", new=AsyncMock(return_value=mock_response)
+        ) as mock_get:
+            await service.fetch_market_news(symbol="AAPL")
+
+        call_args = mock_get.call_args
+        assert "company-news" in call_args[0][0]
+        assert call_args[1]["params"]["symbol"] == "AAPL"
+
+    @pytest.mark.asyncio
+    async def test_no_symbol_uses_general_news_endpoint(self, service):
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = []
+
+        with patch.object(
+            service.client, "get", new=AsyncMock(return_value=mock_response)
+        ) as mock_get:
+            await service.fetch_market_news()
+
+        call_args = mock_get.call_args
+        assert "/news" in call_args[0][0]
+        assert "company-news" not in call_args[0][0]
 
 
 class TestGetMarketSentiment:
@@ -125,7 +174,7 @@ class TestGetMarketSentiment:
                 headline="Stocks rally strongly on bullish earnings",
                 summary=None,
                 source="Test",
-                published_at=datetime.now(),
+                published_at=datetime.now(timezone.utc),
                 url=None,
             )
         ]
@@ -143,7 +192,7 @@ class TestGetMarketSentiment:
                 headline="Market crash bearish recession fears plunge",
                 summary=None,
                 source="Test",
-                published_at=datetime.now(),
+                published_at=datetime.now(timezone.utc),
                 url=None,
             )
         ]
@@ -162,12 +211,11 @@ class TestGetMarketSentiment:
                 headline="Moderate market movement",
                 summary=None,
                 source="Test",
-                published_at=datetime.now(),
+                published_at=datetime.now(timezone.utc),
                 url=None,
             )
         ]
         with patch.object(analyzer, "fetch_market_news", new=AsyncMock(return_value=mock_news)):
             result = await analyzer.get_market_sentiment()
 
-        # Score should be rounded to 3 decimal places
         assert result.overall_score == round(result.overall_score, 3)

@@ -1,7 +1,7 @@
 import httpx
 from datetime import datetime, timedelta, timezone
 from typing import ClassVar, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from enum import Enum
 import logging
 
@@ -98,7 +98,7 @@ class EventCalendarService:
                         actual=item.get("actual"),
                     )
                     events.append(event)
-                except Exception as e:
+                except (KeyError, TypeError, ValueError, ValidationError) as e:
                     logger.warning(f"Skipping malformed event entry: {e}")
 
             return [e for e in events if e.event_time <= cutoff]

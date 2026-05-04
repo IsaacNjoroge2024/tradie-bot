@@ -1,6 +1,5 @@
 package com.tradie.strategy.client;
 
-import com.tradie.strategy.dto.MarketStatusResponse;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,20 +21,14 @@ class NewsShieldClientTest {
     }
 
     @Test
-    void getMarketStatus_whenNewsShieldDown_returnsFallback() {
-        // Point at a port that will refuse connection
+    void getMarketStatus_whenNewsShieldDown_throwsException() {
         NewsShieldClient client = new NewsShieldClient(
                 WebClient.builder(),
                 circuitBreakerRegistry,
                 "http://localhost:19999");
         ReflectionTestUtils.setField(client, "timeoutMs", 500);
 
-        MarketStatusResponse response = client.getMarketStatus("AAPL");
-
-        assertTrue(response.safeToTrade());
-        assertEquals("LOW", response.riskLevel());
-        assertFalse(response.reasons().isEmpty());
-        assertTrue(response.reasons().get(0).contains("fallback"));
+        assertThrows(Exception.class, () -> client.getMarketStatus("AAPL"));
     }
 
     @Test
@@ -46,10 +39,9 @@ class NewsShieldClientTest {
                 "http://localhost:19999");
         ReflectionTestUtils.setField(client, "timeoutMs", 200);
 
-        // Multiple calls should all return the safe fallback without throwing
+        // Multiple calls should all throw without hanging
         for (int i = 0; i < 3; i++) {
-            MarketStatusResponse response = client.getMarketStatus("AAPL");
-            assertTrue(response.safeToTrade());
+            assertThrows(Exception.class, () -> client.getMarketStatus("AAPL"));
         }
     }
 }

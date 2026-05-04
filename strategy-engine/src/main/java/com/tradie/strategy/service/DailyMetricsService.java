@@ -69,8 +69,7 @@ public class DailyMetricsService {
     }
 
     private void adjustDailyPnl(String key, BigDecimal delta) {
-        BigDecimal current = getDailyPnl();
-        redisTemplate.opsForHash().put(key, FIELD_DAILY_PNL, current.add(delta).toPlainString());
+        redisTemplate.opsForHash().increment(key, FIELD_DAILY_PNL, delta.doubleValue());
     }
 
     private void ensureTtl(String key) {

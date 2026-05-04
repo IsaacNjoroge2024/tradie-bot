@@ -21,11 +21,13 @@ public class PositionSizer {
      */
     public BigDecimal calculateQuantity(BigDecimal entryPrice, BigDecimal stopLoss,
                                         BigDecimal sizeAdjustmentFactor) {
-        if (stopLoss == null) {
+        if (entryPrice == null || stopLoss == null) {
             return BigDecimal.ONE;
         }
 
-        BigDecimal riskAmount = BigDecimal.valueOf(defaultAccountBalance * maxRiskPerTradePct / 100.0);
+        BigDecimal riskAmount = BigDecimal.valueOf(defaultAccountBalance)
+                .multiply(BigDecimal.valueOf(maxRiskPerTradePct))
+                .divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP);
         BigDecimal stopDistance = entryPrice.subtract(stopLoss).abs();
 
         if (stopDistance.compareTo(BigDecimal.ZERO) == 0) {

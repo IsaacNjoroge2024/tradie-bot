@@ -73,24 +73,21 @@ class DailyMetricsServiceTest {
 
     @Test
     void recordWin_resetsConsecutiveLossesAndIncrementsWinCount() {
-        when(hashOps.get(EXPECTED_KEY, "daily_pnl")).thenReturn("100.00");
-
         service.recordWin(BigDecimal.valueOf(50));
 
         verify(hashOps).put(EXPECTED_KEY, "consecutive_losses", "0");
         verify(hashOps).increment(EXPECTED_KEY, "win_count", 1);
-        verify(hashOps).put(eq(EXPECTED_KEY), eq("daily_pnl"), anyString());
+        verify(hashOps).increment(eq(EXPECTED_KEY), eq("daily_pnl"), anyDouble());
         verify(redisTemplate).expire(eq(EXPECTED_KEY), any());
     }
 
     @Test
     void recordLoss_incrementsLossCountAndConsecutiveLosses() {
-        when(hashOps.get(EXPECTED_KEY, "daily_pnl")).thenReturn("0");
-
         service.recordLoss(BigDecimal.valueOf(-100));
 
         verify(hashOps).increment(EXPECTED_KEY, "loss_count", 1);
         verify(hashOps).increment(EXPECTED_KEY, "consecutive_losses", 1);
+        verify(hashOps).increment(eq(EXPECTED_KEY), eq("daily_pnl"), anyDouble());
         verify(redisTemplate).expire(eq(EXPECTED_KEY), any());
     }
 

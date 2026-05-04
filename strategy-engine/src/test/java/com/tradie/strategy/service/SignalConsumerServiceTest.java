@@ -6,7 +6,6 @@ import com.tradie.common.entity.Order;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.common.repository.TradeSignalRepository;
 import com.tradie.strategy.dto.*;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -60,11 +59,7 @@ class SignalConsumerServiceTest {
         consumer = new SignalConsumerService(
                 objectMapper, signalRepository, validationService, orderPublisher, kafkaTemplate);
 
-        RecordMetadata meta = mock(RecordMetadata.class);
-        when(meta.partition()).thenReturn(0);
-        SendResult<String, String> sendResult = mock(SendResult.class);
-        when(sendResult.getRecordMetadata()).thenReturn(meta);
-        successFuture = CompletableFuture.completedFuture(sendResult);
+        successFuture = CompletableFuture.completedFuture(mock(SendResult.class));
     }
 
     private TradeSignal buildSignal(UUID id) {

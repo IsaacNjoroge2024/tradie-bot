@@ -90,9 +90,11 @@ class RiskRuleServiceTest {
         TradeSignal signal = buildSignal("AAPL", TradeSignal.SignalAction.BUY, 100, 95, 115);
         List<RuleResult> results = service.validateAll(signal);
 
-        RuleResult dailyLossResult = results.get(0);
+        RuleResult dailyLossResult = results.stream()
+                .filter(r -> r.reason() != null && r.reason().contains("Daily loss limit"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Daily loss limit rule result not found"));
         assertFalse(dailyLossResult.passed());
-        assertTrue(dailyLossResult.reason().contains("Daily loss limit"));
     }
 
     @Test
@@ -107,9 +109,11 @@ class RiskRuleServiceTest {
         TradeSignal signal = buildSignal("AAPL", TradeSignal.SignalAction.BUY, 100, 95, 115);
         List<RuleResult> results = service.validateAll(signal);
 
-        RuleResult posResult = results.get(1);
+        RuleResult posResult = results.stream()
+                .filter(r -> r.reason() != null && r.reason().contains("Max concurrent positions"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Max concurrent positions rule result not found"));
         assertFalse(posResult.passed());
-        assertTrue(posResult.reason().contains("Max concurrent positions"));
     }
 
     @Test
@@ -124,9 +128,10 @@ class RiskRuleServiceTest {
         TradeSignal signal = buildSignal("AAPL", TradeSignal.SignalAction.BUY, 100, 95, 115);
         List<RuleResult> results = service.validateAll(signal);
 
-        RuleResult streakResult = results.get(3);
-        assertTrue(streakResult.passed());
-        assertTrue(streakResult.sizeAdjustmentFactor().isPresent());
+        RuleResult streakResult = results.stream()
+                .filter(r -> r.passed() && r.sizeAdjustmentFactor().isPresent())
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Losing streak rule result not found"));
         assertEquals(0, BigDecimal.valueOf(0.5).compareTo(streakResult.sizeAdjustmentFactor().get()));
     }
 
@@ -145,9 +150,11 @@ class RiskRuleServiceTest {
         TradeSignal signal = buildSignal("AAPL", TradeSignal.SignalAction.BUY, 100, 95, 115);
         List<RuleResult> results = service.validateAll(signal);
 
-        RuleResult dupResult = results.get(4);
+        RuleResult dupResult = results.stream()
+                .filter(r -> r.reason() != null && r.reason().contains("Duplicate signal"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Duplicate signal rule result not found"));
         assertFalse(dupResult.passed());
-        assertTrue(dupResult.reason().contains("Duplicate signal"));
     }
 
     @Test
@@ -158,9 +165,11 @@ class RiskRuleServiceTest {
         TradeSignal signal = buildSignal("AAPL", TradeSignal.SignalAction.BUY, 100, 95, 104);
         List<RuleResult> results = service.validateAll(signal);
 
-        RuleResult rrResult = results.get(5);
+        RuleResult rrResult = results.stream()
+                .filter(r -> r.reason() != null && r.reason().contains("Risk/reward too low"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Risk/reward rule result not found"));
         assertFalse(rrResult.passed());
-        assertTrue(rrResult.reason().contains("Risk/reward too low"));
     }
 
     @Test
@@ -170,8 +179,7 @@ class RiskRuleServiceTest {
         TradeSignal signal = buildSignal("AAPL", TradeSignal.SignalAction.BUY, 100, 95, 110);
         List<RuleResult> results = service.validateAll(signal);
 
-        RuleResult rrResult = results.get(5);
-        assertTrue(rrResult.passed());
+        assertTrue(results.stream().allMatch(RuleResult::passed));
     }
 
     @Test
@@ -185,7 +193,20 @@ class RiskRuleServiceTest {
 
         List<RuleResult> results = service.validateAll(signal);
 
-        RuleResult rrResult = results.get(5);
-        assertTrue(rrResult.passed());
+        assertTrue(results.stream().allMatch(RuleResult::passed));
+    }
+
+    @Test
+    void minRiskReward_invertedBuySetup_returnsFail() {
+        stubDefaults();
+        // BUY with tp below entry — inverted setup
+        TradeSignal signal = buildSignal("AAPL", TradeSignal.SignalAction.BUY, 100, 95, 90);
+        List<RuleResult> results = service.validateAll(signal);
+
+        RuleResult rrResult = results.stream()
+                .filter(r -> r.reason() != null && r.reason().contains("Invalid TP/SL direction"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Direction check rule result not found"));
+        assertFalse(rrResult.passed());
     }
 }

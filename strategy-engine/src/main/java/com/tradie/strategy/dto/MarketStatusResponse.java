@@ -8,4 +8,8 @@ public record MarketStatusResponse(
         @JsonProperty("safe_to_trade") boolean safeToTrade,
         @JsonProperty("risk_level") String riskLevel,
         List<String> reasons
-) {}
+) {
+    public MarketStatusResponse {
+        reasons = reasons != null ? reasons : List.of();
+    }
+}

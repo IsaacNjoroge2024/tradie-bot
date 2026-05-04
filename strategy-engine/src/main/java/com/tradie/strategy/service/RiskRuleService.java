@@ -81,7 +81,7 @@ public class RiskRuleService {
         BigDecimal dailyPnl = dailyMetrics.getDailyPnl();
         BigDecimal lossLimit = BigDecimal.valueOf(-defaultAccountBalance * maxDailyLossPct / 100.0);
 
-        if (dailyPnl.compareTo(lossLimit) < 0) {
+        if (dailyPnl.compareTo(lossLimit) <= 0) {
             return RuleResult.fail(String.format(
                     "Daily loss limit reached: P&L=%.2f, limit=%.2f", dailyPnl, lossLimit));
         }
@@ -156,12 +156,21 @@ public class RiskRuleService {
         BigDecimal entry = signal.getPrice();
         BigDecimal sl = signal.getStopLoss();
         BigDecimal tp = signal.getTakeProfit();
+        TradeSignal.SignalAction action = signal.getAction();
 
-        BigDecimal reward = tp.subtract(entry).abs();
-        BigDecimal risk = entry.subtract(sl).abs();
+        BigDecimal reward;
+        BigDecimal risk;
+        if (action == TradeSignal.SignalAction.BUY) {
+            reward = tp.subtract(entry);
+            risk = entry.subtract(sl);
+        } else {
+            reward = entry.subtract(tp);
+            risk = sl.subtract(entry);
+        }
 
-        if (risk.compareTo(BigDecimal.ZERO) == 0) {
-            return RuleResult.fail("Invalid stop loss: equals entry price");
+        if (reward.compareTo(BigDecimal.ZERO) <= 0 || risk.compareTo(BigDecimal.ZERO) <= 0) {
+            return RuleResult.fail(String.format(
+                    "Invalid TP/SL direction for %s signal: reward=%.2f, risk=%.2f", action, reward, risk));
         }
 
         BigDecimal rr = reward.divide(risk, 4, RoundingMode.HALF_UP);

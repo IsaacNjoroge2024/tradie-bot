@@ -63,6 +63,17 @@ public class SignalConsumerService {
                 return;
             }
 
+            if (signal.getProcessedAt() != null
+                    || signal.getStatus() == TradeSignal.SignalStatus.VALIDATED
+                    || signal.getStatus() == TradeSignal.SignalStatus.EXECUTED
+                    || signal.getStatus() == TradeSignal.SignalStatus.REJECTED
+                    || signal.getStatus() == TradeSignal.SignalStatus.EXPIRED) {
+                log.info("Signal {} already processed (status={}), skipping duplicate delivery",
+                        signalId, signal.getStatus());
+                ack.acknowledge();
+                return;
+            }
+
             log.info("Processing signal id={} symbol={} action={}",
                     signal.getId(), signal.getSymbol(), signal.getAction());
 
@@ -92,7 +103,11 @@ public class SignalConsumerService {
 
         } catch (Exception e) {
             log.error("Failed to process signal, routing to DLQ: {}", e.getMessage(), e);
-            kafkaTemplate.send(DLQ_TOPIC, key, message);
+            try {
+                kafkaTemplate.send(DLQ_TOPIC, key, message).get(5, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception dlqEx) {
+                log.error("Failed to publish to DLQ: {}", dlqEx.getMessage());
+            }
 
             if (signal != null) {
                 try {

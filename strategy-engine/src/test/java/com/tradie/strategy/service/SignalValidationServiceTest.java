@@ -93,6 +93,20 @@ class SignalValidationServiceTest {
     }
 
     @Test
+    void validate_newsShieldException_failOpen_continuesValidation() {
+        when(newsShieldClient.getMarketStatus(anyString())).thenThrow(new RuntimeException("Connection refused"));
+        when(killZoneService.validate(any()))
+                .thenReturn(new KillZoneService.KillZoneResult(true, null, null));
+        when(riskRuleService.validateAll(any())).thenReturn(List.of(RuleResult.pass()));
+        when(positionSizer.calculateQuantity(any(), any(), any())).thenReturn(BigDecimal.valueOf(10));
+
+        ValidationResult result = service.validate(freshSignal());
+
+        assertTrue(result.approved());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("News Shield unavailable")));
+    }
+
+    @Test
     void validate_newsShieldUnsafe_rejected() {
         when(newsShieldClient.getMarketStatus(anyString()))
                 .thenReturn(new MarketStatusResponse(false, "HIGH",

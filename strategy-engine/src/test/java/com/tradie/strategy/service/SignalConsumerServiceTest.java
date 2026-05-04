@@ -49,12 +49,22 @@ class SignalConsumerServiceTest {
     private SignalConsumerService consumer;
     private ObjectMapper objectMapper;
 
+    // Pre-built to avoid creating mocks inside a when().thenReturn() argument,
+    // which would cause UnfinishedStubbingException (matches api-gateway test pattern).
+    private CompletableFuture<SendResult<String, String>> successFuture;
+
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         consumer = new SignalConsumerService(
                 objectMapper, signalRepository, validationService, orderPublisher, kafkaTemplate);
+
+        RecordMetadata meta = mock(RecordMetadata.class);
+        when(meta.partition()).thenReturn(0);
+        SendResult<String, String> sendResult = mock(SendResult.class);
+        when(sendResult.getRecordMetadata()).thenReturn(meta);
+        successFuture = CompletableFuture.completedFuture(sendResult);
     }
 
     private TradeSignal buildSignal(UUID id) {
@@ -79,15 +89,6 @@ class SignalConsumerServiceTest {
 
     private String messageJson(UUID id) throws Exception {
         return objectMapper.writeValueAsString(buildSignal(id));
-    }
-
-    @SuppressWarnings("unchecked")
-    private CompletableFuture<SendResult<String, String>> successFuture() {
-        RecordMetadata meta = mock(RecordMetadata.class);
-        when(meta.partition()).thenReturn(0);
-        SendResult<String, String> result = mock(SendResult.class);
-        when(result.getRecordMetadata()).thenReturn(meta);
-        return CompletableFuture.completedFuture(result);
     }
 
     @Test
@@ -152,7 +153,7 @@ class SignalConsumerServiceTest {
 
         when(signalRepository.findById(id)).thenReturn(Optional.of(signal));
         when(validationService.validate(any())).thenThrow(new RuntimeException("Unexpected error"));
-        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successFuture());
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successFuture);
         when(signalRepository.save(any())).thenReturn(signal);
 
         consumer.consume(messageJson(id), "AAPL", ack);

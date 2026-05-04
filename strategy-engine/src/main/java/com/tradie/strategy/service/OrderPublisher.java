@@ -8,6 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.concurrent.TimeUnit;
+
 @Service
 public class OrderPublisher {
 
@@ -25,30 +27,14 @@ public class OrderPublisher {
 
     public void publishOrder(OrderDTO order) throws Exception {
         String json = objectMapper.writeValueAsString(order);
-        kafkaTemplate.send(ORDERS_TOPIC, order.symbol(), json)
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish order for signal {} to {}: {}",
-                                order.signalId(), ORDERS_TOPIC, ex.getMessage());
-                    } else {
-                        log.info("Order for signal {} published to {} partition {}",
-                                order.signalId(), ORDERS_TOPIC,
-                                result.getRecordMetadata().partition());
-                    }
-                });
+        var result = kafkaTemplate.send(ORDERS_TOPIC, order.symbol(), json).get(5, TimeUnit.SECONDS);
+        log.info("Order for signal {} published to {} partition {}",
+                order.signalId(), ORDERS_TOPIC, result.getRecordMetadata().partition());
     }
 
     public void publishRejection(RejectionEvent event) throws Exception {
         String json = objectMapper.writeValueAsString(event);
-        kafkaTemplate.send(ALERTS_TOPIC, event.symbol(), json)
-                .whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Failed to publish rejection event for signal {}: {}",
-                                event.signalId(), ex.getMessage());
-                    } else {
-                        log.debug("Rejection event for signal {} published to alerts",
-                                event.signalId());
-                    }
-                });
+        kafkaTemplate.send(ALERTS_TOPIC, event.symbol(), json).get(5, TimeUnit.SECONDS);
+        log.debug("Rejection event for signal {} published to alerts", event.signalId());
     }
 }

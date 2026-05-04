@@ -14,7 +14,7 @@ public class ResilienceConfig {
     public CircuitBreakerRegistry circuitBreakerRegistry() {
         CircuitBreakerConfig config = CircuitBreakerConfig.custom()
                 .slidingWindowSize(5)
-                .failureRateThreshold(100)
+                .failureRateThreshold(50)
                 .waitDurationInOpenState(Duration.ofSeconds(30))
                 .permittedNumberOfCallsInHalfOpenState(2)
                 .build();

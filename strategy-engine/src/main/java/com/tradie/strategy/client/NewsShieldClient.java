@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
-import java.util.List;
 
 @Service
 public class NewsShieldClient {
@@ -35,33 +34,26 @@ public class NewsShieldClient {
 
     @Cacheable(value = "marketStatus", key = "#symbol != null ? #symbol : 'global'")
     public MarketStatusResponse getMarketStatus(String symbol) {
-        try {
-            MarketStatusResponse response = webClient.get()
-                    .uri(uriBuilder -> {
-                        var builder = uriBuilder.path("/api/market-status");
-                        if (symbol != null && !symbol.isBlank()) {
-                            builder.queryParam("symbol", symbol);
-                        }
-                        return builder.build();
-                    })
-                    .retrieve()
-                    .bodyToMono(MarketStatusResponse.class)
-                    .timeout(Duration.ofMillis(timeoutMs))
-                    .transformDeferred(CircuitBreakerOperator.of(circuitBreaker))
-                    .block();
+        MarketStatusResponse response = webClient.get()
+                .uri(uriBuilder -> {
+                    var builder = uriBuilder.path("/api/market-status");
+                    if (symbol != null && !symbol.isBlank()) {
+                        builder.queryParam("symbol", symbol);
+                    }
+                    return builder.build();
+                })
+                .retrieve()
+                .bodyToMono(MarketStatusResponse.class)
+                .timeout(Duration.ofMillis(timeoutMs))
+                .transformDeferred(CircuitBreakerOperator.of(circuitBreaker))
+                .block();
 
-            log.debug("News Shield response for {}: safe={}, risk={}", symbol,
-                    response != null ? response.safeToTrade() : "null",
-                    response != null ? response.riskLevel() : "null");
-            return response != null ? response : fallbackMarketStatus();
-        } catch (Exception e) {
-            log.warn("News Shield unavailable for symbol={}, applying safe fallback: {}", symbol, e.getMessage());
-            return fallbackMarketStatus();
+        log.debug("News Shield response for {}: safe={}, risk={}", symbol,
+                response != null ? response.safeToTrade() : "null",
+                response != null ? response.riskLevel() : "null");
+        if (response == null) {
+            throw new IllegalStateException("News Shield returned null response for symbol: " + symbol);
         }
-    }
-
-    private MarketStatusResponse fallbackMarketStatus() {
-        return new MarketStatusResponse(true, "LOW",
-                List.of("News Shield unavailable - fallback applied"));
+        return response;
     }
 }

@@ -66,9 +66,15 @@ public class SignalValidationService {
         }
 
         // Step 2: News Shield
-        MarketStatusResponse market = newsShieldClient.getMarketStatus(signal.getSymbol());
-        if (!market.safeToTrade()) {
-            return reject(signal, "News Shield: " + String.join(", ", market.reasons()));
+        try {
+            MarketStatusResponse market = newsShieldClient.getMarketStatus(signal.getSymbol());
+            if (!market.safeToTrade()) {
+                return reject(signal, "News Shield: " + String.join(", ", market.reasons()));
+            }
+        } catch (Exception e) {
+            log.warn("News Shield unavailable for symbol={}, applying fail-open fallback: {}",
+                    signal.getSymbol(), e.getMessage());
+            warnings.add("News Shield unavailable - proceeding with caution");
         }
 
         // Step 3: Kill zone timing
@@ -111,7 +117,9 @@ public class SignalValidationService {
                 signal.getStopLoss(),
                 signal.getTakeProfit(),
                 signal.getStrategy(),
-                Instant.now().plusSeconds(signalExpirySeconds)
+                signal.getCreatedAt() != null
+                        ? signal.getCreatedAt().plusSeconds(signalExpirySeconds)
+                        : Instant.now().plusSeconds(signalExpirySeconds)
         );
 
         validatedCounter.increment();

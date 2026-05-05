@@ -137,6 +137,6 @@ public class TradeSignal {
     }
 
     public enum SignalStatus {
-        PENDING, VALIDATED, EXECUTED, REJECTED, EXPIRED
+        PENDING, VALIDATED, EXECUTED, REJECTED, EXPIRED, PUBLISH_FAILED
     }
 }

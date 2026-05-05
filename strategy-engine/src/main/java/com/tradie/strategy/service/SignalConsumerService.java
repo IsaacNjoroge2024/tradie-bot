@@ -54,7 +54,18 @@ public class SignalConsumerService {
 
         try {
             JsonNode node = objectMapper.readTree(message);
-            UUID signalId = UUID.fromString(node.get("id").asText());
+            JsonNode idNode = node.get("id");
+            if (idNode == null || idNode.isNull()) {
+                log.warn("Malformed Kafka message: missing 'id' field, routing to DLQ. key={}", key);
+                try {
+                    kafkaTemplate.send(DLQ_TOPIC, key, message).get(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (Exception dlqEx) {
+                    log.error("Failed to send malformed message to DLQ: {}", dlqEx.getMessage());
+                }
+                ack.acknowledge();
+                return;
+            }
+            UUID signalId = UUID.fromString(idNode.asText());
 
             signal = signalRepository.findById(signalId).orElse(null);
             if (signal == null) {
@@ -111,7 +122,7 @@ public class SignalConsumerService {
 
             if (signal != null) {
                 try {
-                    signal.setStatus(TradeSignal.SignalStatus.REJECTED);
+                    signal.setStatus(TradeSignal.SignalStatus.PUBLISH_FAILED);
                     signal.setRejectionReason("Processing error: " + e.getMessage());
                     signal.setProcessedAt(Instant.now());
                     signalRepository.save(signal);

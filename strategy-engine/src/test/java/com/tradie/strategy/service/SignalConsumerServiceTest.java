@@ -156,7 +156,7 @@ class SignalConsumerServiceTest {
     }
 
     @Test
-    void consume_processingException_routesToDlq() throws Exception {
+    void consume_processingException_routesToDlqWithPublishFailedStatus() throws Exception {
         UUID id = UUID.randomUUID();
         TradeSignal signal = buildSignal(id);
 
@@ -168,6 +168,21 @@ class SignalConsumerServiceTest {
         consumer.consume(messageJson(id), "AAPL", ack);
 
         verify(kafkaTemplate).send(eq("tradie.signals.dlq"), anyString(), anyString());
+        ArgumentCaptor<TradeSignal> captor = ArgumentCaptor.forClass(TradeSignal.class);
+        verify(signalRepository).save(captor.capture());
+        assertEquals(TradeSignal.SignalStatus.PUBLISH_FAILED, captor.getValue().getStatus());
+        verify(ack).acknowledge();
+    }
+
+    @Test
+    void consume_malformedMessage_missingId_routesToDlq() throws Exception {
+        String malformedMessage = "{\"symbol\":\"AAPL\"}";
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successFuture);
+
+        consumer.consume(malformedMessage, "AAPL", ack);
+
+        verify(kafkaTemplate).send(eq("tradie.signals.dlq"), anyString(), anyString());
+        verify(signalRepository, never()).findById(any());
         verify(ack).acknowledge();
     }
 }

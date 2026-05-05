@@ -131,6 +131,20 @@ class SignalConsumerServiceTest {
     }
 
     @Test
+    void consume_alreadyProcessedSignal_skipsAsDuplicate() throws Exception {
+        UUID id = UUID.randomUUID();
+        TradeSignal signal = buildSignal(id);
+        signal.setStatus(TradeSignal.SignalStatus.VALIDATED);
+
+        when(signalRepository.findById(id)).thenReturn(Optional.of(signal));
+
+        consumer.consume(messageJson(id), "AAPL", ack);
+
+        verify(validationService, never()).validate(any());
+        verify(ack).acknowledge();
+    }
+
+    @Test
     void consume_signalNotInDb_skipsProcessing() throws Exception {
         UUID id = UUID.randomUUID();
         when(signalRepository.findById(id)).thenReturn(Optional.empty());

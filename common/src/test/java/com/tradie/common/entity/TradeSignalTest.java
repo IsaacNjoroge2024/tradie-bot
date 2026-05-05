@@ -106,7 +106,8 @@ class TradeSignalTest {
         assertDoesNotThrow(() -> TradeSignal.SignalStatus.valueOf("EXECUTED"));
         assertDoesNotThrow(() -> TradeSignal.SignalStatus.valueOf("REJECTED"));
         assertDoesNotThrow(() -> TradeSignal.SignalStatus.valueOf("EXPIRED"));
-        assertEquals(5, TradeSignal.SignalStatus.values().length);
+        assertDoesNotThrow(() -> TradeSignal.SignalStatus.valueOf("PUBLISH_FAILED"));
+        assertEquals(6, TradeSignal.SignalStatus.values().length);
     }
 
     @Test

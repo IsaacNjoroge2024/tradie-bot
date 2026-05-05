@@ -43,5 +43,9 @@ class NewsShieldClientTest {
         for (int i = 0; i < 3; i++) {
             assertThrows(Exception.class, () -> client.getMarketStatus("AAPL"));
         }
+
+        var cb = circuitBreakerRegistry.circuitBreaker("newsShield");
+        assertTrue(cb.getMetrics().getNumberOfFailedCalls() >= 3,
+                "Circuit breaker should register failed calls");
     }
 }

@@ -15,6 +15,7 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 public class RiskRuleService {
@@ -111,10 +112,13 @@ public class RiskRuleService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal accountBalance = BigDecimal.valueOf(defaultAccountBalance);
+        if (accountBalance.compareTo(BigDecimal.ZERO) <= 0) {
+            return RuleResult.fail("Invalid account balance configured: " + accountBalance);
+        }
         BigDecimal heatPct = totalRisk.divide(accountBalance, 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100));
 
-        if (heatPct.compareTo(BigDecimal.valueOf(maxPortfolioHeatPct)) > 0) {
+        if (heatPct.compareTo(BigDecimal.valueOf(maxPortfolioHeatPct)) >= 0) {
             return RuleResult.fail(String.format(
                     "Portfolio heat too high: %.2f%% (max %.2f%%)", heatPct, maxPortfolioHeatPct));
         }
@@ -138,7 +142,7 @@ public class RiskRuleService {
                 .findBySymbolAndCreatedAtAfterOrderByCreatedAtDesc(signal.getSymbol(), fiveMinutesAgo);
 
         boolean duplicate = recent.stream()
-                .filter(s -> s.getId() == null || !s.getId().equals(signal.getId()))
+                .filter(s -> !Objects.equals(s.getId(), signal.getId()))
                 .anyMatch(s -> s.getAction() == signal.getAction()
                         && s.getStatus() != TradeSignal.SignalStatus.REJECTED
                         && s.getStatus() != TradeSignal.SignalStatus.EXPIRED);

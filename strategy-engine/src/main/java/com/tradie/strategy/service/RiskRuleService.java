@@ -79,7 +79,10 @@ public class RiskRuleService {
 
     private RuleResult checkDailyLossLimit() {
         BigDecimal dailyPnl = dailyMetrics.getDailyPnl();
-        BigDecimal lossLimit = BigDecimal.valueOf(-defaultAccountBalance * maxDailyLossPct / 100.0);
+        BigDecimal lossLimit = BigDecimal.valueOf(defaultAccountBalance)
+                .multiply(BigDecimal.valueOf(maxDailyLossPct))
+                .divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP)
+                .negate();
 
         if (dailyPnl.compareTo(lossLimit) <= 0) {
             return RuleResult.fail(String.format(

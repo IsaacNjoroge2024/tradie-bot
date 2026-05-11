@@ -8,6 +8,7 @@ public record PositionSizeResult(
         BigDecimal riskAmount,
         double riskPercentage,
         String sizingMethod,
+        String assetClass,
         List<String> adjustments,
         boolean valid,
         double portfolioHeatBefore,

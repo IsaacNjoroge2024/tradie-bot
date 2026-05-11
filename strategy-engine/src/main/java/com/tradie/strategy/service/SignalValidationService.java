@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +26,7 @@ public class SignalValidationService {
     private final NewsShieldClient newsShieldClient;
     private final KillZoneService killZoneService;
     private final RiskRuleService riskRuleService;
-    private final PositionSizer positionSizer;
+    private final PositionSizeService positionSizeService;
 
     private final Counter receivedCounter;
     private final Counter validatedCounter;
@@ -39,12 +40,12 @@ public class SignalValidationService {
             NewsShieldClient newsShieldClient,
             KillZoneService killZoneService,
             RiskRuleService riskRuleService,
-            PositionSizer positionSizer,
+            PositionSizeService positionSizeService,
             MeterRegistry meterRegistry) {
         this.newsShieldClient = newsShieldClient;
         this.killZoneService = killZoneService;
         this.riskRuleService = riskRuleService;
-        this.positionSizer = positionSizer;
+        this.positionSizeService = positionSizeService;
         this.meterRegistry = meterRegistry;
 
         this.receivedCounter  = Counter.builder("tradie.signals.received").register(meterRegistry);
@@ -99,32 +100,61 @@ public class SignalValidationService {
             }
         }
 
-        // Step 5: Position size
-        BigDecimal quantity = positionSizer.calculateQuantity(
-                signal.getPrice(), signal.getStopLoss(), sizeAdjustment);
+        // Step 5: Position sizing with full risk metrics
+        PositionSizeResult sizing = positionSizeService.calculatePositionSize(signal, sizeAdjustment);
+        if (!sizing.valid()) {
+            return reject(signal, "Position size invalid after adjustments");
+        }
+        warnings.addAll(sizing.adjustments());
 
-        // Step 6: Build order
+        // Step 6: Build risk/reward metrics
+        double riskRewardRatio = 0.0;
+        double expectedReward = 0.0;
+        if (signal.getStopLoss() != null && signal.getTakeProfit() != null) {
+            BigDecimal entry = signal.getPrice();
+            BigDecimal risk = entry.subtract(signal.getStopLoss()).abs();
+            BigDecimal reward = signal.getTakeProfit().subtract(entry).abs();
+            if (risk.compareTo(BigDecimal.ZERO) > 0) {
+                riskRewardRatio = reward.divide(risk, 4, RoundingMode.HALF_UP).doubleValue();
+                expectedReward = sizing.riskAmount()
+                        .multiply(BigDecimal.valueOf(riskRewardRatio))
+                        .doubleValue();
+            }
+        }
+
+        // Step 7: Build order with risk metrics
+        Order.OrderSide side = signal.getAction() == TradeSignal.SignalAction.BUY
+                ? Order.OrderSide.BUY : Order.OrderSide.SELL;
+        Instant validUntil = signal.getCreatedAt() != null
+                ? signal.getCreatedAt().plusSeconds(signalExpirySeconds)
+                : Instant.now().plusSeconds(signalExpirySeconds);
+
         OrderDTO order = new OrderDTO(
                 signal.getId(),
                 signal.getSymbol(),
                 signal.getExchange(),
                 "STK",
-                signal.getAction() == TradeSignal.SignalAction.BUY
-                        ? Order.OrderSide.BUY : Order.OrderSide.SELL,
+                side,
                 Order.OrderType.LIMIT,
-                quantity,
+                sizing.quantity(),
                 signal.getPrice(),
                 signal.getStopLoss(),
                 signal.getTakeProfit(),
                 signal.getStrategy(),
-                signal.getCreatedAt() != null
-                        ? signal.getCreatedAt().plusSeconds(signalExpirySeconds)
-                        : Instant.now().plusSeconds(signalExpirySeconds)
+                validUntil,
+                sizing.riskAmount(),
+                sizing.riskPercentage(),
+                sizing.portfolioHeatBefore(),
+                sizing.portfolioHeatAfter(),
+                expectedReward,
+                riskRewardRatio,
+                sizing.sizingMethod()
         );
 
         validatedCounter.increment();
-        log.info("Signal {} VALIDATED: {} {} qty={} @ {}",
-                signal.getId(), signal.getAction(), signal.getSymbol(), quantity, signal.getPrice());
+        log.info("Signal {} VALIDATED: {} {} qty={} @ {} riskAmt={} rr={}",
+                signal.getId(), signal.getAction(), signal.getSymbol(),
+                sizing.quantity(), signal.getPrice(), sizing.riskAmount(), riskRewardRatio);
         return new ValidationResult(true, null, order, warnings);
     }
 
@@ -140,7 +170,6 @@ public class SignalValidationService {
     }
 
     private String sanitizeTag(String reason) {
-        // Truncate long reasons for Micrometer tag cardinality safety
         return reason != null && reason.length() > 50 ? reason.substring(0, 50) : reason;
     }
 }

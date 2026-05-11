@@ -18,5 +18,12 @@ public record OrderDTO(
         BigDecimal stopLoss,
         BigDecimal takeProfit,
         String strategy,
-        Instant validUntil
+        Instant validUntil,
+        BigDecimal riskAmount,
+        double riskPercentage,
+        double portfolioHeatBefore,
+        double portfolioHeatAfter,
+        double expectedReward,
+        double riskRewardRatio,
+        String sizingMethod
 ) {}

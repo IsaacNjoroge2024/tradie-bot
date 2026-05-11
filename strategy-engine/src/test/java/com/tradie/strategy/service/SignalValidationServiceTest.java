@@ -3,6 +3,7 @@ package com.tradie.strategy.service;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.strategy.client.NewsShieldClient;
 import com.tradie.strategy.dto.MarketStatusResponse;
+import com.tradie.strategy.dto.PositionSizeResult;
 import com.tradie.strategy.dto.RuleResult;
 import com.tradie.strategy.dto.ValidationResult;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -34,7 +35,7 @@ class SignalValidationServiceTest {
     private RiskRuleService riskRuleService;
 
     @Mock
-    private PositionSizer positionSizer;
+    private PositionSizeService positionSizeService;
 
     private SignalValidationService service;
 
@@ -42,7 +43,7 @@ class SignalValidationServiceTest {
     void setUp() {
         service = new SignalValidationService(
                 newsShieldClient, killZoneService, riskRuleService,
-                positionSizer, new SimpleMeterRegistry());
+                positionSizeService, new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "signalExpirySeconds", 300);
     }
 
@@ -59,6 +60,12 @@ class SignalValidationServiceTest {
         return s;
     }
 
+    private PositionSizeResult validSizing(BigDecimal quantity) {
+        return new PositionSizeResult(
+                quantity, BigDecimal.valueOf(200), 2.0,
+                "FIXED_FRACTIONAL", List.of(), true, 0.0, 2.0);
+    }
+
     private void stubAllPass() {
         when(newsShieldClient.getMarketStatus(anyString()))
                 .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
@@ -66,8 +73,8 @@ class SignalValidationServiceTest {
                 .thenReturn(new KillZoneService.KillZoneResult(true, null, null));
         when(riskRuleService.validateAll(any()))
                 .thenReturn(List.of(RuleResult.pass()));
-        when(positionSizer.calculateQuantity(any(), any(), any()))
-                .thenReturn(BigDecimal.valueOf(10));
+        when(positionSizeService.calculatePositionSize(any(), any()))
+                .thenReturn(validSizing(BigDecimal.valueOf(10)));
     }
 
     @Test
@@ -83,7 +90,7 @@ class SignalValidationServiceTest {
     @Test
     void validate_expiredSignal_rejected() {
         TradeSignal signal = freshSignal();
-        signal.setCreatedAt(Instant.now().minusSeconds(400)); // older than 300s
+        signal.setCreatedAt(Instant.now().minusSeconds(400));
 
         ValidationResult result = service.validate(signal);
 
@@ -98,7 +105,8 @@ class SignalValidationServiceTest {
         when(killZoneService.validate(any()))
                 .thenReturn(new KillZoneService.KillZoneResult(true, null, null));
         when(riskRuleService.validateAll(any())).thenReturn(List.of(RuleResult.pass()));
-        when(positionSizer.calculateQuantity(any(), any(), any())).thenReturn(BigDecimal.valueOf(10));
+        when(positionSizeService.calculatePositionSize(any(), any()))
+                .thenReturn(validSizing(BigDecimal.valueOf(10)));
 
         ValidationResult result = service.validate(freshSignal());
 
@@ -156,8 +164,8 @@ class SignalValidationServiceTest {
                 .thenReturn(new KillZoneService.KillZoneResult(true, null, null));
         when(riskRuleService.validateAll(any()))
                 .thenReturn(List.of(RuleResult.passWithAdjustment(BigDecimal.valueOf(0.5))));
-        when(positionSizer.calculateQuantity(any(), any(), eq(BigDecimal.valueOf(0.5))))
-                .thenReturn(BigDecimal.valueOf(5));
+        when(positionSizeService.calculatePositionSize(any(), eq(BigDecimal.valueOf(0.5))))
+                .thenReturn(validSizing(BigDecimal.valueOf(5)));
 
         ValidationResult result = service.validate(freshSignal());
 
@@ -171,11 +179,12 @@ class SignalValidationServiceTest {
         when(newsShieldClient.getMarketStatus(anyString()))
                 .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
         when(killZoneService.validate(any()))
-                .thenReturn(new KillZoneService.KillZoneResult(true, null, "Outside Kill Zone - allowed for high-confidence"));
+                .thenReturn(new KillZoneService.KillZoneResult(true, null,
+                        "Outside Kill Zone - allowed for high-confidence"));
         when(riskRuleService.validateAll(any()))
                 .thenReturn(List.of(RuleResult.pass()));
-        when(positionSizer.calculateQuantity(any(), any(), any()))
-                .thenReturn(BigDecimal.TEN);
+        when(positionSizeService.calculatePositionSize(any(), any()))
+                .thenReturn(validSizing(BigDecimal.TEN));
 
         ValidationResult result = service.validate(freshSignal());
 
@@ -195,5 +204,37 @@ class SignalValidationServiceTest {
         assertEquals("NASDAQ", result.order().exchange());
         assertEquals(BigDecimal.valueOf(10), result.order().quantity());
         assertEquals(BigDecimal.valueOf(150), result.order().limitPrice());
+    }
+
+    @Test
+    void validate_orderDTO_hasRiskMetrics() {
+        stubAllPass();
+        ValidationResult result = service.validate(freshSignal());
+
+        assertTrue(result.approved());
+        assertNotNull(result.order().riskAmount());
+        assertEquals(0.0, result.order().portfolioHeatBefore(), 0.001);
+        assertEquals(2.0, result.order().portfolioHeatAfter(), 0.01);
+        assertEquals("FIXED_FRACTIONAL", result.order().sizingMethod());
+        assertTrue(result.order().riskRewardRatio() > 0);
+    }
+
+    @Test
+    void validate_positionSizeInvalid_rejected() {
+        when(newsShieldClient.getMarketStatus(anyString()))
+                .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
+        when(killZoneService.validate(any()))
+                .thenReturn(new KillZoneService.KillZoneResult(true, null, null));
+        when(riskRuleService.validateAll(any()))
+                .thenReturn(List.of(RuleResult.pass()));
+        when(positionSizeService.calculatePositionSize(any(), any()))
+                .thenReturn(new PositionSizeResult(
+                        BigDecimal.ZERO, BigDecimal.ZERO, 0.0,
+                        "FIXED_FRACTIONAL", List.of(), false, 0.0, 0.0));
+
+        ValidationResult result = service.validate(freshSignal());
+
+        assertFalse(result.approved());
+        assertTrue(result.rejectionReason().contains("Position size invalid"));
     }
 }

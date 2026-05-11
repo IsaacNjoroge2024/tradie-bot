@@ -63,7 +63,7 @@ class SignalValidationServiceTest {
     private PositionSizeResult validSizing(BigDecimal quantity) {
         return new PositionSizeResult(
                 quantity, BigDecimal.valueOf(200), 2.0,
-                "FIXED_FRACTIONAL", List.of(), true, 0.0, 2.0);
+                "FIXED_FRACTIONAL", "STK", List.of(), true, 0.0, 2.0);
     }
 
     private void stubAllPass() {
@@ -230,7 +230,7 @@ class SignalValidationServiceTest {
         when(positionSizeService.calculatePositionSize(any(), any()))
                 .thenReturn(new PositionSizeResult(
                         BigDecimal.ZERO, BigDecimal.ZERO, 0.0,
-                        "FIXED_FRACTIONAL", List.of(), false, 0.0, 0.0));
+                        "FIXED_FRACTIONAL", "STK", List.of(), false, 0.0, 0.0));
 
         ValidationResult result = service.validate(freshSignal());
 

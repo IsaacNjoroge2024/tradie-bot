@@ -132,7 +132,7 @@ public class SignalValidationService {
                 signal.getId(),
                 signal.getSymbol(),
                 signal.getExchange(),
-                "STK",
+                sizing.assetClass(),
                 side,
                 Order.OrderType.LIMIT,
                 sizing.quantity(),

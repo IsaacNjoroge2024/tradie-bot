@@ -37,9 +37,6 @@ public class PositionSizeService {
     @Value("${tradie.portfolio.reduce-heat-pct:5.0}")
     private double reduceHeatPct;
 
-    @Value("${tradie.portfolio.max-heat-pct:6.0}")
-    private double maxHeatPct;
-
     private final AccountService accountService;
     private final PortfolioHeatService portfolioHeatService;
     private final FixedFractionalCalculator fixedFractionalCalculator;
@@ -74,6 +71,7 @@ public class PositionSizeService {
                                                      BigDecimal sizeAdjustmentFactor) {
         AccountInfo account = accountService.getAccountInfo();
         List<String> adjustments = new ArrayList<>();
+        String assetClass = detectAssetClass(signal);
 
         // 1. Current portfolio heat
         double heatBefore = portfolioHeatService.getCurrentHeatPct();
@@ -121,7 +119,7 @@ public class PositionSizeService {
 
         return new PositionSizeResult(
                 quantity, riskAmount, riskPct, method,
-                List.copyOf(adjustments), valid, heatBefore, heatAfter);
+                assetClass, List.copyOf(adjustments), valid, heatBefore, heatAfter);
     }
 
     private String determineSizingMethod() {

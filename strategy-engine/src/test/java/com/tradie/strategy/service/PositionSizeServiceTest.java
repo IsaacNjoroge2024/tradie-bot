@@ -57,7 +57,6 @@ class PositionSizeServiceTest {
         ReflectionTestUtils.setField(service, "defaultSizingMethod", "FIXED_FRACTIONAL");
         ReflectionTestUtils.setField(service, "warningHeatPct", 4.0);
         ReflectionTestUtils.setField(service, "reduceHeatPct", 5.0);
-        ReflectionTestUtils.setField(service, "maxHeatPct", 6.0);
 
         when(accountService.getAccountInfo()).thenReturn(DEFAULT_ACCOUNT);
         when(portfolioHeatService.getCurrentHeatPct()).thenReturn(0.0);

@@ -12,4 +12,8 @@ public record PositionSizeResult(
         boolean valid,
         double portfolioHeatBefore,
         double portfolioHeatAfter
-) {}
+) {
+    public PositionSizeResult {
+        adjustments = adjustments == null ? List.of() : List.copyOf(adjustments);
+    }
+}

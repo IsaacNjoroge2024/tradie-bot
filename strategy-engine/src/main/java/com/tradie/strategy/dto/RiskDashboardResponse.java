@@ -11,4 +11,8 @@ public record RiskDashboardResponse(
         BigDecimal dailyPnl,
         long dailyTradeCount,
         long losingStreak
-) {}
+) {
+    public RiskDashboardResponse {
+        openPositions = openPositions == null ? List.of() : List.copyOf(openPositions);
+    }
+}

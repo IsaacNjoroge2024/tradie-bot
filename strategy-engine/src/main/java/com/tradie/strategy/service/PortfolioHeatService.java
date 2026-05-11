@@ -38,15 +38,19 @@ public class PortfolioHeatService {
     }
 
     public double getCurrentHeatPct() {
+        return getHeatData().totalHeatPct();
+    }
+
+    public PortfolioHeatData getHeatData() {
         try {
             String cached = redisTemplate.opsForValue().get(HEAT_KEY);
             if (cached != null) {
-                return objectMapper.readValue(cached, PortfolioHeatData.class).totalHeatPct();
+                return objectMapper.readValue(cached, PortfolioHeatData.class);
             }
         } catch (Exception e) {
             log.debug("Could not read portfolio heat from Redis, recalculating: {}", e.getMessage());
         }
-        return calculateAndStore().totalHeatPct();
+        return calculateAndStore();
     }
 
     public PortfolioHeatData calculateAndStore() {
@@ -61,11 +65,11 @@ public class PortfolioHeatService {
                     BigDecimal stopDistance = p.getEntryPrice().subtract(p.getStopLoss()).abs();
                     BigDecimal riskAmount = p.getQuantity().multiply(stopDistance);
                     double riskPct = accountValue.compareTo(BigDecimal.ZERO) > 0
-                            ? riskAmount.divide(accountValue, 4, RoundingMode.HALF_UP)
-                                        .multiply(BigDecimal.valueOf(100)).doubleValue()
+                            ? riskAmount.multiply(BigDecimal.valueOf(100))
+                                        .divide(accountValue, 4, RoundingMode.HALF_UP).doubleValue()
                             : 0.0;
                     return new PortfolioHeatData.PositionHeatEntry(
-                            p.getSymbol(), riskAmount.doubleValue(), riskPct);
+                            p.getSymbol(), riskAmount, riskPct);
                 })
                 .collect(Collectors.toList());
 

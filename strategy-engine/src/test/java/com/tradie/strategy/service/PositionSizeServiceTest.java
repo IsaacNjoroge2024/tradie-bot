@@ -205,6 +205,18 @@ class PositionSizeServiceTest {
     }
 
     @Test
+    void calculatePositionSize_zeroAdjustmentFactor_invalidNotBumpedToOne() {
+        when(fixedFractionalCalculator.calculate(any(), any(), any()))
+                .thenReturn(BigDecimal.valueOf(40));
+
+        // sizeAdjustmentFactor=0 drives quantity to zero — must not be silently floored to 1
+        PositionSizeResult result = service.calculatePositionSize(buildSignal(), BigDecimal.ZERO);
+
+        assertFalse(result.valid());
+        assertTrue(result.adjustments().stream().anyMatch(a -> a.contains("fell to zero")));
+    }
+
+    @Test
     void calculatePositionSize_portfolioHeatFields_populated() {
         when(portfolioHeatService.getCurrentHeatPct()).thenReturn(2.0);
         when(fixedFractionalCalculator.calculate(any(), any(), any()))

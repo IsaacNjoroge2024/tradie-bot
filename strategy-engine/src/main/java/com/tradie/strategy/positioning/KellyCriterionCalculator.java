@@ -28,17 +28,15 @@ public class KellyCriterionCalculator {
     private int lookbackDays;
 
     private final PositionRepository positionRepository;
-    private final FixedFractionalCalculator fallback;
 
-    public KellyCriterionCalculator(PositionRepository positionRepository,
-                                     FixedFractionalCalculator fallback) {
+    public KellyCriterionCalculator(PositionRepository positionRepository) {
         this.positionRepository = positionRepository;
-        this.fallback = fallback;
     }
 
     /**
      * Calculates quantity using Kelly Criterion.
-     * Falls back to Fixed Fractional if fewer than minTradesRequired closed positions exist.
+     * Returns Optional.empty() if insufficient trade history or negative Kelly percentage;
+     * the caller is responsible for falling back to an alternative sizing method.
      *
      * Formula: kellyPct = winRate - ((1 - winRate) / (avgWin / avgLoss))
      * Applied with fractional Kelly for safety: kellyPct × kellyFraction

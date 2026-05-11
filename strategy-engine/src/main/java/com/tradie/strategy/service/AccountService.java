@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 public class AccountService {
 
     @Value("${tradie.risk.default-account-balance:10000.0}")
-    private double defaultAccountBalance;
+    private BigDecimal defaultAccountBalance;
 
     /**
      * Returns configuration-based account info.
@@ -19,7 +19,7 @@ public class AccountService {
      */
     @Cacheable("accountInfo")
     public AccountInfo getAccountInfo() {
-        BigDecimal value = BigDecimal.valueOf(defaultAccountBalance);
-        return new AccountInfo(value, value, value, BigDecimal.ZERO);
+        return new AccountInfo(defaultAccountBalance, defaultAccountBalance,
+                defaultAccountBalance, BigDecimal.ZERO);
     }
 }

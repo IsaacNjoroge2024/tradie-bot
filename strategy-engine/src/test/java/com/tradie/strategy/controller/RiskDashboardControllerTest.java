@@ -38,12 +38,12 @@ class RiskDashboardControllerTest {
     void getDashboard_returnsCorrectResponse() throws Exception {
         PortfolioHeatData heatData = new PortfolioHeatData(
                 3.5,
-                List.of(new PortfolioHeatData.PositionHeatEntry("AAPL", 200.0, 2.0),
-                        new PortfolioHeatData.PositionHeatEntry("MSFT", 150.0, 1.5)),
+                List.of(new PortfolioHeatData.PositionHeatEntry("AAPL", BigDecimal.valueOf(200), 2.0),
+                        new PortfolioHeatData.PositionHeatEntry("MSFT", BigDecimal.valueOf(150), 1.5)),
                 Instant.now()
         );
 
-        when(portfolioHeatService.calculateAndStore()).thenReturn(heatData);
+        when(portfolioHeatService.getHeatData()).thenReturn(heatData);
         when(dailyMetricsService.getDailyPnl()).thenReturn(BigDecimal.valueOf(250));
         when(dailyMetricsService.getDailyTradeCount()).thenReturn(3L);
         when(dailyMetricsService.getConsecutiveLosses()).thenReturn(0L);
@@ -64,7 +64,7 @@ class RiskDashboardControllerTest {
     void getDashboard_noOpenPositions_returnsZeroHeat() throws Exception {
         PortfolioHeatData heatData = new PortfolioHeatData(0.0, List.of(), Instant.now());
 
-        when(portfolioHeatService.calculateAndStore()).thenReturn(heatData);
+        when(portfolioHeatService.getHeatData()).thenReturn(heatData);
         when(dailyMetricsService.getDailyPnl()).thenReturn(BigDecimal.ZERO);
         when(dailyMetricsService.getDailyTradeCount()).thenReturn(0L);
         when(dailyMetricsService.getConsecutiveLosses()).thenReturn(0L);
@@ -81,7 +81,7 @@ class RiskDashboardControllerTest {
     void getDashboard_losingStreak_included() throws Exception {
         PortfolioHeatData heatData = new PortfolioHeatData(1.0, List.of(), Instant.now());
 
-        when(portfolioHeatService.calculateAndStore()).thenReturn(heatData);
+        when(portfolioHeatService.getHeatData()).thenReturn(heatData);
         when(dailyMetricsService.getDailyPnl()).thenReturn(BigDecimal.valueOf(-150));
         when(dailyMetricsService.getDailyTradeCount()).thenReturn(4L);
         when(dailyMetricsService.getConsecutiveLosses()).thenReturn(3L);

@@ -109,7 +109,7 @@ public class SignalValidationService {
 
         // Step 6: Build risk/reward metrics
         double riskRewardRatio = 0.0;
-        double expectedReward = 0.0;
+        BigDecimal expectedReward = BigDecimal.ZERO;
         if (signal.getStopLoss() != null && signal.getTakeProfit() != null) {
             BigDecimal entry = signal.getPrice();
             BigDecimal risk = entry.subtract(signal.getStopLoss()).abs();
@@ -117,8 +117,7 @@ public class SignalValidationService {
             if (risk.compareTo(BigDecimal.ZERO) > 0) {
                 riskRewardRatio = reward.divide(risk, 4, RoundingMode.HALF_UP).doubleValue();
                 expectedReward = sizing.riskAmount()
-                        .multiply(BigDecimal.valueOf(riskRewardRatio))
-                        .doubleValue();
+                        .multiply(BigDecimal.valueOf(riskRewardRatio));
             }
         }
 

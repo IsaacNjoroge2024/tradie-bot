@@ -216,7 +216,7 @@ class SignalValidationServiceTest {
         assertEquals(0.0, result.order().portfolioHeatBefore(), 0.001);
         assertEquals(2.0, result.order().portfolioHeatAfter(), 0.01);
         assertEquals("FIXED_FRACTIONAL", result.order().sizingMethod());
-        assertTrue(result.order().riskRewardRatio() > 0);
+        assertEquals(3.0, result.order().riskRewardRatio(), 0.001);
     }
 
     @Test

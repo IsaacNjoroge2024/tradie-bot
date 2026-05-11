@@ -95,7 +95,7 @@ class SignalConsumerServiceTest {
                 BigDecimal.TEN, BigDecimal.valueOf(150),
                 BigDecimal.valueOf(145), BigDecimal.valueOf(165),
                 "FVG", Instant.now().plusSeconds(300),
-                BigDecimal.valueOf(200), 2.0, 0.0, 2.0, 400.0, 2.0, "FIXED_FRACTIONAL");
+                BigDecimal.valueOf(200), 2.0, 0.0, 2.0, BigDecimal.valueOf(400), 2.0, "FIXED_FRACTIONAL");
 
         when(signalRepository.findById(id)).thenReturn(Optional.of(signal));
         when(validationService.validate(signal))

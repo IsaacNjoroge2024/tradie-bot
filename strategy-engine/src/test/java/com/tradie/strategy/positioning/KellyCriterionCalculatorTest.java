@@ -23,14 +23,11 @@ class KellyCriterionCalculatorTest {
     @Mock
     private PositionRepository positionRepository;
 
-    @Mock
-    private FixedFractionalCalculator fallback;
-
     private KellyCriterionCalculator calculator;
 
     @BeforeEach
     void setUp() {
-        calculator = new KellyCriterionCalculator(positionRepository, fallback);
+        calculator = new KellyCriterionCalculator(positionRepository);
         ReflectionTestUtils.setField(calculator, "kellyFraction", 0.25);
         ReflectionTestUtils.setField(calculator, "minTradesRequired", 30);
         ReflectionTestUtils.setField(calculator, "lookbackDays", 90);

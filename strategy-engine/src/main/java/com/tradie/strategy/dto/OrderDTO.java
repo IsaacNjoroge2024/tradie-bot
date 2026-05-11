@@ -23,7 +23,7 @@ public record OrderDTO(
         double riskPercentage,
         double portfolioHeatBefore,
         double portfolioHeatAfter,
-        double expectedReward,
+        BigDecimal expectedReward,
         double riskRewardRatio,
         String sizingMethod
 ) {}

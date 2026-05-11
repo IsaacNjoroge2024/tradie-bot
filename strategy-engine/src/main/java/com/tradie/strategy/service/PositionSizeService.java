@@ -79,7 +79,7 @@ public class PositionSizeService {
         double heatBefore = portfolioHeatService.getCurrentHeatPct();
 
         // 2. Determine sizing method
-        String method = determineSizingMethod(signal.getStrategy());
+        String method = determineSizingMethod();
 
         // 3. Calculate base quantity
         BigDecimal quantity = calculateByMethod(method, signal, account, adjustments);
@@ -98,11 +98,12 @@ public class PositionSizeService {
             adjustments.add("Risk rule size adjustment: factor " + sizeAdjustmentFactor);
         }
 
-        // 7. Round for asset class
-        quantity = roundForAssetClass(signal, quantity);
-
-        // 8. Validate minimum
+        // 7. Validate minimum before lot-size floor so true zero is preserved
         boolean valid = quantity.compareTo(BigDecimal.ZERO) > 0;
+        if (valid) {
+            quantity = roundForAssetClass(signal, quantity);
+            valid = quantity.compareTo(BigDecimal.ZERO) > 0;
+        }
         if (!valid) {
             adjustments.add("Position size fell to zero after all adjustments");
         }
@@ -123,7 +124,7 @@ public class PositionSizeService {
                 List.copyOf(adjustments), valid, heatBefore, heatAfter);
     }
 
-    private String determineSizingMethod(String strategy) {
+    private String determineSizingMethod() {
         return defaultSizingMethod != null ? defaultSizingMethod.toUpperCase() : METHOD_FIXED_FRACTIONAL;
     }
 

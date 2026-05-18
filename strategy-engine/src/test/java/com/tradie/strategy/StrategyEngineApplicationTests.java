@@ -1,5 +1,6 @@
 package com.tradie.strategy;
 
+import com.tradie.common.repository.OHLCVCandleRepository;
 import com.tradie.common.repository.PositionRepository;
 import com.tradie.common.repository.TradeSignalRepository;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,9 @@ class StrategyEngineApplicationTests {
 
     @MockBean
     PositionRepository positionRepository;
+
+    @MockBean
+    OHLCVCandleRepository ohlcvCandleRepository;
 
     @MockBean
     StringRedisTemplate stringRedisTemplate;

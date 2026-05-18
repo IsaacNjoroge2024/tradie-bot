@@ -17,6 +17,7 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class SignalValidationService {
@@ -27,6 +28,7 @@ public class SignalValidationService {
     private final KillZoneService killZoneService;
     private final RiskRuleService riskRuleService;
     private final PositionSizeService positionSizeService;
+    private final SignalConfirmationService confirmationService;
 
     private final Counter receivedCounter;
     private final Counter validatedCounter;
@@ -41,11 +43,13 @@ public class SignalValidationService {
             KillZoneService killZoneService,
             RiskRuleService riskRuleService,
             PositionSizeService positionSizeService,
+            SignalConfirmationService confirmationService,
             MeterRegistry meterRegistry) {
         this.newsShieldClient = newsShieldClient;
         this.killZoneService = killZoneService;
         this.riskRuleService = riskRuleService;
         this.positionSizeService = positionSizeService;
+        this.confirmationService = confirmationService;
         this.meterRegistry = meterRegistry;
 
         this.receivedCounter  = Counter.builder("tradie.signals.received").register(meterRegistry);
@@ -100,14 +104,32 @@ public class SignalValidationService {
             }
         }
 
-        // Step 5: Position sizing with full risk metrics
+        // Step 5: Indicator confirmation (informational — does not reject, adjusts confidence)
+        try {
+            ConfirmationResult confirmation = confirmationService.confirm(signal);
+            if (confirmation.totalIndicators() > 0) {
+                signal.setConfidenceScore(confirmation.adjustedConfidence());
+                log.debug("Indicator confirmation for {}: count={}/{}, confidence={}",
+                        signal.getSymbol(), confirmation.confirmationCount(),
+                        confirmation.totalIndicators(), confirmation.adjustedConfidence());
+            }
+            if (!confirmation.conflictingIndicators().isEmpty()) {
+                warnings.add("Conflicting indicators: " +
+                        String.join(", ", confirmation.conflictingIndicators()));
+            }
+        } catch (Exception e) {
+            log.warn("Indicator confirmation failed for {}, continuing: {}",
+                    signal.getSymbol(), e.getMessage());
+        }
+
+        // Step 6: Position sizing with full risk metrics
         PositionSizeResult sizing = positionSizeService.calculatePositionSize(signal, sizeAdjustment);
         if (!sizing.valid()) {
             return reject(signal, "Position size invalid after adjustments");
         }
         warnings.addAll(sizing.adjustments());
 
-        // Step 6: Build risk/reward metrics
+        // Step 7: Build risk/reward metrics
         double riskRewardRatio = 0.0;
         BigDecimal expectedReward = BigDecimal.ZERO;
         if (signal.getStopLoss() != null && signal.getTakeProfit() != null) {
@@ -121,7 +143,7 @@ public class SignalValidationService {
             }
         }
 
-        // Step 7: Build order with risk metrics
+        // Step 8: Build order with risk metrics
         Order.OrderSide side = signal.getAction() == TradeSignal.SignalAction.BUY
                 ? Order.OrderSide.BUY : Order.OrderSide.SELL;
         Instant validUntil = signal.getCreatedAt() != null

@@ -2,6 +2,7 @@ package com.tradie.strategy.service;
 
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.strategy.client.NewsShieldClient;
+import com.tradie.strategy.dto.ConfirmationResult;
 import com.tradie.strategy.dto.MarketStatusResponse;
 import com.tradie.strategy.dto.PositionSizeResult;
 import com.tradie.strategy.dto.RuleResult;
@@ -21,6 +22,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class SignalValidationServiceTest {
@@ -37,14 +39,21 @@ class SignalValidationServiceTest {
     @Mock
     private PositionSizeService positionSizeService;
 
+    @Mock
+    private SignalConfirmationService confirmationService;
+
     private SignalValidationService service;
+
+    private static final ConfirmationResult NO_OP_CONFIRMATION =
+            new ConfirmationResult(true, 0, 0, 50.0, List.of(), List.of());
 
     @BeforeEach
     void setUp() {
         service = new SignalValidationService(
                 newsShieldClient, killZoneService, riskRuleService,
-                positionSizeService, new SimpleMeterRegistry());
+                positionSizeService, confirmationService, new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "signalExpirySeconds", 300);
+        lenient().when(confirmationService.confirm(any())).thenReturn(NO_OP_CONFIRMATION);
     }
 
     private TradeSignal freshSignal() {

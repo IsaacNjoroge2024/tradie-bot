@@ -22,6 +22,7 @@ dependencies {
     implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
     implementation 'com.github.ben-manes.caffeine:caffeine'
     implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'org.ta4j:ta4j-core:0.15'
     developmentOnly 'me.paulschwarz:springboot3-dotenv:5.1.0'
     implementation project(':common')
 

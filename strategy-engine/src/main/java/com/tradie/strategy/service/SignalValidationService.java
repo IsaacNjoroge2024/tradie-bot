@@ -120,6 +120,7 @@ public class SignalValidationService {
         } catch (Exception e) {
             log.warn("Indicator confirmation failed for {}, continuing: {}",
                     signal.getSymbol(), e.getMessage());
+            warnings.add("Indicator confirmation unavailable - proceeding without confirmation");
         }
 
         // Step 6: Position sizing with full risk metrics

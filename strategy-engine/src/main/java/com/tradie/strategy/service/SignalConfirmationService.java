@@ -61,12 +61,16 @@ public class SignalConfirmationService {
                 log.debug("No OHLCV data for {}:{}, skipping confirmation", signal.getSymbol(), timeframe);
                 return noConfirmation(signal.getConfidenceScore());
             }
-            snapshot = indicatorCalculatorService.calculateLatest(series, signal.getSymbol(), timeframe);
+            snapshot = indicatorCalculatorService.calculateLatest(series, signal.getSymbol(), exchange, timeframe);
         } catch (Exception e) {
             log.warn("Could not fetch indicator data for {}: {}", signal.getSymbol(), e.getMessage());
             return noConfirmation(signal.getConfidenceScore());
         }
 
+        if (signal.getAction() == null) {
+            log.warn("Signal action is null for {}, skipping confirmation", signal.getSymbol());
+            return noConfirmation(signal.getConfidenceScore());
+        }
         boolean isBuy = signal.getAction() == TradeSignal.SignalAction.BUY;
         List<String> confirming = new ArrayList<>();
         List<String> conflicting = new ArrayList<>();

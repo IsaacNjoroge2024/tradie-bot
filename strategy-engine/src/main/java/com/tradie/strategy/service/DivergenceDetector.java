@@ -70,7 +70,7 @@ public class DivergenceDetector {
         int startIndex = Math.max(0, endIndex - divergenceLookback);
 
         int prevHighIdx = -1;
-        double prevHigh = Double.MIN_VALUE;
+        double prevHigh = Double.NEGATIVE_INFINITY;
         for (int i = startIndex; i < endIndex; i++) {
             double high = series.getBar(i).getHighPrice().doubleValue();
             if (high > prevHigh) {

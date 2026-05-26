@@ -98,7 +98,7 @@ class SignalConfirmationServiceTest {
     void confirm_buyWithAllIndicatorsAligned_returnsConfirmed() {
         BaseBarSeries series = buildSeries();
         when(ohlcvDataService.getBarSeries(eq("AAPL"), anyString(), anyString())).thenReturn(series);
-        when(indicatorCalculatorService.calculateLatest(any(), eq("AAPL"), anyString()))
+        when(indicatorCalculatorService.calculateLatest(any(), eq("AAPL"), anyString(), anyString()))
                 .thenReturn(buildBullishSnapshot());
         when(divergenceDetector.detect(any(), eq("AAPL"), anyString()))
                 .thenReturn(new DivergenceDetector.DivergenceResult(false, false));
@@ -116,7 +116,7 @@ class SignalConfirmationServiceTest {
     void confirm_buyWithConflictingIndicators_notConfirmed() {
         BaseBarSeries series = buildSeries();
         when(ohlcvDataService.getBarSeries(eq("AAPL"), anyString(), anyString())).thenReturn(series);
-        when(indicatorCalculatorService.calculateLatest(any(), eq("AAPL"), anyString()))
+        when(indicatorCalculatorService.calculateLatest(any(), eq("AAPL"), anyString(), anyString()))
                 .thenReturn(buildBearishSnapshot());
         when(divergenceDetector.detect(any(), eq("AAPL"), anyString()))
                 .thenReturn(new DivergenceDetector.DivergenceResult(false, false));
@@ -131,7 +131,7 @@ class SignalConfirmationServiceTest {
     void confirm_withBullishDivergence_boostsConfidence() {
         BaseBarSeries series = buildSeries();
         when(ohlcvDataService.getBarSeries(any(), any(), any())).thenReturn(series);
-        when(indicatorCalculatorService.calculateLatest(any(), any(), any()))
+        when(indicatorCalculatorService.calculateLatest(any(), any(), any(), any()))
                 .thenReturn(buildBullishSnapshot());
         when(divergenceDetector.detect(any(), any(), any()))
                 .thenReturn(new DivergenceDetector.DivergenceResult(true, false));
@@ -182,7 +182,7 @@ class SignalConfirmationServiceTest {
     void confirm_confidenceCappedAt100() {
         BaseBarSeries series = buildSeries();
         when(ohlcvDataService.getBarSeries(any(), any(), any())).thenReturn(series);
-        when(indicatorCalculatorService.calculateLatest(any(), any(), any()))
+        when(indicatorCalculatorService.calculateLatest(any(), any(), any(), any()))
                 .thenReturn(buildBullishSnapshot());
         when(divergenceDetector.detect(any(), any(), any()))
                 .thenReturn(new DivergenceDetector.DivergenceResult(true, false));
@@ -199,7 +199,7 @@ class SignalConfirmationServiceTest {
     void confirm_confidenceNotBelowZero() {
         BaseBarSeries series = buildSeries();
         when(ohlcvDataService.getBarSeries(any(), any(), any())).thenReturn(series);
-        when(indicatorCalculatorService.calculateLatest(any(), any(), any()))
+        when(indicatorCalculatorService.calculateLatest(any(), any(), any(), any()))
                 .thenReturn(buildBearishSnapshot());
         when(divergenceDetector.detect(any(), any(), any()))
                 .thenReturn(new DivergenceDetector.DivergenceResult(false, false));

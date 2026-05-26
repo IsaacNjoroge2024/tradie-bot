@@ -86,7 +86,7 @@ class IndicatorCalculatorServiceTest {
     void calculateLatest_risingPrices_rsiAbove50() {
         BaseBarSeries series = buildRisingPriceSeries(60);
 
-        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "1H");
+        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "NASDAQ", "1H");
 
         assertNotNull(snapshot);
         assertEquals("AAPL", snapshot.symbol());
@@ -98,7 +98,7 @@ class IndicatorCalculatorServiceTest {
     void calculateLatest_risingPrices_emaAlignmentBullish() {
         BaseBarSeries series = buildRisingPriceSeries(60);
 
-        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "1H");
+        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "NASDAQ", "1H");
 
         assertEquals("BULLISH", snapshot.emaAlignment(),
                 "EMA alignment should be BULLISH for sustained uptrend");
@@ -108,7 +108,7 @@ class IndicatorCalculatorServiceTest {
     void calculateLatest_rsiSignal_neutral() {
         BaseBarSeries series = buildOscillatingSeries(60);
 
-        IndicatorSnapshot snapshot = service.calculateLatest(series, "OSCILLATING", "1H");
+        IndicatorSnapshot snapshot = service.calculateLatest(series, "OSCILLATING", "NASDAQ", "1H");
 
         assertEquals("NEUTRAL", snapshot.rsiSignal());
     }
@@ -117,7 +117,7 @@ class IndicatorCalculatorServiceTest {
     void calculateLatest_insufficientBars_returnsEmptySnapshot() {
         BaseBarSeries series = buildRisingPriceSeries(5);
 
-        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "1H");
+        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "NASDAQ", "1H");
 
         assertEquals(0.0, snapshot.rsi());
         assertEquals(0.0, snapshot.adx());
@@ -128,7 +128,7 @@ class IndicatorCalculatorServiceTest {
     void calculateLatest_bollingerBandsOrdered_upperAboveLower() {
         BaseBarSeries series = buildRisingPriceSeries(60);
 
-        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "1H");
+        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "NASDAQ", "1H");
 
         assertTrue(snapshot.bbUpper() > snapshot.bbLower(),
                 "BB upper should be above BB lower");
@@ -143,7 +143,7 @@ class IndicatorCalculatorServiceTest {
     void calculateLatest_atrPositive() {
         BaseBarSeries series = buildRisingPriceSeries(60);
 
-        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "1H");
+        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "NASDAQ", "1H");
 
         assertTrue(snapshot.atr() > 0, "ATR should be positive");
     }
@@ -153,11 +153,11 @@ class IndicatorCalculatorServiceTest {
         ObjectMapper om = new ObjectMapper();
         om.registerModule(new JavaTimeModule());
         BaseBarSeries series = buildRisingPriceSeries(60);
-        IndicatorSnapshot cached = service.calculateLatest(series, "AAPL", "1H");
+        IndicatorSnapshot cached = service.calculateLatest(series, "AAPL", "NASDAQ", "1H");
         String json = om.writeValueAsString(cached);
-        when(valueOps.get("indicators:AAPL:1H")).thenReturn(json);
+        when(valueOps.get("indicators:AAPL:NASDAQ:1H")).thenReturn(json);
 
-        IndicatorSnapshot result = service.calculateLatest(series, "AAPL", "1H");
+        IndicatorSnapshot result = service.calculateLatest(series, "AAPL", "NASDAQ", "1H");
 
         assertEquals(cached.close(), result.close(), 0.001);
     }
@@ -175,7 +175,7 @@ class IndicatorCalculatorServiceTest {
     void calculateLatest_volumeRatio_computedCorrectly() {
         BaseBarSeries series = buildRisingPriceSeries(60);
 
-        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "1H");
+        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "NASDAQ", "1H");
 
         assertTrue(snapshot.volumeRatio() >= 0, "Volume ratio should be non-negative");
         assertTrue(snapshot.volumeSMA() > 0, "Volume SMA should be positive");
@@ -187,7 +187,7 @@ class IndicatorCalculatorServiceTest {
         int lastIdx = series.getEndIndex();
         double expectedClose = series.getBar(lastIdx).getClosePrice().doubleValue();
 
-        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "1H");
+        IndicatorSnapshot snapshot = service.calculateLatest(series, "AAPL", "NASDAQ", "1H");
 
         assertEquals(expectedClose, snapshot.close(), 0.001);
     }

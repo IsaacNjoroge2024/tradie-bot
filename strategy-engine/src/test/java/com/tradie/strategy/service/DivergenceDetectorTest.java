@@ -51,33 +51,40 @@ class DivergenceDetectorTest {
 
     @Test
     void detect_risingPricesNoRSIDiv_noSignal() {
-        // Uniformly rising prices — no divergence
+        // Uniformly rising prices — price and RSI rise together, no divergence in either direction
         double[] prices = new double[50];
         for (int i = 0; i < 50; i++) prices[i] = 100.0 + i;
         BaseBarSeries series = buildSeries(prices);
 
         DivergenceDetector.DivergenceResult result = detector.detect(series, "AAPL", "1H");
 
-        // Should not show bearish divergence with uniform rise (both price and RSI rise together)
         assertFalse(result.bullish());
+        assertFalse(result.bearish());
     }
 
     @Test
     void detect_bearishDivergence_risingPriceFallingRsi() {
-        // Build a series where the later portion has higher prices but RSI should diverge.
-        // Use a pattern: initial rise (pushes RSI up), then choppy rise (RSI stays flat/falls).
-        double[] prices = new double[50];
-        // First 25: strong rise to push RSI high
-        for (int i = 0; i < 25; i++) prices[i] = 100.0 + i * 3;
-        // Last 25: slow rise (price makes new highs but at a slowing pace — RSI tends to fall)
-        for (int i = 0; i < 25; i++) prices[25 + i] = prices[24] + i * 0.5;
+        // Phase 1 (bars 0-34): strong rise, RSI builds to near-max
+        // Phase 2 (bar 35, in lookback): spike to highest price — RSI at peak (prevHighIdx)
+        // Phase 3 (bars 36-44): pullback — RSI drops significantly
+        // Phase 4 (bars 45-53): slow recovery
+        // Phase 5 (bar 54, endIndex): new price high above bar 35, but RSI much lower
+        double[] prices = new double[55];
+        for (int i = 0; i < 30; i++) prices[i] = 100.0 + i * 2;       // steady rise to 158
+        for (int i = 0; i < 5; i++)  prices[30 + i] = 158.0 + (i + 1) * 4; // acceleration to 178
+        prices[35] = 180.0;                                              // spike — max in lookback
+        double[] pullback  = {175, 170, 165, 162, 158, 155, 153, 151, 152};
+        double[] recovery  = {154, 157, 160, 163, 166, 169, 172, 175, 178};
+        for (int i = 0; i < 9; i++) prices[36 + i] = pullback[i];
+        for (int i = 0; i < 9; i++) prices[45 + i] = recovery[i];
+        prices[54] = 182.0; // new price high (182 > 180 at bar 35), RSI lower after pullback/recovery
+
         BaseBarSeries series = buildSeries(prices);
 
         DivergenceDetector.DivergenceResult result = detector.detect(series, "AAPL", "1H");
 
-        // The series ends with a higher price than the lookback peak, but RSI may or may not
-        // diverge depending on implementation. We just verify no exception is thrown.
-        assertNotNull(result);
+        assertTrue(result.bearish(), "Expected bearish divergence: new price high but RSI lower");
+        assertFalse(result.bullish());
     }
 
     @Test

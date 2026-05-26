@@ -58,7 +58,7 @@ INSERT_SQL = """
 
 # ── Core loader ───────────────────────────────────────────────────────────────
 
-def load(symbol: str, exchange: str, timeframe: str,
+def load(conn, symbol: str, exchange: str, timeframe: str,
          yf_interval: str, period: str, job_num: int, total: int) -> int:
     print(f"  [{job_num}/{total}] {symbol:<12} {timeframe:<4} period={period:<5} ...",
           end=" ", flush=True)
@@ -83,6 +83,8 @@ def load(symbol: str, exchange: str, timeframe: str,
         df.columns = df.columns.get_level_values(0)
 
     rows = []
+    skipped = 0
+    sample_error = None
     for ts, row in df.iterrows():
         try:
             t = ts.to_pydatetime()
@@ -93,7 +95,10 @@ def load(symbol: str, exchange: str, timeframe: str,
                 float(row["Low"]), float(row["Close"]),
                 int(row["Volume"]),
             ))
-        except Exception:
+        except Exception as e:
+            skipped += 1
+            if sample_error is None:
+                sample_error = str(e)
             continue
 
     if not rows:
@@ -101,18 +106,18 @@ def load(symbol: str, exchange: str, timeframe: str,
         return 0
 
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
         cur.executemany(INSERT_SQL, rows)
         inserted = cur.rowcount
         conn.commit()
         cur.close()
-        conn.close()
     except Exception as e:
         print(f"SKIP (db error: {e})")
+        conn.rollback()
         return 0
 
-    print(f"{len(rows)} bars → {inserted} inserted")
+    skipped_note = f" | WARN: {skipped} rows skipped (sample: {sample_error})" if skipped else ""
+    print(f"{len(rows)} bars → {inserted} inserted{skipped_note}")
     return inserted
 
 
@@ -403,7 +408,7 @@ CRYPTO = [
     ("ADA-USD",  "CRYPTO"),  # Cardano
     ("AVAX-USD", "CRYPTO"),  # Avalanche
     ("DOT-USD",  "CRYPTO"),  # Polkadot
-    ("MATIC-USD","CRYPTO"),  # Polygon
+    ("POL-USD",  "CRYPTO"),  # Polygon (rebranded from MATIC)
     ("ATOM-USD", "CRYPTO"),  # Cosmos
     ("NEAR-USD", "CRYPTO"),  # NEAR Protocol
     ("APT-USD",  "CRYPTO"),  # Aptos
@@ -483,7 +488,7 @@ FOREX = [
     ("USDHKD=X", "FOREX"),  # US Dollar / Hong Kong Dollar
     ("USDTRY=X", "FOREX"),  # US Dollar / Turkish Lira
     ("USDINR=X", "FOREX"),  # US Dollar / Indian Rupee
-    ("USDCNH=X", "FOREX"),  # US Dollar / Chinese Yuan (offshore)
+    ("USDCNH=X", "FOREX"),  # US Dollar / Chinese Yuan (offshore) — daily only (yfinance limit)
     ("EURTRY=X", "FOREX"),  # Euro / Turkish Lira
     ("GBPTRY=X", "FOREX"),  # British Pound / Turkish Lira
 ]
@@ -521,7 +526,7 @@ CRYPTO_TIMEFRAMES = [
 FOREX_TIMEFRAMES = [
     ("15M", "15m", "60d"),
     ("1H",  "1h",  "2y"),
-    ("1D",  "1d",  "max"),
+    ("1D",  "1d",  "5y"),   # some exotic pairs (e.g. USDCNH) don't support "max"
 ]
 
 # Deduplicate symbols within each group before building jobs
@@ -554,7 +559,6 @@ def main():
           f"(db={DB_CONFIG['dbname']}) ...", end=" ")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
-        conn.close()
         print("OK\n")
     except Exception as e:
         sys.exit(f"FAILED: {e}")
@@ -572,9 +576,12 @@ def main():
           f"{cryptos} crypto × 3tf, "
           f"{forexs} forex × 3tf)\n")
 
-    for i, (symbol, exchange, timeframe, yf_interval, period) in enumerate(JOBS, start=1):
-        total_inserted += load(symbol, exchange, timeframe, yf_interval, period, i, total)
-        time.sleep(0.8)  # respect Yahoo Finance rate limits
+    try:
+        for i, (symbol, exchange, timeframe, yf_interval, period) in enumerate(JOBS, start=1):
+            total_inserted += load(conn, symbol, exchange, timeframe, yf_interval, period, i, total)
+            time.sleep(0.8)  # respect Yahoo Finance rate limits
+    finally:
+        conn.close()
 
     print(f"\n{'─' * 60}")
     print(f"Done. Total rows inserted: {total_inserted:,}")

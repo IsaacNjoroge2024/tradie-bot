@@ -33,19 +33,20 @@ public class OHLCVDataService {
     }
 
     public BarSeries getBarSeries(String symbol, String exchange, String timeframe) {
-        String cacheKey = symbol + ":" + exchange + ":" + timeframe;
+        String normalizedTimeframe = normalizeTimeframe(timeframe);
+        String cacheKey = symbol + ":" + exchange + ":" + normalizedTimeframe;
         CachedBarSeries cached = seriesCache.get(cacheKey);
-        if (cached != null && !cached.isExpired(timeframe)) {
+        if (cached != null && !cached.isExpired(normalizedTimeframe)) {
             return cached.series();
         }
 
-        Duration lookback = getLookbackDuration(timeframe, defaultLookbackBars);
+        Duration lookback = getLookbackDuration(normalizedTimeframe, defaultLookbackBars);
         Instant since = Instant.now().minus(lookback);
-        List<OHLCVCandle> candles = repository.findRecentBars(symbol, exchange, timeframe, since);
+        List<OHLCVCandle> candles = repository.findRecentBars(symbol, exchange, normalizedTimeframe, since);
 
-        BarSeries series = buildBarSeries(symbol, timeframe, candles);
-        seriesCache.put(cacheKey, new CachedBarSeries(series, Instant.now(), timeframe));
-        log.debug("Loaded {} bars for {}:{} ({})", candles.size(), symbol, timeframe, exchange);
+        BarSeries series = buildBarSeries(symbol, normalizedTimeframe, candles);
+        seriesCache.put(cacheKey, new CachedBarSeries(series, Instant.now(), normalizedTimeframe));
+        log.debug("Loaded {} bars for {}:{} ({})", candles.size(), symbol, normalizedTimeframe, exchange);
         return series;
     }
 

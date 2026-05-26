@@ -488,9 +488,14 @@ FOREX = [
     ("USDHKD=X", "FOREX"),  # US Dollar / Hong Kong Dollar
     ("USDTRY=X", "FOREX"),  # US Dollar / Turkish Lira
     ("USDINR=X", "FOREX"),  # US Dollar / Indian Rupee
-    ("USDCNH=X", "FOREX"),  # US Dollar / Chinese Yuan (offshore) — daily only (yfinance limit)
     ("EURTRY=X", "FOREX"),  # Euro / Turkish Lira
     ("GBPTRY=X", "FOREX"),  # British Pound / Turkish Lira
+]
+
+# Forex pairs that only support daily granularity on yfinance.
+# Cross-producing these with 15m/1h wastes rate-limit budget and returns empty data.
+FOREX_DAILY_ONLY = [
+    ("USDCNH=X", "FOREX"),  # US Dollar / Chinese Yuan (offshore) — daily only (yfinance limit)
 ]
 
 
@@ -526,7 +531,11 @@ CRYPTO_TIMEFRAMES = [
 FOREX_TIMEFRAMES = [
     ("15M", "15m", "60d"),
     ("1H",  "1h",  "2y"),
-    ("1D",  "1d",  "5y"),   # some exotic pairs (e.g. USDCNH) don't support "max"
+    ("1D",  "1d",  "5y"),
+]
+
+FOREX_DAILY_TIMEFRAMES = [
+    ("1D",  "1d",  "5y"),
 ]
 
 # Deduplicate symbols within each group before building jobs
@@ -545,10 +554,11 @@ ALL_STOCK_SYMBOLS = dedupe(
 )
 
 JOBS = (
-    make_jobs(ALL_STOCK_SYMBOLS, STOCK_TIMEFRAMES) +
-    make_jobs(dedupe(FUTURES),   FUTURES_TIMEFRAMES) +
-    make_jobs(dedupe(CRYPTO),    CRYPTO_TIMEFRAMES) +
-    make_jobs(dedupe(FOREX),     FOREX_TIMEFRAMES)
+    make_jobs(ALL_STOCK_SYMBOLS,        STOCK_TIMEFRAMES) +
+    make_jobs(dedupe(FUTURES),          FUTURES_TIMEFRAMES) +
+    make_jobs(dedupe(CRYPTO),           CRYPTO_TIMEFRAMES) +
+    make_jobs(dedupe(FOREX),            FOREX_TIMEFRAMES) +
+    make_jobs(dedupe(FOREX_DAILY_ONLY), FOREX_DAILY_TIMEFRAMES)
 )
 
 
@@ -566,15 +576,17 @@ def main():
     total = len(JOBS)
     total_inserted = 0
 
-    stocks = len(ALL_STOCK_SYMBOLS)
-    futures = len(dedupe(FUTURES))
-    cryptos = len(dedupe(CRYPTO))
-    forexs  = len(dedupe(FOREX))
+    stocks      = len(ALL_STOCK_SYMBOLS)
+    futures     = len(dedupe(FUTURES))
+    cryptos     = len(dedupe(CRYPTO))
+    forexs      = len(dedupe(FOREX))
+    forex_daily = len(dedupe(FOREX_DAILY_ONLY))
     print(f"Total jobs: {total}  "
           f"({stocks} stocks/ETFs × 3tf, "
           f"{futures} futures × 3tf, "
           f"{cryptos} crypto × 3tf, "
-          f"{forexs} forex × 3tf)\n")
+          f"{forexs} forex × 3tf, "
+          f"{forex_daily} forex-daily-only × 1tf)\n")
 
     try:
         for i, (symbol, exchange, timeframe, yf_interval, period) in enumerate(JOBS, start=1):

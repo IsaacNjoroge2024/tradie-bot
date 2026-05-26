@@ -1,5 +1,6 @@
 package com.tradie.strategy.controller;
 
+import com.tradie.common.entity.TradeSignal;
 import com.tradie.strategy.dto.ConfirmationResult;
 import com.tradie.strategy.dto.IndicatorSnapshot;
 import com.tradie.strategy.service.IndicatorCalculatorService;
@@ -59,7 +60,7 @@ class IndicatorControllerTest {
     void getIndicators_returnsSnapshot() throws Exception {
         when(ohlcvDataService.getBarSeries(eq("AAPL"), anyString(), anyString()))
                 .thenReturn(nonEmptySeries());
-        when(indicatorCalculatorService.calculateLatest(any(), eq("AAPL"), anyString()))
+        when(indicatorCalculatorService.calculateLatest(any(), eq("AAPL"), anyString(), anyString()))
                 .thenReturn(sampleSnapshot("AAPL"));
 
         mockMvc.perform(get("/api/indicators/AAPL"))
@@ -84,7 +85,7 @@ class IndicatorControllerTest {
     void getIndicators_withTimeframeParam_passesThrough() throws Exception {
         when(ohlcvDataService.getBarSeries(eq("AAPL"), eq("NYSE"), eq("15M")))
                 .thenReturn(nonEmptySeries());
-        when(indicatorCalculatorService.calculateLatest(any(), eq("AAPL"), eq("15M")))
+        when(indicatorCalculatorService.calculateLatest(any(), eq("AAPL"), eq("NYSE"), eq("15M")))
                 .thenReturn(sampleSnapshot("AAPL"));
 
         mockMvc.perform(get("/api/indicators/AAPL")
@@ -112,6 +113,18 @@ class IndicatorControllerTest {
 
         mockMvc.perform(get("/api/indicators/AAPL/history"))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void getIndicatorHistory_invalidPeriods_returns400() throws Exception {
+        mockMvc.perform(get("/api/indicators/AAPL/history").param("periods", "0"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getIndicatorHistory_negativePeriods_returns400() throws Exception {
+        mockMvc.perform(get("/api/indicators/AAPL/history").param("periods", "-1"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

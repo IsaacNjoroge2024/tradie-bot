@@ -58,7 +58,7 @@ public class IndicatorController {
             return ResponseEntity.noContent().build();
         }
         IndicatorSnapshot snapshot = indicatorCalculatorService.calculateLatest(
-                series, symbol, resolvedTimeframe);
+                series, symbol, resolvedExchange, resolvedTimeframe);
         return ResponseEntity.ok(snapshot);
     }
 
@@ -68,6 +68,10 @@ public class IndicatorController {
             @RequestParam(defaultValue = "") String exchange,
             @RequestParam(defaultValue = "") String timeframe,
             @RequestParam(defaultValue = "50") int periods) {
+
+        if (periods <= 0) {
+            return ResponseEntity.badRequest().build();
+        }
 
         String resolvedExchange = exchange.isBlank() ? defaultExchange : exchange;
         String resolvedTimeframe = timeframe.isBlank() ? defaultTimeframe : timeframe;

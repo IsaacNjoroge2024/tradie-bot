@@ -96,8 +96,9 @@ public class IndicatorCalculatorService {
                 .register(meterRegistry);
     }
 
-    public IndicatorSnapshot calculateLatest(BarSeries series, String symbol, String timeframe) {
-        String redisKey = REDIS_KEY_PREFIX + symbol + ":" + timeframe;
+    public IndicatorSnapshot calculateLatest(BarSeries series, String symbol,
+                                              String exchange, String timeframe) {
+        String redisKey = REDIS_KEY_PREFIX + symbol + ":" + exchange + ":" + timeframe;
 
         try {
             String cached = redisTemplate.opsForValue().get(redisKey);

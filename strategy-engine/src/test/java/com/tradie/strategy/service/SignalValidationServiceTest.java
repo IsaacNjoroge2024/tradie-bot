@@ -229,6 +229,34 @@ class SignalValidationServiceTest {
     }
 
     @Test
+    void validate_confirmationAdjustsConfidence_andAddsConflictWarning() {
+        stubAllPass();
+        TradeSignal signal = freshSignal();
+        signal.setConfidenceScore(60.0);
+        when(confirmationService.confirm(any())).thenReturn(
+                new ConfirmationResult(true, 3, 4, 75.0,
+                        List.of("RSI", "EMA50", "MACD"), List.of("ADX")));
+
+        ValidationResult result = service.validate(signal);
+
+        assertTrue(result.approved());
+        assertEquals(75.0, signal.getConfidenceScore(), 0.001);
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("Conflicting indicators")));
+    }
+
+    @Test
+    void validate_confirmationException_failOpen_stillApproves() {
+        stubAllPass();
+        when(confirmationService.confirm(any())).thenThrow(new RuntimeException("indicator unavailable"));
+
+        ValidationResult result = service.validate(freshSignal());
+
+        assertTrue(result.approved());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("confirmation unavailable")));
+        verify(positionSizeService).calculatePositionSize(any(), any());
+    }
+
+    @Test
     void validate_positionSizeInvalid_rejected() {
         when(newsShieldClient.getMarketStatus(anyString()))
                 .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));

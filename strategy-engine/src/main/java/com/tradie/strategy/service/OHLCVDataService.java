@@ -61,9 +61,13 @@ public class OHLCVDataService {
         return series;
     }
 
+    private static String normalizeTimeframe(String timeframe) {
+        return timeframe == null ? "1H" : timeframe.toUpperCase();
+    }
+
     // Returns the lookback duration needed to fetch `bars` bars for the given timeframe.
     private Duration getLookbackDuration(String timeframe, int bars) {
-        return switch (timeframe.toUpperCase()) {
+        return switch (normalizeTimeframe(timeframe)) {
             case "1M"  -> Duration.ofMinutes(bars);
             case "5M"  -> Duration.ofMinutes(bars * 5L);
             case "15M" -> Duration.ofMinutes(bars * 15L);
@@ -75,7 +79,7 @@ public class OHLCVDataService {
     }
 
     static Duration getBarDuration(String timeframe) {
-        return switch (timeframe.toUpperCase()) {
+        return switch (normalizeTimeframe(timeframe)) {
             case "1M"  -> Duration.ofMinutes(1);
             case "5M"  -> Duration.ofMinutes(5);
             case "15M" -> Duration.ofMinutes(15);
@@ -88,7 +92,7 @@ public class OHLCVDataService {
 
     // Returns the cache TTL for BarSeries based on timeframe.
     static Duration getCacheTtl(String timeframe) {
-        return switch (timeframe.toUpperCase()) {
+        return switch (normalizeTimeframe(timeframe)) {
             case "1M"  -> Duration.ofMinutes(1);
             case "5M"  -> Duration.ofMinutes(2);
             case "15M" -> Duration.ofMinutes(5);

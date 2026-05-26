@@ -1,7 +1,6 @@
 package com.tradie.strategy.service;
 
 import com.tradie.common.entity.TradeSignal;
-import com.tradie.strategy.dto.IndicatorSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -48,11 +47,8 @@ public class InternalSignalGenerator {
             return signals;
         }
 
-        IndicatorSnapshot snapshot = indicatorCalculatorService.calculateLatest(
-                series, symbol, timeframe);
-
-        detectEmaCrossover(series, symbol, exchange, timeframe, snapshot, signals);
-        detectRsiReversal(symbol, exchange, timeframe, snapshot, signals);
+        detectEmaCrossover(series, symbol, exchange, timeframe, signals);
+        detectRsiReversal(series, symbol, exchange, timeframe, signals);
         detectMacdCrossover(series, symbol, exchange, timeframe, signals);
 
         return signals;
@@ -60,8 +56,7 @@ public class InternalSignalGenerator {
 
     // EMA crossover: 9 EMA crosses 21 EMA.
     private void detectEmaCrossover(BarSeries series, String symbol, String exchange,
-                                     String timeframe, IndicatorSnapshot snapshot,
-                                     List<InternalSignal> signals) {
+                                     String timeframe, List<InternalSignal> signals) {
         int endIndex = series.getEndIndex();
         if (endIndex < 1) return;
 
@@ -85,13 +80,25 @@ public class InternalSignalGenerator {
         }
     }
 
-    // RSI reversal: RSI exits oversold (<30) or overbought (>70).
-    private void detectRsiReversal(String symbol, String exchange, String timeframe,
-                                    IndicatorSnapshot snapshot, List<InternalSignal> signals) {
-        if ("OVERSOLD".equals(snapshot.rsiSignal())) {
+    // RSI reversal: RSI crosses back above 30 (oversold exit) or below 70 (overbought exit).
+    private void detectRsiReversal(BarSeries series, String symbol, String exchange,
+                                    String timeframe, List<InternalSignal> signals) {
+        int endIndex = series.getEndIndex();
+        if (endIndex < 1) return;
+
+        ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
+        RSIIndicator rsi = new RSIIndicator(closePrice, 14);
+        double prev = safeDouble(rsi, endIndex - 1);
+        double curr = safeDouble(rsi, endIndex);
+
+        if (prev < 30 && curr >= 30) {
+            log.info("RSI reversal BUY detected for {}:{} (RSI {} → {})",
+                    symbol, timeframe, String.format("%.1f", prev), String.format("%.1f", curr));
             signals.add(new InternalSignal(symbol, exchange, timeframe,
                     TradeSignal.SignalAction.BUY, "RSI_REVERSAL", 55.0));
-        } else if ("OVERBOUGHT".equals(snapshot.rsiSignal())) {
+        } else if (prev > 70 && curr <= 70) {
+            log.info("RSI reversal SELL detected for {}:{} (RSI {} → {})",
+                    symbol, timeframe, String.format("%.1f", prev), String.format("%.1f", curr));
             signals.add(new InternalSignal(symbol, exchange, timeframe,
                     TradeSignal.SignalAction.SELL, "RSI_REVERSAL", 55.0));
         }

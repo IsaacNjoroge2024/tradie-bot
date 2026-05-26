@@ -1,17 +1,39 @@
 package com.tradie.executor;
 
+import com.tradie.common.repository.OHLCVCandleRepository;
+import com.tradie.common.repository.PositionRepository;
+import com.tradie.common.repository.TradeSignalRepository;
+import com.tradie.executor.ibkr.IBConnectionManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 @SpringBootTest(
     properties = {
+        "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1",
+        "spring.datasource.driver-class-name=org.h2.Driver",
+        "spring.datasource.username=sa",
+        "spring.datasource.password=",
+        "spring.jpa.hibernate.ddl-auto=none",
+        "spring.flyway.enabled=false",
         "spring.autoconfigure.exclude=" +
-            "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration," +
-            "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration," +
             "org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration"
     }
 )
 class OrderExecutorApplicationTests {
+
+    // Mock the connection manager so no real IBKR connection is attempted
+    @MockBean
+    IBConnectionManager ibConnectionManager;
+
+    @MockBean
+    TradeSignalRepository tradeSignalRepository;
+
+    @MockBean
+    PositionRepository positionRepository;
+
+    @MockBean
+    OHLCVCandleRepository ohlcvCandleRepository;
 
     @Test
     void contextLoads() {

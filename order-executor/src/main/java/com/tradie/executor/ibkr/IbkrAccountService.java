@@ -42,7 +42,7 @@ public class IbkrAccountService {
     public void onManagedAccounts(String accountsList) {
         if (accountsList != null && !accountsList.isBlank()) {
             this.accountId = accountsList.split(",")[0].trim();
-            log.info("Managed account set: {}", this.accountId);
+            log.info("Managed account received from IBKR");
         }
     }
 
@@ -75,8 +75,7 @@ public class IbkrAccountService {
                 availableFunds,
                 Instant.now()
         ));
-        log.debug("Account data updated: accountId={} buyingPower={} netLiq={}",
-                accountId, buyingPower, netLiquidation);
+        log.debug("Account data snapshot updated");
     }
 
     /**

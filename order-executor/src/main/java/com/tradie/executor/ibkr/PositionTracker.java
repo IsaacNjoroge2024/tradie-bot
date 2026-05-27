@@ -5,13 +5,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Tracks real-time IBKR positions received via position() callbacks.
- * Positions are keyed by symbol for O(1) lookup.
+ * Positions are keyed by "symbol|exchange" to prevent collisions across
+ * instruments that share the same symbol on different exchanges.
  */
 @Component
 public class PositionTracker {
@@ -20,26 +20,30 @@ public class PositionTracker {
 
     private final Map<String, IBPosition> positions = new ConcurrentHashMap<>();
 
+    private String keyFor(IBPosition position) {
+        return position.symbol() + "|" + position.exchange();
+    }
+
     /**
      * Called by TradieEWrapper when a position update is received from IBKR.
      * A position with quantity == 0 indicates the position has been closed.
      */
     public void updatePosition(IBPosition position) {
         if (position.quantity() == 0) {
-            positions.remove(position.symbol());
+            positions.remove(keyFor(position));
             log.debug("Position closed: symbol={}", position.symbol());
         } else {
-            positions.put(position.symbol(), position);
+            positions.put(keyFor(position), position);
             log.debug("Position updated: symbol={} qty={} avgCost={}",
                     position.symbol(), position.quantity(), position.avgCost());
         }
     }
 
     /**
-     * Returns an unmodifiable snapshot of all current positions.
+     * Returns an immutable snapshot of all current positions.
      */
     public Map<String, IBPosition> getPositions() {
-        return Collections.unmodifiableMap(positions);
+        return Map.copyOf(positions);
     }
 
     /**

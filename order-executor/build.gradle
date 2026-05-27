@@ -16,9 +16,9 @@ dependencies {
     implementation 'org.springframework.kafka:spring-kafka'
     implementation project(':common')
 
-    // Interactive Brokers TWS API (local JARs)
+    // Interactive Brokers TWS API (local JAR — not on Maven Central)
     implementation files('libs/TwsApi.jar')
-    implementation files('libs/protobuf-java-4.29.5.jar')
+    implementation 'com.google.protobuf:protobuf-java:4.29.5'
 
     developmentOnly 'me.paulschwarz:springboot3-dotenv:5.1.0'
 

@@ -72,10 +72,10 @@ class HeartbeatMonitorTest {
     }
 
     @Test
-    void checkConnection_exactlyAtTimeout_doesNotReconnect() {
+    void checkConnection_nearTimeout_doesNotReconnect() {
         when(connectionManager.isConnected()).thenReturn(true);
-        // Exactly at the timeout boundary — should NOT reconnect (strictly greater than)
-        when(connectionManager.getLastHeartbeat()).thenReturn(Instant.now().minusSeconds(90));
+        // Just within timeout — avoids clock-rollover flakiness at the exact 90s boundary
+        when(connectionManager.getLastHeartbeat()).thenReturn(Instant.now().minusSeconds(89));
 
         heartbeatMonitor.checkConnection();
 

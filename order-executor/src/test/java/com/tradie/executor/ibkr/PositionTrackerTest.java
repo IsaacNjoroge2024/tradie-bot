@@ -21,8 +21,8 @@ class PositionTrackerTest {
         positionTracker.updatePosition(pos);
 
         assertThat(positionTracker.getOpenPositionCount()).isEqualTo(1);
-        assertThat(positionTracker.getPositions()).containsKey("AAPL");
-        assertThat(positionTracker.getPositions().get("AAPL").quantity()).isEqualTo(10.0);
+        assertThat(positionTracker.getPositions()).containsKey("AAPL|NASDAQ");
+        assertThat(positionTracker.getPositions().get("AAPL|NASDAQ").quantity()).isEqualTo(10.0);
     }
 
     @Test
@@ -31,8 +31,8 @@ class PositionTrackerTest {
         positionTracker.updatePosition(new IBPosition("AAPL", "NASDAQ", 20.0, 155.00, 0.0, 0.0));
 
         assertThat(positionTracker.getOpenPositionCount()).isEqualTo(1);
-        assertThat(positionTracker.getPositions().get("AAPL").quantity()).isEqualTo(20.0);
-        assertThat(positionTracker.getPositions().get("AAPL").avgCost()).isEqualTo(155.00);
+        assertThat(positionTracker.getPositions().get("AAPL|NASDAQ").quantity()).isEqualTo(20.0);
+        assertThat(positionTracker.getPositions().get("AAPL|NASDAQ").avgCost()).isEqualTo(155.00);
     }
 
     @Test
@@ -41,7 +41,7 @@ class PositionTrackerTest {
         positionTracker.updatePosition(new IBPosition("AAPL", "NASDAQ", 0.0, 0.0, 0.0, 0.0));
 
         assertThat(positionTracker.getOpenPositionCount()).isEqualTo(0);
-        assertThat(positionTracker.getPositions()).doesNotContainKey("AAPL");
+        assertThat(positionTracker.getPositions()).doesNotContainKey("AAPL|NASDAQ");
     }
 
     @Test

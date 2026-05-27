@@ -1,17 +1,29 @@
 package com.tradie.executor.config;
 
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
+@Validated
 @ConfigurationProperties(prefix = "tradie.ibkr")
 public class IbkrProperties {
 
+    @NotBlank
     private String host = "127.0.0.1";
+    @Min(1)
     private int port = 7497;
+    @Min(0)
     private int clientId = 1;
+    @Min(1)
     private int connectionTimeoutSeconds = 30;
+    @Min(1)
     private int heartbeatIntervalSeconds = 30;
+    @Min(1)
     private int heartbeatTimeoutSeconds = 90;
+    @Min(1)
     private int maxReconnectAttempts = 10;
+    @Min(1)
     private int accountRefreshSeconds = 60;
 
     public String getHost() { return host; }

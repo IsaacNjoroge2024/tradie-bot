@@ -1,9 +1,13 @@
 package com.tradie.executor.ibkr;
 
+import com.ib.client.Contract;
 import com.ib.client.EClientSocket;
 import com.ib.client.EJavaSignal;
 import com.ib.client.EReader;
+import com.ib.client.Order;
+import com.ib.client.OrderCancel;
 import com.tradie.executor.config.IbkrProperties;
+import com.tradie.executor.order.OrderStatusTracker;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -38,6 +42,7 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
     private final IbkrAccountService accountService;
     private final PositionTracker positionTracker;
     private final OrderIdManager orderIdManager;
+    private final OrderStatusTracker orderStatusTracker;
 
     private EClientSocket client;
     private EJavaSignal signal;
@@ -60,17 +65,20 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
             IbkrProperties properties,
             IbkrAccountService accountService,
             PositionTracker positionTracker,
-            OrderIdManager orderIdManager) {
+            OrderIdManager orderIdManager,
+            OrderStatusTracker orderStatusTracker) {
         this.properties = properties;
         this.accountService = accountService;
         this.positionTracker = positionTracker;
         this.orderIdManager = orderIdManager;
+        this.orderStatusTracker = orderStatusTracker;
     }
 
     @PostConstruct
     public void init() {
         accountService.setConnectionManager(this);
-        wrapper = new TradieEWrapper(accountService, positionTracker, orderIdManager, this);
+        orderStatusTracker.setConnectionManager(this);
+        wrapper = new TradieEWrapper(accountService, positionTracker, orderIdManager, orderStatusTracker, this);
         signal = new EJavaSignal();
         client = new EClientSocket(wrapper, signal);
         connect();
@@ -197,6 +205,36 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
         if (isConnected()) {
             client.reqPositions();
             log.debug("Positions requested");
+        }
+    }
+
+    /**
+     * Submits an order to IBKR. Must only be called when connected.
+     *
+     * @param orderId  the IBKR order ID (from {@link OrderIdManager})
+     * @param contract the IBKR contract representing the instrument
+     * @param order    the IBKR order with action, type, price, and quantity
+     */
+    public void placeOrder(int orderId, Contract contract, Order order) {
+        if (isConnected()) {
+            client.placeOrder(orderId, contract, order);
+            log.debug("Order placed: ibOrderId={}", orderId);
+        } else {
+            throw new IllegalStateException("Cannot place order: not connected to IBKR");
+        }
+    }
+
+    /**
+     * Requests cancellation of an open order.
+     *
+     * @param orderId the IBKR order ID to cancel
+     */
+    public void cancelOrder(int orderId) {
+        if (isConnected()) {
+            client.cancelOrder(orderId, new OrderCancel());
+            log.info("Cancel request sent: ibOrderId={}", orderId);
+        } else {
+            log.warn("Cannot cancel order {}: not connected to IBKR", orderId);
         }
     }
 

@@ -2,6 +2,10 @@ package com.tradie.executor.ibkr;
 
 import com.tradie.executor.config.IbkrProperties;
 import com.tradie.executor.dto.AccountData;
+import com.tradie.executor.order.OrderEventPublisher;
+import com.tradie.executor.order.OrderStatusTracker;
+import com.tradie.common.repository.OrderRepository;
+import com.tradie.common.repository.PositionRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -11,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * Integration test for the IBKR TWS connection.
@@ -32,6 +37,7 @@ class IBConnectionIntegrationTest {
     private IbkrAccountService accountService;
     private PositionTracker positionTracker;
     private OrderIdManager orderIdManager;
+    private OrderStatusTracker orderStatusTracker;
     private IBConnectionManager connectionManager;
 
     @BeforeEach
@@ -48,8 +54,12 @@ class IBConnectionIntegrationTest {
         accountService = new IbkrAccountService();
         positionTracker = new PositionTracker();
         orderIdManager = new OrderIdManager();
+        orderStatusTracker = new OrderStatusTracker(
+                mock(OrderRepository.class),
+                mock(PositionRepository.class),
+                mock(OrderEventPublisher.class));
         connectionManager = new IBConnectionManager(
-                properties, accountService, positionTracker, orderIdManager);
+                properties, accountService, positionTracker, orderIdManager, orderStatusTracker);
     }
 
     @AfterEach

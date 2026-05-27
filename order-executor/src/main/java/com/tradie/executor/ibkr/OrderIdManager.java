@@ -33,6 +33,17 @@ public class OrderIdManager {
     }
 
     /**
+     * Atomically reserves {@code count} consecutive order IDs and returns the first one.
+     * Used by bracket order submission to claim parentId, parentId+1, and parentId+2 in one step.
+     *
+     * @param count number of consecutive IDs to reserve (e.g., 3 for a bracket order)
+     * @return the first reserved ID; subsequent IDs are {@code result + 1}, {@code result + 2}, etc.
+     */
+    public int reserveOrderIds(int count) {
+        return nextOrderId.getAndAdd(count);
+    }
+
+    /**
      * Returns the current next order ID without incrementing (for status display).
      */
     public int peekNextOrderId() {

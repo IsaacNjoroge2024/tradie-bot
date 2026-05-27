@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -47,6 +48,7 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
             new AtomicReference<>(ConnectionState.DISCONNECTED);
     private final AtomicReference<Instant> connectionTime = new AtomicReference<>();
     private final AtomicInteger reconnectAttempt = new AtomicInteger(0);
+    private final AtomicBoolean reconnectScheduled = new AtomicBoolean(false);
     private final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "ibkr-reconnect");
@@ -117,8 +119,14 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
     }
 
     private void scheduleReconnect() {
+        if (!reconnectScheduled.compareAndSet(false, true)) {
+            log.debug("Reconnect already scheduled, skipping duplicate request");
+            return;
+        }
+
         int attempt = reconnectAttempt.get();
         if (attempt >= properties.getMaxReconnectAttempts()) {
+            reconnectScheduled.set(false);
             log.error("Max reconnection attempts ({}) reached. Manual intervention required.",
                     properties.getMaxReconnectAttempts());
             state.set(ConnectionState.ERROR);
@@ -128,7 +136,10 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
         int delaySec = BACKOFF_SECONDS[Math.min(attempt, BACKOFF_SECONDS.length - 1)];
         reconnectAttempt.incrementAndGet();
         log.info("Scheduling reconnect attempt {} in {}s", attempt + 1, delaySec);
-        scheduler.schedule(this::reconnect, delaySec, TimeUnit.SECONDS);
+        scheduler.schedule(() -> {
+            reconnectScheduled.set(false);
+            reconnect();
+        }, delaySec, TimeUnit.SECONDS);
     }
 
     private void reconnect() {
@@ -153,7 +164,7 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
 
     @Override
     public void onDisconnected() {
-        if (state.get() == ConnectionState.CONNECTED) {
+        if (state.get() != ConnectionState.DISCONNECTED) {
             state.set(ConnectionState.DISCONNECTED);
             positionTracker.clear();
             scheduleReconnect();

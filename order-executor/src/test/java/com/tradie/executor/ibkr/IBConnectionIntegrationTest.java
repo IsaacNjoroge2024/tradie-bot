@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -62,8 +63,7 @@ class IBConnectionIntegrationTest {
     void connectsToTWS_receivesNextValidId() throws InterruptedException {
         connectionManager.init();
 
-        // Wait for nextValidId callback to confirm connection
-        TimeUnit.SECONDS.sleep(5);
+        waitUntil(connectionManager::isConnected, 15);
 
         assertThat(connectionManager.isConnected()).isTrue();
         assertThat(orderIdManager.peekNextOrderId()).isGreaterThan(0);
@@ -72,12 +72,11 @@ class IBConnectionIntegrationTest {
     @Test
     void retrievesAccountData_afterConnection() throws InterruptedException {
         connectionManager.init();
-        TimeUnit.SECONDS.sleep(5);
+        waitUntil(connectionManager::isConnected, 15);
 
         assertThat(connectionManager.isConnected()).isTrue();
 
-        // Wait for account summary callback
-        TimeUnit.SECONDS.sleep(3);
+        waitUntil(() -> accountService.getAccountData() != null, 10);
 
         AccountData account = accountService.getAccountData();
         assertThat(account).isNotNull();
@@ -88,11 +87,22 @@ class IBConnectionIntegrationTest {
     @Test
     void tracksPositions_afterConnection() throws InterruptedException {
         connectionManager.init();
-        TimeUnit.SECONDS.sleep(5);
+        waitUntil(connectionManager::isConnected, 15);
 
         assertThat(connectionManager.isConnected()).isTrue();
 
         // Position count can be 0 on a paper account with no open positions — that is valid
         assertThat(positionTracker.getOpenPositionCount()).isGreaterThanOrEqualTo(0);
+    }
+
+    private static void waitUntil(BooleanSupplier condition, int timeoutSeconds) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            TimeUnit.MILLISECONDS.sleep(100);
+        }
+        throw new AssertionError("Condition not met within " + timeoutSeconds + "s timeout");
     }
 }

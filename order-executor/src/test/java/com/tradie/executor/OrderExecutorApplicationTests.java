@@ -1,6 +1,7 @@
 package com.tradie.executor;
 
 import com.tradie.common.repository.OHLCVCandleRepository;
+import com.tradie.common.repository.OrderRepository;
 import com.tradie.common.repository.PositionRepository;
 import com.tradie.common.repository.TradeSignalRepository;
 import com.tradie.executor.ibkr.IBConnectionManager;
@@ -31,6 +32,9 @@ class OrderExecutorApplicationTests {
 
     @MockBean
     PositionRepository positionRepository;
+
+    @MockBean
+    OrderRepository orderRepository;
 
     @MockBean
     OHLCVCandleRepository ohlcvCandleRepository;

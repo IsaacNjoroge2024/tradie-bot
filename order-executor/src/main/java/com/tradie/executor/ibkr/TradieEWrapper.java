@@ -8,6 +8,7 @@ import com.ib.client.Order;
 import com.ib.client.OrderState;
 import com.ib.client.TickAttrib;
 import com.tradie.executor.dto.IBPosition;
+import com.tradie.executor.order.OrderStatusTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +43,7 @@ public class TradieEWrapper extends DefaultEWrapper {
     private final IbkrAccountService accountService;
     private final PositionTracker positionTracker;
     private final OrderIdManager orderIdManager;
+    private final OrderStatusTracker orderStatusTracker;
     private final IBConnectionCallback connectionCallback;
     private final AtomicReference<Instant> lastMessageTime = new AtomicReference<>(Instant.now());
 
@@ -49,10 +51,12 @@ public class TradieEWrapper extends DefaultEWrapper {
             IbkrAccountService accountService,
             PositionTracker positionTracker,
             OrderIdManager orderIdManager,
+            OrderStatusTracker orderStatusTracker,
             IBConnectionCallback connectionCallback) {
         this.accountService = accountService;
         this.positionTracker = positionTracker;
         this.orderIdManager = orderIdManager;
+        this.orderStatusTracker = orderStatusTracker;
         this.connectionCallback = connectionCallback;
     }
 
@@ -143,6 +147,7 @@ public class TradieEWrapper extends DefaultEWrapper {
         touchLastMessageTime();
         log.info("Order status: orderId={} status={} filled={} remaining={} avgFillPrice={}",
                 orderId, status, filled, remaining, avgFillPrice);
+        orderStatusTracker.handleStatusUpdate(orderId, status, filled, remaining, avgFillPrice);
     }
 
     @Override

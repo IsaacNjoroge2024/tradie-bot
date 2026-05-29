@@ -84,6 +84,9 @@ public class OrderController {
             return ResponseEntity.ok("Cancel request sent for ibOrderId=" + order.getIbOrderId());
         } catch (IllegalStateException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            log.error("Cancel request failed for orderId={} ibOrderId={}", id, order.getIbOrderId(), e);
+            return ResponseEntity.internalServerError().body("Failed to submit cancel request to broker");
         }
     }
 

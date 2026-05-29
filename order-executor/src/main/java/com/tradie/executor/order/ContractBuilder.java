@@ -45,11 +45,8 @@ public class ContractBuilder {
                 contract.secType("CRYPTO");
                 contract.exchange("PAXOS");
             }
-            default -> {
-                // Default to stock if asset class is unrecognised
-                contract.secType("STK");
-                contract.exchange("SMART");
-            }
+            default -> throw new IllegalArgumentException(
+                    "Unsupported assetClass: " + order.assetClass());
         }
 
         return contract;

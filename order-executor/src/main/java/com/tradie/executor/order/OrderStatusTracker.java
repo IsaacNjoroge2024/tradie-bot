@@ -157,7 +157,7 @@ public class OrderStatusTracker {
                     position.setExitPrice(exitPrice);
                     position.setClosedAt(Instant.now());
                     position.setStatus(Position.PositionStatus.CLOSED);
-                    position.setRealizedPnl(calculatePnl(group, exitPrice));
+                    position.setRealizedPnl(calculatePnl(position.getEntryPrice(), group.side(), group.quantity(), exitPrice));
                     positionRepository.save(position);
                     log.info("Position closed: signal={} symbol={} exit={} pnl={}",
                             group.signalId(), group.symbol(), avgFillPrice, position.getRealizedPnl());
@@ -201,14 +201,12 @@ public class OrderStatusTracker {
         dbOrder.setCancelledAt(Instant.now());
         orderRepository.save(dbOrder);
 
-        // If parent cancelled, children auto-cancel in IBKR; clean up the whole group
-        if (orderId == group.parentIbOrderId()) {
-            deregisterOrderGroup(group);
-            log.info("Bracket group deregistered after parent cancellation: signal={}", group.signalId());
-        }
+        // Deregister the whole bracket group on any terminal cancellation to prevent stale routing
+        deregisterOrderGroup(group);
+        log.info("Bracket group deregistered after cancellation: signal={} ibOrderId={}", group.signalId(), orderId);
     }
 
-    private void deregisterOrderGroup(OrderGroup group) {
+    public void deregisterOrderGroup(OrderGroup group) {
         activeGroups.remove(group.parentIbOrderId());
         activeGroups.remove(group.takeProfitIbOrderId());
         activeGroups.remove(group.stopLossIbOrderId());
@@ -232,10 +230,8 @@ public class OrderStatusTracker {
         return position;
     }
 
-    private BigDecimal calculatePnl(OrderGroup group, BigDecimal exitPrice) {
-        BigDecimal entryPrice = group.limitPrice();
-        BigDecimal quantity   = group.quantity();
-        if ("BUY".equals(group.side())) {
+    private BigDecimal calculatePnl(BigDecimal entryPrice, String side, BigDecimal quantity, BigDecimal exitPrice) {
+        if ("BUY".equals(side)) {
             return exitPrice.subtract(entryPrice).multiply(quantity);
         } else {
             return entryPrice.subtract(exitPrice).multiply(quantity);

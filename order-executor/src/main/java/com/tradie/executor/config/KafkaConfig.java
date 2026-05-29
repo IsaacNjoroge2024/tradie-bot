@@ -22,9 +22,15 @@ public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
+    @Value("${tradie.kafka.topics.orders-dlq:tradie.orders.dlq}")
+    private String ordersDlqTopicName;
+
+    @Value("${spring.kafka.consumer.group-id:order-executor}")
+    private String consumerGroupId;
+
     @Bean
     public NewTopic ordersDlqTopic() {
-        return TopicBuilder.name("tradie.orders.dlq")
+        return TopicBuilder.name(ordersDlqTopicName)
                 .partitions(1)
                 .replicas(1)
                 .build();
@@ -34,7 +40,7 @@ public class KafkaConfig {
     public ConsumerFactory<String, String> consumerFactory() {
         Map<String, Object> config = new HashMap<>();
         config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        config.put(ConsumerConfig.GROUP_ID_CONFIG, "order-executor");
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroupId);
         config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         config.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 10);
         config.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 120_000);

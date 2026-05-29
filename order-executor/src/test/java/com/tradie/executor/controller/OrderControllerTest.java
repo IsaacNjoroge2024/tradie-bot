@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -43,7 +44,12 @@ class OrderControllerTest {
     @Test
     void getActiveOrders_returnsSubmittedOrders() throws Exception {
         Order order = buildOrder(124, Order.OrderStatus.SUBMITTED);
-        when(orderRepository.findByStatusIn(anyList())).thenReturn(List.of(order));
+        when(orderRepository.findByStatusIn(argThat(statuses ->
+                statuses.size() == 3
+                        && statuses.contains(Order.OrderStatus.PENDING)
+                        && statuses.contains(Order.OrderStatus.SUBMITTED)
+                        && statuses.contains(Order.OrderStatus.PARTIALLY_FILLED)
+        ))).thenReturn(List.of(order));
 
         mockMvc.perform(get("/api/orders/active"))
                 .andExpect(status().isOk())
@@ -104,6 +110,19 @@ class OrderControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(orderCancellationService);
+    }
+
+    @Test
+    void cancelOrder_serviceIllegalState_returns400() throws Exception {
+        UUID id = UUID.randomUUID();
+        Order order = buildOrder(201, Order.OrderStatus.SUBMITTED);
+        when(orderRepository.findById(id)).thenReturn(Optional.of(order));
+        doThrow(new IllegalStateException("Cannot cancel order: not connected to IBKR"))
+                .when(orderCancellationService).cancelOrder(201);
+
+        mockMvc.perform(post("/api/orders/" + id + "/cancel"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string("Cannot cancel order: not connected to IBKR"));
     }
 
     @Test

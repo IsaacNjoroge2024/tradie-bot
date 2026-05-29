@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -106,10 +107,21 @@ public class OrderSubmissionService {
         );
         orderStatusTracker.registerOrderGroup(group);
 
-        // 5. Submit to IBKR (parent first, then TP, then SL which triggers transmission)
-        connectionManager.placeOrder(parentId, contract, bracketOrders.get(0));
-        connectionManager.placeOrder(tpId, contract, bracketOrders.get(1));
-        connectionManager.placeOrder(slId, contract, bracketOrders.get(2));
+        // 5. Submit to IBKR (parent first, then TP, then SL which triggers transmission).
+        // Track placed legs so we can cancel them if a later leg fails, preventing an
+        // unprotected live position (e.g. parent placed but SL never submitted).
+        List<Integer> placedIds = new ArrayList<>();
+        try {
+            connectionManager.placeOrder(parentId, contract, bracketOrders.get(0));
+            placedIds.add(parentId);
+            connectionManager.placeOrder(tpId, contract, bracketOrders.get(1));
+            placedIds.add(tpId);
+            connectionManager.placeOrder(slId, contract, bracketOrders.get(2));
+        } catch (Exception e) {
+            log.error("Bracket placement failed after {} leg(s), compensating: {}", placedIds.size(), e.getMessage());
+            compensate(placedIds, parentDb, tpDb, slDb, group);
+            throw new IllegalStateException("Bracket order placement failed: " + e.getMessage(), e);
+        }
 
         log.info("Bracket order submitted to IBKR: parentId={} tpId={} slId={}", parentId, tpId, slId);
 
@@ -130,6 +142,26 @@ public class OrderSubmissionService {
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private void compensate(List<Integer> placedIds, Order parentDb, Order tpDb, Order slDb, OrderGroup group) {
+        for (int id : placedIds) {
+            try {
+                connectionManager.cancelOrder(id);
+            } catch (Exception ex) {
+                log.error("Compensation cancel failed for ibOrderId={}: {}", id, ex.getMessage());
+            }
+        }
+        cancelDbOrders(parentDb, tpDb, slDb);
+        orderStatusTracker.deregisterOrderGroup(group);
+    }
+
+    private void cancelDbOrders(Order... orders) {
+        for (Order o : orders) {
+            o.setStatus(Order.OrderStatus.CANCELLED);
+            o.setCancelledAt(Instant.now());
+            orderRepository.save(o);
+        }
+    }
 
     private Order persistOrder(OrderDTO dto, int ibOrderId, boolean isBracketParent,
                                UUID parentDbId, Order.OrderType orderType,

@@ -169,6 +169,13 @@ public class OrderStatusTracker {
             connectionManager.cancelOrder(siblingId);
             log.info("Sibling order cancelled: ibOrderId={}", siblingId);
         }
+        // Persist the sibling's terminal state now; its async cancel callback will be
+        // skipped once the group is deregistered below (activeGroups.get returns null).
+        orderRepository.findByIbOrderId(siblingId).ifPresent(sibling -> {
+            sibling.setStatus(Order.OrderStatus.CANCELLED);
+            sibling.setCancelledAt(Instant.now());
+            orderRepository.save(sibling);
+        });
 
         // Remove all three from active tracking
         deregisterOrderGroup(group);

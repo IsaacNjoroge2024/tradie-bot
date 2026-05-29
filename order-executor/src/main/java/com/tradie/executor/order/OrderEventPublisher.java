@@ -24,7 +24,7 @@ public class OrderEventPublisher {
     public OrderEventPublisher(
             KafkaTemplate<String, String> kafkaTemplate,
             ObjectMapper objectMapper,
-            @Value("${kafka.topics.alerts}") String alertsTopic) {
+            @Value("${tradie.kafka.topics.alerts}") String alertsTopic) {
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
         this.alertsTopic = alertsTopic;

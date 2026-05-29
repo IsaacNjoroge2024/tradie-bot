@@ -114,6 +114,9 @@ class OrderStatusTrackerTest {
         Order dbOrder = buildDbOrder(TP_ID);
         when(orderRepository.findByIbOrderId(TP_ID)).thenReturn(Optional.of(dbOrder));
 
+        Order siblingOrder = buildDbOrder(SL_ID);
+        when(orderRepository.findByIbOrderId(SL_ID)).thenReturn(Optional.of(siblingOrder));
+
         Position openPosition = buildOpenPosition();
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN))
                 .thenReturn(List.of(openPosition));
@@ -126,6 +129,7 @@ class OrderStatusTrackerTest {
         assertThat(openPosition.getExitPrice()).isEqualByComparingTo(BigDecimal.valueOf(165.00));
 
         verify(connectionManager).cancelOrder(SL_ID);
+        assertThat(siblingOrder.getStatus()).isEqualTo(Order.OrderStatus.CANCELLED);
     }
 
     @Test
@@ -149,6 +153,9 @@ class OrderStatusTrackerTest {
         Order dbOrder = buildDbOrder(SL_ID);
         when(orderRepository.findByIbOrderId(SL_ID)).thenReturn(Optional.of(dbOrder));
 
+        Order siblingOrder = buildDbOrder(TP_ID);
+        when(orderRepository.findByIbOrderId(TP_ID)).thenReturn(Optional.of(siblingOrder));
+
         Position openPosition = buildOpenPosition();
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN))
                 .thenReturn(List.of(openPosition));
@@ -159,6 +166,7 @@ class OrderStatusTrackerTest {
         verify(positionRepository).save(openPosition);
         assertThat(openPosition.getStatus()).isEqualTo(Position.PositionStatus.CLOSED);
         verify(connectionManager).cancelOrder(TP_ID);
+        assertThat(siblingOrder.getStatus()).isEqualTo(Order.OrderStatus.CANCELLED);
 
         ArgumentCaptor<OrderEvent> eventCaptor = ArgumentCaptor.forClass(OrderEvent.class);
         verify(orderEventPublisher).publishOrderEvent(eventCaptor.capture());

@@ -67,14 +67,19 @@ public class OrderCancellationService {
         }
 
         log.warn("Emergency cancel-all: cancelling {} active orders", activeOrders.size());
+        int failures = 0;
         for (Order order : activeOrders) {
             if (order.getIbOrderId() != null) {
                 try {
                     cancelOrder(order.getIbOrderId());
                 } catch (Exception e) {
-                    log.error("Failed to cancel ibOrderId={}: {}", order.getIbOrderId(), e.getMessage());
+                    failures++;
+                    log.error("Failed to cancel ibOrderId={}", order.getIbOrderId(), e);
                 }
             }
+        }
+        if (failures > 0) {
+            throw new IllegalStateException("Cancel-all completed with " + failures + " failure(s)");
         }
     }
 }

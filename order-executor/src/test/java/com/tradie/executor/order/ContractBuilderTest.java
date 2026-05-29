@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ContractBuilderTest {
 
@@ -78,13 +79,12 @@ class ContractBuilderTest {
     }
 
     @Test
-    void build_unknownAssetClass_defaultsToStock() {
+    void build_unknownAssetClass_throwsException() {
         OrderDTO order = buildOrderDTO("XYZ", "NYSE", "UNKNOWN");
 
-        Contract contract = contractBuilder.build(order);
-
-        assertThat(contract.secType().getApiString()).isEqualTo("STK");
-        assertThat(contract.exchange()).isEqualTo("SMART");
+        assertThatThrownBy(() -> contractBuilder.build(order))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported assetClass: UNKNOWN");
     }
 
     @Test

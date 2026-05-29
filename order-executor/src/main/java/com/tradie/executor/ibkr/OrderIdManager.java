@@ -40,6 +40,9 @@ public class OrderIdManager {
      * @return the first reserved ID; subsequent IDs are {@code result + 1}, {@code result + 2}, etc.
      */
     public int reserveOrderIds(int count) {
+        if (count <= 0) {
+            throw new IllegalArgumentException("count must be > 0, got: " + count);
+        }
         return nextOrderId.getAndAdd(count);
     }
 

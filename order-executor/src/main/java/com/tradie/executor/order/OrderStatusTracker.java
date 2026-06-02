@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -217,6 +219,17 @@ public class OrderStatusTracker {
         activeGroups.remove(group.parentIbOrderId());
         activeGroups.remove(group.takeProfitIbOrderId());
         activeGroups.remove(group.stopLossIbOrderId());
+    }
+
+    /**
+     * Finds the active bracket group associated with a given signal ID.
+     * Used by TrailingStopManager and BreakEvenManager to look up IBKR order IDs.
+     */
+    public Optional<OrderGroup> findGroupBySignalId(UUID signalId) {
+        if (signalId == null) return Optional.empty();
+        return activeGroups.values().stream()
+                .filter(g -> signalId.equals(g.signalId()))
+                .findFirst();
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

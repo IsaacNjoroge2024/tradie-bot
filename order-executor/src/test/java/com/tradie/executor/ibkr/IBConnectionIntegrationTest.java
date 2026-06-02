@@ -4,6 +4,8 @@ import com.tradie.executor.config.IbkrProperties;
 import com.tradie.executor.dto.AccountData;
 import com.tradie.executor.order.OrderEventPublisher;
 import com.tradie.executor.order.OrderStatusTracker;
+import com.tradie.executor.position.MarketDataService;
+import com.tradie.executor.position.PositionSynchronizer;
 import com.tradie.common.repository.OrderRepository;
 import com.tradie.common.repository.PositionRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -59,7 +61,8 @@ class IBConnectionIntegrationTest {
                 mock(PositionRepository.class),
                 mock(OrderEventPublisher.class));
         connectionManager = new IBConnectionManager(
-                properties, accountService, positionTracker, orderIdManager, orderStatusTracker);
+                properties, accountService, positionTracker, orderIdManager, orderStatusTracker,
+                mock(PositionSynchronizer.class), mock(MarketDataService.class));
     }
 
     @AfterEach

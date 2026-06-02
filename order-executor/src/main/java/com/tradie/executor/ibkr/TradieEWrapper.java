@@ -9,6 +9,8 @@ import com.ib.client.OrderState;
 import com.ib.client.TickAttrib;
 import com.tradie.executor.dto.IBPosition;
 import com.tradie.executor.order.OrderStatusTracker;
+import com.tradie.executor.position.MarketDataService;
+import com.tradie.executor.position.PositionSynchronizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +47,8 @@ public class TradieEWrapper extends DefaultEWrapper {
     private final OrderIdManager orderIdManager;
     private final OrderStatusTracker orderStatusTracker;
     private final IBConnectionCallback connectionCallback;
+    private final PositionSynchronizer positionSynchronizer;
+    private final MarketDataService marketDataService;
     private final AtomicReference<Instant> lastMessageTime = new AtomicReference<>(Instant.now());
 
     public TradieEWrapper(
@@ -52,12 +56,16 @@ public class TradieEWrapper extends DefaultEWrapper {
             PositionTracker positionTracker,
             OrderIdManager orderIdManager,
             OrderStatusTracker orderStatusTracker,
-            IBConnectionCallback connectionCallback) {
+            IBConnectionCallback connectionCallback,
+            PositionSynchronizer positionSynchronizer,
+            MarketDataService marketDataService) {
         this.accountService = accountService;
         this.positionTracker = positionTracker;
         this.orderIdManager = orderIdManager;
         this.orderStatusTracker = orderStatusTracker;
         this.connectionCallback = connectionCallback;
+        this.positionSynchronizer = positionSynchronizer;
+        this.marketDataService = marketDataService;
     }
 
     // ─── Heartbeat ────────────────────────────────────────────────────────────
@@ -136,6 +144,7 @@ public class TradieEWrapper extends DefaultEWrapper {
     public void positionEnd() {
         touchLastMessageTime();
         log.debug("Position snapshot complete. Open positions: {}", positionTracker.getOpenPositionCount());
+        positionSynchronizer.onPositionsLoaded();
     }
 
     // ─── Orders ───────────────────────────────────────────────────────────────
@@ -170,6 +179,7 @@ public class TradieEWrapper extends DefaultEWrapper {
     @Override
     public void tickPrice(int tickerId, int field, double price, TickAttrib attribs) {
         touchLastMessageTime();
+        marketDataService.onTickPrice(tickerId, field, price);
     }
 
     // ─── Error Handling ───────────────────────────────────────────────────────

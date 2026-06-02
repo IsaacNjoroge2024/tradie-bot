@@ -8,6 +8,8 @@ import com.ib.client.Order;
 import com.ib.client.OrderCancel;
 import com.tradie.executor.config.IbkrProperties;
 import com.tradie.executor.order.OrderStatusTracker;
+import com.tradie.executor.position.MarketDataService;
+import com.tradie.executor.position.PositionSynchronizer;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -43,6 +45,8 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
     private final PositionTracker positionTracker;
     private final OrderIdManager orderIdManager;
     private final OrderStatusTracker orderStatusTracker;
+    private final PositionSynchronizer positionSynchronizer;
+    private final MarketDataService marketDataService;
 
     private EClientSocket client;
     private EJavaSignal signal;
@@ -66,19 +70,26 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
             IbkrAccountService accountService,
             PositionTracker positionTracker,
             OrderIdManager orderIdManager,
-            OrderStatusTracker orderStatusTracker) {
+            OrderStatusTracker orderStatusTracker,
+            PositionSynchronizer positionSynchronizer,
+            MarketDataService marketDataService) {
         this.properties = properties;
         this.accountService = accountService;
         this.positionTracker = positionTracker;
         this.orderIdManager = orderIdManager;
         this.orderStatusTracker = orderStatusTracker;
+        this.positionSynchronizer = positionSynchronizer;
+        this.marketDataService = marketDataService;
     }
 
     @PostConstruct
     public void init() {
         accountService.setConnectionManager(this);
         orderStatusTracker.setConnectionManager(this);
-        wrapper = new TradieEWrapper(accountService, positionTracker, orderIdManager, orderStatusTracker, this);
+        positionSynchronizer.setConnectionManager(this);
+        marketDataService.setConnectionManager(this);
+        wrapper = new TradieEWrapper(accountService, positionTracker, orderIdManager,
+                orderStatusTracker, this, positionSynchronizer, marketDataService);
         signal = new EJavaSignal();
         client = new EClientSocket(wrapper, signal);
         connect();
@@ -124,6 +135,7 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
         stopMessageProcessorThread();
         state.set(ConnectionState.DISCONNECTED);
         positionTracker.clear();
+        marketDataService.cancelAllSubscriptions();
     }
 
     private void scheduleReconnect() {
@@ -168,6 +180,7 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
         positionTracker.clear();
         requestAccountSummary(IbkrAccountService.getAccountSummaryReqId(), IbkrAccountService.getAccountTags());
         requestPositions();
+        // Market data subscriptions are re-established in PositionSynchronizer.onPositionsLoaded()
     }
 
     @Override
@@ -221,6 +234,31 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
             log.debug("Order placed: ibOrderId={}", orderId);
         } else {
             throw new IllegalStateException("Cannot place order: not connected to IBKR");
+        }
+    }
+
+    /**
+     * Subscribes to real-time market data for a contract.
+     *
+     * @param tickerId unique tick request ID (managed by MarketDataService)
+     * @param contract the IBKR contract to subscribe to
+     */
+    public void reqMktData(int tickerId, Contract contract) {
+        if (isConnected()) {
+            client.reqMktData(tickerId, contract, "", false, false, null);
+            log.debug("Market data requested: tickerId={} symbol={}", tickerId, contract.symbol());
+        }
+    }
+
+    /**
+     * Cancels a market data subscription.
+     *
+     * @param tickerId the tick request ID to cancel
+     */
+    public void cancelMktData(int tickerId) {
+        if (isConnected()) {
+            client.cancelMktData(tickerId);
+            log.debug("Market data cancelled: tickerId={}", tickerId);
         }
     }
 

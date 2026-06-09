@@ -69,8 +69,8 @@ public class PositionSynchronizer {
      * Periodic sync every configurable interval (default 300 s).
      * Re-requests positions from IBKR; reconciliation triggers on positionEnd callback.
      */
-    @Scheduled(fixedRateString = "${tradie.positions.sync-interval-seconds:300}000",
-               initialDelayString = "${tradie.positions.sync-interval-seconds:300}000")
+    @Scheduled(fixedRateString = "${tradie.positions.sync-interval-ms:300000}",
+               initialDelayString = "${tradie.positions.sync-interval-ms:300000}")
     public void scheduledSync() {
         if (connectionManager != null && connectionManager.isConnected()) {
             log.debug("Requesting periodic IBKR position sync");
@@ -85,9 +85,11 @@ public class PositionSynchronizer {
         List<Position> dbOpenPositions = positionRepository.findByStatus(Position.PositionStatus.OPEN);
 
         // Case 1: DB has OPEN position but IBKR doesn't → mark CLOSED
+        // Match by symbol only; IBKR may report a blank/different exchange than what we stored.
         for (Position dbPos : dbOpenPositions) {
-            String key = dbPos.getSymbol() + "|" + dbPos.getExchange();
-            if (!ibkrPositions.containsKey(key)) {
+            boolean ibkrHasSymbol = ibkrPositions.values().stream()
+                    .anyMatch(ibPos -> dbPos.getSymbol().equals(ibPos.symbol()));
+            if (!ibkrHasSymbol) {
                 log.warn("Position closed in IBKR but OPEN in DB (filled while disconnected): symbol={} id={}",
                         dbPos.getSymbol(), dbPos.getId());
                 dbPos.setStatus(Position.PositionStatus.CLOSED);

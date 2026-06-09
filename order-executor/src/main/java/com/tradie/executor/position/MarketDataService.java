@@ -40,6 +40,8 @@ public class MarketDataService {
 
     // tickerId → symbol
     private final ConcurrentHashMap<Integer, String> tickToSymbol = new ConcurrentHashMap<>();
+    // symbol → tickerId (reverse map; used for atomic duplicate-subscription check)
+    private final ConcurrentHashMap<String, Integer> symbolToTickId = new ConcurrentHashMap<>();
     // symbol → latest effective price
     private final ConcurrentHashMap<String, BigDecimal> latestPrice = new ConcurrentHashMap<>();
     // symbol → bid/ask/last snapshot
@@ -89,15 +91,17 @@ public class MarketDataService {
 
     /**
      * Subscribes to live price feed for a single position.
+     * Uses putIfAbsent on symbolToTickId for an atomic duplicate-subscription check,
+     * avoiding the O(n) containsValue scan and check-then-act race of the previous approach.
      */
     public void subscribeToPosition(Position position) {
         if (connectionManager == null || !connectionManager.isConnected()) return;
         String symbol = position.getSymbol();
-        if (tickToSymbol.containsValue(symbol)) {
+        int tickId = tickIdCounter.getAndIncrement();
+        if (symbolToTickId.putIfAbsent(symbol, tickId) != null) {
             log.debug("Already subscribed to market data for {}", symbol);
             return;
         }
-        int tickId = tickIdCounter.getAndIncrement();
         tickToSymbol.put(tickId, symbol);
         connectionManager.reqMktData(tickId, buildContract(position));
         log.info("Market data subscribed: symbol={} tickId={}", symbol, tickId);
@@ -113,6 +117,7 @@ public class MarketDataService {
             log.debug("Market data cancelled: symbol={} tickId={}", symbol, tickId);
         });
         tickToSymbol.clear();
+        symbolToTickId.clear();
     }
 
     // ─── Price Callback ───────────────────────────────────────────────────────

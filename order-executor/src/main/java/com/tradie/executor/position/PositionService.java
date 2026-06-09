@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.tradie.executor.order.OrderGroup;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -138,7 +139,11 @@ public class PositionService {
             throw new IllegalStateException("Not connected to IBKR");
         }
 
-        orderStatusTracker.findGroupBySignalId(position.getEntrySignalId()).ifPresent(group -> {
+        Optional<OrderGroup> stopGroup = orderStatusTracker.findGroupBySignalId(position.getEntrySignalId());
+        if (stopGroup.isEmpty()) {
+            log.warn("No active bracket group for position {}; IBKR stop not modified", positionId);
+        }
+        stopGroup.ifPresent(group -> {
             com.ib.client.Order stopOrder = new com.ib.client.Order();
             stopOrder.orderId(group.stopLossIbOrderId());
             stopOrder.parentId(group.parentIbOrderId());
@@ -171,7 +176,11 @@ public class PositionService {
             throw new IllegalStateException("Not connected to IBKR");
         }
 
-        orderStatusTracker.findGroupBySignalId(position.getEntrySignalId()).ifPresent(group -> {
+        Optional<OrderGroup> tpGroup = orderStatusTracker.findGroupBySignalId(position.getEntrySignalId());
+        if (tpGroup.isEmpty()) {
+            log.warn("No active bracket group for position {}; IBKR target not modified", positionId);
+        }
+        tpGroup.ifPresent(group -> {
             com.ib.client.Order tpOrder = new com.ib.client.Order();
             tpOrder.orderId(group.takeProfitIbOrderId());
             tpOrder.parentId(group.parentIbOrderId());

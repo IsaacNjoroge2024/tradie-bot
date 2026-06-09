@@ -105,6 +105,25 @@ class PositionSynchronizerTest {
     }
 
     @Test
+    void syncPositions_ibkrBlankExchange_doesNotFalselyCloseDbPosition() {
+        // IBKR reports AAPL with a blank exchange; DB stores it with NASDAQ.
+        // The symbol-based match should prevent the DB position from being wrongly closed.
+        IBPosition ibPos = new IBPosition("AAPL", "", 10.0, 150.0, 1500.0, 0.0);
+        Position dbPos = buildPosition("AAPL", "NASDAQ");
+
+        when(positionTracker.getPositions()).thenReturn(Map.of("AAPL|", ibPos));
+        when(positionRepository.findByStatus(Position.PositionStatus.OPEN)).thenReturn(List.of(dbPos));
+        when(positionRepository.findByStatusAndSymbol(Position.PositionStatus.OPEN, "AAPL"))
+                .thenReturn(List.of(dbPos));
+        when(positionRepository.countByStatus(any())).thenReturn(1L);
+
+        synchronizer.syncPositions();
+
+        assertThat(dbPos.getStatus()).isEqualTo(Position.PositionStatus.OPEN);
+        verify(positionRepository, never()).save(argThat(p -> p.getStatus() == Position.PositionStatus.CLOSED));
+    }
+
+    @Test
     void syncPositions_publishesSyncEvent_whenDbPositionClosed() {
         Position openPos = buildPosition("TSLA", "NASDAQ");
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN)).thenReturn(List.of(openPos));

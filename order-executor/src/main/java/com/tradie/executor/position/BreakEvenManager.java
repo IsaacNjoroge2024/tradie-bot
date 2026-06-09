@@ -74,11 +74,16 @@ public class BreakEvenManager {
         BigDecimal coveragePerUnit = position.getQuantity().compareTo(BigDecimal.ZERO) > 0
                 ? commission.divide(position.getQuantity(), 8, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
-        BigDecimal breakEvenPrice = position.getEntryPrice().add(coveragePerUnit)
-                .setScale(8, RoundingMode.HALF_UP);
+        boolean isLong = position.getSide() == Order.OrderSide.BUY;
+        BigDecimal breakEvenPrice = isLong
+                ? position.getEntryPrice().add(coveragePerUnit).setScale(8, RoundingMode.HALF_UP)
+                : position.getEntryPrice().subtract(coveragePerUnit).setScale(8, RoundingMode.HALF_UP);
 
         BigDecimal currentStop = position.getStopLoss();
-        if (currentStop != null && breakEvenPrice.compareTo(currentStop) <= 0) return;
+        if (currentStop != null) {
+            if (isLong && breakEvenPrice.compareTo(currentStop) <= 0) return;
+            if (!isLong && breakEvenPrice.compareTo(currentStop) >= 0) return;
+        }
 
         position.setStopLoss(breakEvenPrice);
         positionRepository.save(position);

@@ -9,7 +9,8 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 /**
@@ -17,6 +18,8 @@ import java.util.List;
  */
 @Service
 public class PositionDashboardService {
+
+    private static final ZoneId TRADING_ZONE = ZoneId.of("America/New_York");
 
     private final PositionRepository positionRepository;
     private final MarketDataService marketDataService;
@@ -49,8 +52,9 @@ public class PositionDashboardService {
         double totalUnrealizedPnLPct = totalCost > 0
                 ? (totalUnrealizedPnL / totalCost) * 100 : 0.0;
 
-        Instant startOfDay  = Instant.now().truncatedTo(ChronoUnit.DAYS);
-        Instant startOfWeek = Instant.now().minus(7, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS);
+        LocalDate today = LocalDate.now(TRADING_ZONE);
+        Instant startOfDay  = today.atStartOfDay(TRADING_ZONE).toInstant();
+        Instant startOfWeek = today.minusDays(7).atStartOfDay(TRADING_ZONE).toInstant();
 
         double dayPnL  = sumRealizedPnl(startOfDay);
         double weekPnL = sumRealizedPnl(startOfWeek);

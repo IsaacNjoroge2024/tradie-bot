@@ -9,6 +9,7 @@ import com.tradie.executor.position.PositionDashboardService;
 import com.tradie.executor.position.PositionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -86,10 +87,7 @@ public class PositionController {
     /** Modifies the stop loss price for an open position. */
     @PutMapping("/{id}/stop")
     public ResponseEntity<String> modifyStop(@PathVariable UUID id,
-                                             @RequestBody ModifyStopRequest request) {
-        if (request.stopPrice() == null) {
-            return ResponseEntity.badRequest().body("stopPrice is required");
-        }
+                                             @Valid @RequestBody ModifyStopRequest request) {
         try {
             positionService.modifyStop(id, request.stopPrice());
             return ResponseEntity.ok("Stop loss updated to " + request.stopPrice());
@@ -106,10 +104,7 @@ public class PositionController {
     /** Modifies the take profit price for an open position. */
     @PutMapping("/{id}/target")
     public ResponseEntity<String> modifyTarget(@PathVariable UUID id,
-                                               @RequestBody ModifyTargetRequest request) {
-        if (request.targetPrice() == null) {
-            return ResponseEntity.badRequest().body("targetPrice is required");
-        }
+                                               @Valid @RequestBody ModifyTargetRequest request) {
         try {
             positionService.modifyTarget(id, request.targetPrice());
             return ResponseEntity.ok("Take profit updated to " + request.targetPrice());

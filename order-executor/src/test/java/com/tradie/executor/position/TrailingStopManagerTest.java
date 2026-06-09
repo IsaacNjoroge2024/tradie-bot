@@ -112,18 +112,28 @@ class TrailingStopManagerTest {
     }
 
     @Test
-    void clearHighWaterMark_removesEntry() {
-        UUID positionId = UUID.randomUUID();
+    void clearHighWaterMark_allowsReEvaluation() {
         Position position = buildLongPosition(100.0, 2.0);
         position.setEntrySignalId(UUID.randomUUID());
         when(orderStatusTracker.findGroupBySignalId(any())).thenReturn(Optional.empty());
-        // Establish a hwm first
-        manager.checkAndAdjust(position, BigDecimal.valueOf(105.0));
 
+        // First call: establish HWM at 105, triggers stop adjustment
+        manager.checkAndAdjust(position, BigDecimal.valueOf(105.0));
+        verify(positionRepository).save(position);
+
+        // Clear the HWM
         manager.clearHighWaterMark(position.getId());
 
-        // After clearing, next check should re-evaluate from scratch
-        // No assertion needed — just verify no exception
+        // Reset stop so the next check can trigger an adjustment again
+        position.setStopLoss(BigDecimal.valueOf(98.0));
+        reset(positionRepository, orderEventPublisher);
+        when(orderStatusTracker.findGroupBySignalId(any())).thenReturn(Optional.empty());
+
+        // After clearing, a new higher price can re-establish the HWM and trigger adjustment
+        manager.checkAndAdjust(position, BigDecimal.valueOf(107.0));
+
+        verify(positionRepository).save(position);
+        assertThat(position.getStopLoss()).isGreaterThan(BigDecimal.valueOf(98.0));
     }
 
     // ─── Helper ───────────────────────────────────────────────────────────────

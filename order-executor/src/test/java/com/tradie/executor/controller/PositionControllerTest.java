@@ -135,6 +135,16 @@ class PositionControllerTest {
     }
 
     @Test
+    void modifyTarget_missingPrice_returns400() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(put("/api/positions/" + id + "/target")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetPrice\":null}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void modifyTarget_updatesTarget() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(positionService).modifyTarget(eq(id), any());

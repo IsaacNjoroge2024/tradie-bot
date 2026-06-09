@@ -1,12 +1,21 @@
 package com.tradie.executor.config;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
+@Validated
 @ConfigurationProperties(prefix = "tradie")
 public class PositionProperties {
 
+    @Valid
     private Positions positions = new Positions();
+    @Valid
     private TrailingStop trailingStop = new TrailingStop();
+    @Valid
     private BreakEven breakEven = new BreakEven();
 
     public Positions getPositions() { return positions; }
@@ -19,11 +28,13 @@ public class PositionProperties {
     public void setBreakEven(BreakEven breakEven) { this.breakEven = breakEven; }
 
     public static class Positions {
-        private int syncIntervalSeconds = 300;
+        @Min(1000)
+        private int syncIntervalMs = 300000;
+        @Min(100)
         private int priceUpdateIntervalMs = 1000;
 
-        public int getSyncIntervalSeconds() { return syncIntervalSeconds; }
-        public void setSyncIntervalSeconds(int syncIntervalSeconds) { this.syncIntervalSeconds = syncIntervalSeconds; }
+        public int getSyncIntervalMs() { return syncIntervalMs; }
+        public void setSyncIntervalMs(int syncIntervalMs) { this.syncIntervalMs = syncIntervalMs; }
 
         public int getPriceUpdateIntervalMs() { return priceUpdateIntervalMs; }
         public void setPriceUpdateIntervalMs(int priceUpdateIntervalMs) { this.priceUpdateIntervalMs = priceUpdateIntervalMs; }
@@ -31,8 +42,11 @@ public class PositionProperties {
 
     public static class TrailingStop {
         private boolean enabled = true;
+        @DecimalMin("0.01") @DecimalMax("50.0")
         private double defaultTrailPct = 2.0;
+        @DecimalMin("0.01") @DecimalMax("50.0")
         private double activationPct = 1.0;
+        @DecimalMin("0.01") @DecimalMax("10.0")
         private double stepPct = 0.25;
 
         public boolean isEnabled() { return enabled; }
@@ -50,6 +64,7 @@ public class PositionProperties {
 
     public static class BreakEven {
         private boolean enabled = true;
+        @DecimalMin("0.01") @DecimalMax("50.0")
         private double activationPct = 1.0;
 
         public boolean isEnabled() { return enabled; }

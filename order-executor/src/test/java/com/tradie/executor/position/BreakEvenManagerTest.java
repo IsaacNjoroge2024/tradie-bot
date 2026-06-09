@@ -74,7 +74,7 @@ class BreakEvenManagerTest {
         manager.checkAndActivate(position, BigDecimal.valueOf(102.0));
 
         // break-even = 100 + (2/10) = 100.2
-        assertThat(position.getStopLoss()).isGreaterThanOrEqualTo(BigDecimal.valueOf(100.0));
+        assertThat(position.getStopLoss()).isEqualByComparingTo(BigDecimal.valueOf(100.2));
         verify(positionRepository).save(position);
 
         ArgumentCaptor<OrderEvent> eventCaptor = ArgumentCaptor.forClass(OrderEvent.class);
@@ -96,6 +96,27 @@ class BreakEvenManagerTest {
         manager.checkAndActivate(position, BigDecimal.valueOf(103.0));
 
         verifyNoInteractions(positionRepository);
+    }
+
+    @Test
+    void checkAndActivate_shortPosition_activatesAtCorrectPrice() {
+        UUID signalId = UUID.randomUUID();
+        Position position = buildPosition(100.0, 105.0); // SHORT: stop above entry
+        position.setSide(Order.OrderSide.SELL);
+        position.setEntrySignalId(signalId);
+        position.setCommissionTotal(BigDecimal.valueOf(2.0)); // 0.2 per share
+        when(orderStatusTracker.findGroupBySignalId(signalId)).thenReturn(Optional.empty());
+
+        // 2% gain for SHORT: price dropped to 98
+        manager.checkAndActivate(position, BigDecimal.valueOf(98.0));
+
+        // break-even = 100 - (2/10) = 99.8
+        assertThat(position.getStopLoss()).isEqualByComparingTo(BigDecimal.valueOf(99.8));
+        verify(positionRepository).save(position);
+
+        ArgumentCaptor<OrderEvent> eventCaptor = ArgumentCaptor.forClass(OrderEvent.class);
+        verify(orderEventPublisher).publishOrderEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type()).isEqualTo("BREAK_EVEN_ACTIVATED");
     }
 
     @Test

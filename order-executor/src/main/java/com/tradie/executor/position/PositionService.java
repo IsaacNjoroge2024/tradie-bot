@@ -121,7 +121,10 @@ public class PositionService {
                 currentPrice != null ? currentPrice.doubleValue() : 0.0,
                 position.getStrategy(),
                 "Manual close: " + reason,
-                Instant.now()
+                Instant.now(),
+                null,
+                null,
+                position.getEntryPrice().doubleValue()
         ));
     }
 

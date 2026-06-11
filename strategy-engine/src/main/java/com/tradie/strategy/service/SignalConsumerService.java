@@ -29,18 +29,21 @@ public class SignalConsumerService {
     private final SignalValidationService validationService;
     private final OrderPublisher orderPublisher;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final TradingControlService tradingControlService;
 
     public SignalConsumerService(
             ObjectMapper objectMapper,
             TradeSignalRepository signalRepository,
             SignalValidationService validationService,
             OrderPublisher orderPublisher,
-            KafkaTemplate<String, String> kafkaTemplate) {
+            KafkaTemplate<String, String> kafkaTemplate,
+            TradingControlService tradingControlService) {
         this.objectMapper = objectMapper;
         this.signalRepository = signalRepository;
         this.validationService = validationService;
         this.orderPublisher = orderPublisher;
         this.kafkaTemplate = kafkaTemplate;
+        this.tradingControlService = tradingControlService;
     }
 
     @KafkaListener(topics = "tradie.signals", groupId = "strategy-engine-group")
@@ -81,6 +84,21 @@ public class SignalConsumerService {
                     || signal.getStatus() == TradeSignal.SignalStatus.EXPIRED) {
                 log.info("Signal {} already processed (status={}), skipping duplicate delivery",
                         signalId, signal.getStatus());
+                ack.acknowledge();
+                return;
+            }
+
+            if (tradingControlService.isPaused()) {
+                String pauseReason = tradingControlService.getPauseReason();
+                String rejectionReason = "Trading paused" + (pauseReason != null ? ": " + pauseReason : "");
+                signal.setStatus(TradeSignal.SignalStatus.REJECTED);
+                signal.setRejectionReason(rejectionReason);
+                signal.setProcessedAt(Instant.now());
+                signalRepository.save(signal);
+                orderPublisher.publishRejection(new RejectionEvent(
+                        signal.getId(), signal.getSymbol(), signal.getAction().name(),
+                        signal.getStrategy(), rejectionReason, Instant.now()));
+                log.info("Signal {} rejected: trading is paused", signalId);
                 ack.acknowledge();
                 return;
             }

@@ -17,5 +17,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     List<Order> findByStatusIn(List<Order.OrderStatus> statuses);
 
+    List<Order> findBySymbolAndStatus(String symbol, Order.OrderStatus status);
+
     List<Order> findTop20ByOrderByCreatedAtDesc();
 }

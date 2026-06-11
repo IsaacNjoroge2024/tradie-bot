@@ -152,7 +152,8 @@ public class PositionSynchronizer {
                 position.getEntryPrice() != null ? position.getEntryPrice().doubleValue() : 0.0,
                 position.getStrategy(),
                 message,
-                Instant.now()
+                Instant.now(),
+                null, null, null
         ));
     }
 }

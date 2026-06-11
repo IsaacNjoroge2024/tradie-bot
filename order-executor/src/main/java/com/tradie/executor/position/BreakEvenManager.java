@@ -102,7 +102,8 @@ public class BreakEvenManager {
                 breakEvenPrice.doubleValue(),
                 position.getStrategy(),
                 "Break-even stop activated at " + breakEvenPrice,
-                Instant.now()
+                Instant.now(),
+                null, null, null
         ));
     }
 

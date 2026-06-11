@@ -132,7 +132,8 @@ public class TrailingStopManager {
                 newStopPrice.doubleValue(),
                 position.getStrategy(),
                 "Trailing stop moved to " + newStopPrice,
-                Instant.now()
+                Instant.now(),
+                null, null, null
         ));
     }
 

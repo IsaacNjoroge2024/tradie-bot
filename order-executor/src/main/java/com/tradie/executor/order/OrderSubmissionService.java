@@ -137,7 +137,8 @@ public class OrderSubmissionService {
                 "Bracket order submitted: entry=" + orderDTO.limitPrice()
                         + " tp=" + orderDTO.takeProfit()
                         + " sl=" + orderDTO.stopLoss(),
-                Instant.now()
+                Instant.now(),
+                null, null, null
         ));
     }
 

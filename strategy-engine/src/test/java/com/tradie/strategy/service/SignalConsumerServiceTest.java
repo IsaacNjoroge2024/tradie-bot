@@ -45,6 +45,9 @@ class SignalConsumerServiceTest {
     @Mock
     private Acknowledgment ack;
 
+    @Mock
+    private TradingControlService tradingControlService;
+
     private SignalConsumerService consumer;
     private ObjectMapper objectMapper;
 
@@ -57,7 +60,8 @@ class SignalConsumerServiceTest {
     void setUp() {
         objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         consumer = new SignalConsumerService(
-                objectMapper, signalRepository, validationService, orderPublisher, kafkaTemplate);
+                objectMapper, signalRepository, validationService, orderPublisher,
+                kafkaTemplate, tradingControlService);
 
         successFuture = CompletableFuture.completedFuture(mock(SendResult.class));
     }
@@ -172,6 +176,27 @@ class SignalConsumerServiceTest {
         ArgumentCaptor<TradeSignal> captor = ArgumentCaptor.forClass(TradeSignal.class);
         verify(signalRepository).save(captor.capture());
         assertEquals(TradeSignal.SignalStatus.PUBLISH_FAILED, captor.getValue().getStatus());
+        verify(ack).acknowledge();
+    }
+
+    @Test
+    void consume_tradingPaused_rejectsSignalWithPausedReason() throws Exception {
+        UUID id = UUID.randomUUID();
+        TradeSignal signal = buildSignal(id);
+
+        when(signalRepository.findById(id)).thenReturn(Optional.of(signal));
+        when(tradingControlService.isPaused()).thenReturn(true);
+        when(tradingControlService.getPauseReason()).thenReturn("manual pause");
+        when(signalRepository.save(any())).thenReturn(signal);
+
+        consumer.consume(messageJson(id), "AAPL", ack);
+
+        ArgumentCaptor<TradeSignal> captor = ArgumentCaptor.forClass(TradeSignal.class);
+        verify(signalRepository).save(captor.capture());
+        assertEquals(TradeSignal.SignalStatus.REJECTED, captor.getValue().getStatus());
+        assertTrue(captor.getValue().getRejectionReason().contains("Trading paused"));
+        verify(orderPublisher).publishRejection(any(RejectionEvent.class));
+        verify(validationService, never()).validate(any());
         verify(ack).acknowledge();
     }
 

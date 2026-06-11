@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Tracks active bracket order groups and handles IBKR order status callbacks.
@@ -143,18 +144,24 @@ public class OrderStatusTracker {
                 avgFillPrice,
                 group.strategy(),
                 "Entry order filled at " + avgFillPrice,
-                Instant.now()
+                Instant.now(),
+                group.stopLoss() != null ? group.stopLoss().doubleValue() : null,
+                group.takeProfit() != null ? group.takeProfit().doubleValue() : null,
+                null
         ));
     }
 
     private void handleChildFill(OrderGroup group, boolean isTP, double avgFillPrice) {
-        // Close the open position
+        // Capture entry price from the open position before closing it
+        AtomicReference<Double> capturedEntryPrice = new AtomicReference<>(null);
+
         List<Position> openPositions = positionRepository.findByStatus(Position.PositionStatus.OPEN);
         openPositions.stream()
                 .filter(p -> p.getSymbol().equals(group.symbol())
                           && group.signalId().equals(p.getEntrySignalId()))
                 .findFirst()
                 .ifPresent(position -> {
+                    capturedEntryPrice.set(position.getEntryPrice().doubleValue());
                     BigDecimal exitPrice = BigDecimal.valueOf(avgFillPrice);
                     position.setExitPrice(exitPrice);
                     position.setClosedAt(Instant.now());
@@ -192,7 +199,10 @@ public class OrderStatusTracker {
                 avgFillPrice,
                 group.strategy(),
                 "Position closed via " + (isTP ? "take profit" : "stop loss") + " at " + avgFillPrice,
-                Instant.now()
+                Instant.now(),
+                null,
+                null,
+                capturedEntryPrice.get()
         ));
     }
 

@@ -113,8 +113,9 @@ class PositionTest {
     @Test
     void positionStatusEnumValuesAreCorrect() {
         assertDoesNotThrow(() -> Position.PositionStatus.valueOf("OPEN"));
+        assertDoesNotThrow(() -> Position.PositionStatus.valueOf("CLOSING"));
         assertDoesNotThrow(() -> Position.PositionStatus.valueOf("CLOSED"));
-        assertEquals(2, Position.PositionStatus.values().length);
+        assertEquals(3, Position.PositionStatus.values().length);
     }
 
     @Test

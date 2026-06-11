@@ -6,9 +6,14 @@ import com.tradie.common.entity.Order;
 import com.tradie.common.entity.Position;
 import com.tradie.common.repository.OrderRepository;
 import com.tradie.common.repository.PositionRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
 
@@ -29,6 +34,8 @@ public class TelegramCommandHandler {
     private final OrderRepository orderRepository;
     private final DailySummaryService dailySummaryService;
     private final MessageFormatter messageFormatter;
+    private final RestTemplate restTemplate;
+    private final String orderExecutorUrl;
 
     public TelegramCommandHandler(
             TelegramClient telegramClient,
@@ -36,13 +43,17 @@ public class TelegramCommandHandler {
             PositionRepository positionRepository,
             OrderRepository orderRepository,
             DailySummaryService dailySummaryService,
-            MessageFormatter messageFormatter) {
+            MessageFormatter messageFormatter,
+            @Qualifier("telegramRestTemplate") RestTemplate restTemplate,
+            @Value("${tradie.order-executor.url:http://localhost:8082}") String orderExecutorUrl) {
         this.telegramClient = telegramClient;
         this.tradingControlService = tradingControlService;
         this.positionRepository = positionRepository;
         this.orderRepository = orderRepository;
         this.dailySummaryService = dailySummaryService;
         this.messageFormatter = messageFormatter;
+        this.restTemplate = restTemplate;
+        this.orderExecutorUrl = orderExecutorUrl;
     }
 
     /**
@@ -70,7 +81,7 @@ public class TelegramCommandHandler {
             case "/cancel"    -> handleCancel(chatId, args);
             case "/help"      -> handleHelp(chatId);
             default -> telegramClient.sendMessage(chatId,
-                    "Unknown command\\. Type /help for the list of commands\\.", "MarkdownV2");
+                    "Unknown command\\. Type /help for the list of commands\\.");
         }
     }
 
@@ -80,21 +91,34 @@ public class TelegramCommandHandler {
         String reason    = paused ? tradingControlService.getPauseReason() : null;
         long openCount   = positionRepository.countByStatus(Position.PositionStatus.OPEN);
 
+        String connStatus = "UNKNOWN ❓";
+        try {
+            String url = orderExecutorUrl + "/api/ibkr/status";
+            JsonNode statusResponse = restTemplate.getForObject(url, JsonNode.class);
+            if (statusResponse != null && statusResponse.has("connected")) {
+                boolean connected = statusResponse.path("connected").asBoolean();
+                connStatus = connected ? "CONNECTED 🟢" : "DISCONNECTED 🔴";
+            }
+        } catch (Exception e) {
+            log.warn("Failed to query IBKR status from order-executor: {}", e.getMessage());
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("🤖 *TRADIE STATUS*\n");
         sb.append(MessageFormatter.SEP).append("\n");
         sb.append("Trading: ").append(pauseInfo).append("\n");
         if (reason != null) sb.append("Pause Reason: ").append(escape(reason)).append("\n");
+        sb.append("IBKR Connection: ").append(connStatus).append("\n");
         sb.append("Open Positions: ").append(escape(String.valueOf(openCount))).append("\n");
         sb.append(MessageFormatter.SEP);
 
-        telegramClient.sendMessage(chatId, sb.toString(), "MarkdownV2");
+        telegramClient.sendMessage(chatId, sb.toString());
     }
 
     private void handlePositions(String chatId) {
         List<Position> positions = positionRepository.findByStatus(Position.PositionStatus.OPEN);
         if (positions.isEmpty()) {
-            telegramClient.sendMessage(chatId, "📭 No open positions\\.", "MarkdownV2");
+            telegramClient.sendMessage(chatId, "📭 No open positions\\.");
             return;
         }
 
@@ -124,17 +148,17 @@ public class TelegramCommandHandler {
 
         sb.append(MessageFormatter.SEP).append("\n");
         sb.append("Total: ").append(escape(String.valueOf(positions.size()))).append(" position\\(s\\)");
-        telegramClient.sendMessage(chatId, sb.toString(), "MarkdownV2");
+        telegramClient.sendMessage(chatId, sb.toString());
     }
 
     private void handlePnl(String chatId) {
         try {
             DailySummaryService.DailySummaryData data = dailySummaryService.getDailySummary();
             String summary = messageFormatter.formatDailySummary(data);
-            telegramClient.sendMessage(chatId, summary, "MarkdownV2");
+            telegramClient.sendMessage(chatId, summary);
         } catch (Exception e) {
             log.error("Failed to fetch P&L data: {}", e.getMessage());
-            telegramClient.sendMessage(chatId, "Failed to retrieve P&L data\\.", "MarkdownV2");
+            telegramClient.sendMessage(chatId, "Failed to retrieve P&L data\\.");
         }
     }
 
@@ -142,15 +166,13 @@ public class TelegramCommandHandler {
         tradingControlService.pause(reason.isEmpty() ? null : reason);
         String reasonText = reason.isEmpty() ? "" : ": " + escape(reason);
         telegramClient.sendMessage(chatId,
-                "⏸️ Trading *PAUSED*" + reasonText + "\\. All new signals will be rejected\\.",
-                "MarkdownV2");
+                "⏸️ Trading *PAUSED*" + reasonText + "\\. All new signals will be rejected\\.");
     }
 
     private void handleResume(String chatId) {
         tradingControlService.resume();
         telegramClient.sendMessage(chatId,
-                "✅ Trading *RESUMED*\\. New signals will be processed\\.",
-                "MarkdownV2");
+                "✅ Trading *RESUMED*\\. New signals will be processed\\.");
     }
 
     private void handleRisk(String chatId) {
@@ -176,30 +198,56 @@ public class TelegramCommandHandler {
         sb.append("Total Risk: \\$").append(escape(String.format("%.2f", totalRisk))).append("\n");
         sb.append(MessageFormatter.SEP);
 
-        telegramClient.sendMessage(chatId, sb.toString(), "MarkdownV2");
+        telegramClient.sendMessage(chatId, sb.toString());
     }
 
     private void handleCancel(String chatId, String symbol) {
         if (symbol.isBlank()) {
-            telegramClient.sendMessage(chatId,
-                    "Usage: /cancel \\[SYMBOL\\]", "MarkdownV2");
+            telegramClient.sendMessage(chatId, "Usage: /cancel \\[SYMBOL\\]");
             return;
         }
-        List<Order> pendingOrders = orderRepository
-                .findBySymbolAndStatus(symbol.toUpperCase(), Order.OrderStatus.PENDING);
+        String upperSymbol = symbol.toUpperCase().trim();
+        List<Order> activeOrders = orderRepository.findBySymbolAndStatusIn(upperSymbol, List.of(
+                Order.OrderStatus.PENDING,
+                Order.OrderStatus.SUBMITTED,
+                Order.OrderStatus.PARTIALLY_FILLED
+        ));
 
-        if (pendingOrders.isEmpty()) {
+        if (activeOrders.isEmpty()) {
             telegramClient.sendMessage(chatId,
-                    "No pending orders found for *" + escape(symbol.toUpperCase()) + "*\\.",
-                    "MarkdownV2");
+                    "No active orders found for *" + escape(upperSymbol) + "*\\.");
             return;
         }
 
-        telegramClient.sendMessage(chatId,
-                "Found " + escape(String.valueOf(pendingOrders.size())) +
-                " pending order\\(s\\) for *" + escape(symbol.toUpperCase()) +
-                "*\\. To cancel, use the order\\-executor REST API or TWS directly\\.",
-                "MarkdownV2");
+        int successCount = 0;
+        int failCount = 0;
+        for (Order order : activeOrders) {
+            try {
+                String url = orderExecutorUrl + "/api/orders/" + order.getId() + "/cancel";
+                ResponseEntity<String> response = restTemplate.postForEntity(url, null, String.class);
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    log.error("Failed to cancel order {}: {}", order.getId(), response.getBody());
+                }
+            } catch (Exception e) {
+                failCount++;
+                log.error("Error calling order-executor to cancel order {}", order.getId(), e);
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("🚫 *CANCEL ORDERS CONFIRMATION*\n");
+        sb.append(MessageFormatter.SEP).append("\n");
+        sb.append("Symbol: ").append(escape(upperSymbol)).append("\n");
+        sb.append("Cancelled: ").append(escape(String.valueOf(successCount))).append("\n");
+        if (failCount > 0) {
+            sb.append("Failed: ").append(escape(String.valueOf(failCount))).append("\n");
+        }
+        sb.append(MessageFormatter.SEP);
+
+        telegramClient.sendMessage(chatId, sb.toString());
     }
 
     private void handleHelp(String chatId) {
@@ -211,9 +259,9 @@ public class TelegramCommandHandler {
                 "/pause \\[reason\\] \\- Pause signal processing\n" +
                 "/resume \\- Resume signal processing\n" +
                 "/risk \\- Portfolio risk overview\n" +
-                "/cancel \\[symbol\\] \\- List pending orders for symbol\n" +
+                "/cancel \\[symbol\\] \\- Cancel active orders for symbol\n" +
                 "/help \\- Show this help message\n" +
                 MessageFormatter.SEP;
-        telegramClient.sendMessage(chatId, msg, "MarkdownV2");
+        telegramClient.sendMessage(chatId, msg);
     }
 }

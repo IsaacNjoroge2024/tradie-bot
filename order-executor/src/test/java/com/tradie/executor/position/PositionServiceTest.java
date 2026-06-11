@@ -84,11 +84,28 @@ class PositionServiceTest {
 
         verify(connectionManager).placeOrder(eq(200), any(), any());
         verify(positionRepository).save(pos);
-        assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.CLOSED);
+        assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.CLOSING);
 
         ArgumentCaptor<OrderEvent> eventCaptor = ArgumentCaptor.forClass(OrderEvent.class);
         verify(orderEventPublisher).publishOrderEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().type()).isEqualTo("POSITION_CLOSED_MANUAL");
+    }
+
+    @Test
+    void closePosition_closingPosition_allowsRetry() {
+        Position pos = buildOpenPosition();
+        pos.setStatus(Position.PositionStatus.CLOSING);
+        when(positionRepository.findById(POSITION_ID)).thenReturn(Optional.of(pos));
+        when(connectionManager.isConnected()).thenReturn(true);
+        when(orderIdManager.getNextOrderId()).thenReturn(201);
+        when(orderStatusTracker.findGroupBySignalId(SIGNAL_ID)).thenReturn(Optional.empty());
+        when(marketDataService.getLatestPrice("AAPL")).thenReturn(null);
+
+        service.closePosition(POSITION_ID, "Retry close");
+
+        verify(connectionManager).placeOrder(eq(201), any(), any());
+        verify(positionRepository).save(pos);
+        assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.CLOSING);
     }
 
     @Test

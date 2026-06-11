@@ -5,6 +5,7 @@ import com.tradie.alert.client.TelegramClient;
 import com.tradie.alert.config.TelegramProperties;
 import com.tradie.alert.formatter.MessageFormatter;
 import com.tradie.alert.service.AlertThrottler;
+import com.tradie.alert.service.ErrorNotifier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +23,7 @@ class AlertConsumerTest {
     @Mock private MessageFormatter messageFormatter;
     @Mock private AlertThrottler alertThrottler;
     @Mock private Acknowledgment ack;
+    @Mock private ErrorNotifier errorNotifier;
 
     private AlertConsumer consumer;
     private TelegramProperties properties;
@@ -31,7 +33,7 @@ class AlertConsumerTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         properties   = new TelegramProperties();
-        consumer     = new AlertConsumer(objectMapper, telegramClient, messageFormatter, alertThrottler, properties);
+        consumer     = new AlertConsumer(objectMapper, telegramClient, messageFormatter, alertThrottler, properties, errorNotifier);
     }
 
     @Test
@@ -121,6 +123,20 @@ class AlertConsumerTest {
         consumer.consume(message, "AAPL", ack);
 
         verify(telegramClient, never()).sendMessage(anyString());
+        verify(ack).acknowledge();
+    }
+
+    @Test
+    void consume_systemAlertEvent_sendsAlert() throws Exception {
+        String message = """
+                {"service":"IBKR","type":"CONNECTION_LOST","message":"Connection lost to TWS",
+                "timestamp":"2025-01-15T15:32:15Z"}""";
+
+        when(alertThrottler.shouldSend("SYSTEM_ALERT:IBKR:CONNECTION_LOST")).thenReturn(true);
+
+        consumer.consume(message, "IBKR", ack);
+
+        verify(errorNotifier).notifySystemAlert("IBKR", "CONNECTION_LOST", "Connection lost to TWS", null);
         verify(ack).acknowledge();
     }
 }

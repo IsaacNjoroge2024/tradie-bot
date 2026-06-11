@@ -42,22 +42,22 @@ public class TelegramClient {
     }
 
     /**
-     * Sends a MarkdownV2-formatted message to the default configured chat.
+     * Sends a message to the default configured chat using the configured parse mode.
      */
     public void sendMessage(String text) {
-        sendMessage(properties.getChatId(), text, "MarkdownV2");
+        sendMessage(properties.getChatId(), text);
     }
 
     /**
-     * Sends a message to the specified chat with the given parse mode.
+     * Sends a message to the specified chat using the configured parse mode.
      */
-    public void sendMessage(String chatId, String text, String parseMode) {
+    public void sendMessage(String chatId, String text) {
         if (!properties.isEnabled()) {
             log.debug("Telegram disabled, skipping message send");
             return;
         }
         enforceRateLimit();
-        doSendWithRetry(chatId, text, parseMode, 0);
+        doSendWithRetry(chatId, text, properties.getParseMode(), 0);
     }
 
     /**

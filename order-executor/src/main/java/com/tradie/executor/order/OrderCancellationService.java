@@ -29,11 +29,14 @@ public class OrderCancellationService {
 
     private final IBConnectionManager connectionManager;
     private final OrderRepository orderRepository;
+    private final OrderEventPublisher orderEventPublisher;
 
     public OrderCancellationService(IBConnectionManager connectionManager,
-                                    OrderRepository orderRepository) {
+                                    OrderRepository orderRepository,
+                                    OrderEventPublisher orderEventPublisher) {
         this.connectionManager = connectionManager;
         this.orderRepository = orderRepository;
+        this.orderEventPublisher = orderEventPublisher;
     }
 
     /**
@@ -67,6 +70,8 @@ public class OrderCancellationService {
         }
 
         log.warn("Emergency cancel-all: cancelling {} active orders", activeOrders.size());
+        orderEventPublisher.publishSystemAlert("Order Executor", "RISK_LIMIT_BREACHED",
+                "Risk limit breached! Emergency cancel-all triggered for " + activeOrders.size() + " active order(s).");
         int failures = 0;
         for (Order order : activeOrders) {
             if (order.getIbOrderId() != null) {

@@ -46,6 +46,7 @@ class PositionSynchronizerTest {
     void onPositionsLoaded_triggersSubscriptions() {
         when(positionTracker.getPositions()).thenReturn(Map.of());
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN)).thenReturn(List.of());
+        when(positionRepository.findByStatus(Position.PositionStatus.CLOSING)).thenReturn(List.of());
         when(positionRepository.countByStatus(Position.PositionStatus.OPEN)).thenReturn(0L);
 
         synchronizer.onPositionsLoaded();
@@ -57,6 +58,7 @@ class PositionSynchronizerTest {
     void syncPositions_dbOpenButIbkrMissing_marksAsClosed() {
         Position openPos = buildPosition("AAPL", "NASDAQ");
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN)).thenReturn(List.of(openPos));
+        when(positionRepository.findByStatus(Position.PositionStatus.CLOSING)).thenReturn(List.of());
         when(positionTracker.getPositions()).thenReturn(Map.of());
         when(positionRepository.countByStatus(any())).thenReturn(0L);
 
@@ -72,7 +74,10 @@ class PositionSynchronizerTest {
         IBPosition ibPos = new IBPosition("AAPL", "NASDAQ", 10.0, 150.0, 1500.0, 0.0);
         when(positionTracker.getPositions()).thenReturn(Map.of("AAPL|NASDAQ", ibPos));
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN)).thenReturn(List.of());
+        when(positionRepository.findByStatus(Position.PositionStatus.CLOSING)).thenReturn(List.of());
         when(positionRepository.findByStatusAndSymbol(Position.PositionStatus.OPEN, "AAPL"))
+                .thenReturn(List.of());
+        when(positionRepository.findByStatusAndSymbol(Position.PositionStatus.CLOSING, "AAPL"))
                 .thenReturn(List.of());
         when(positionRepository.countByStatus(any())).thenReturn(1L);
 
@@ -94,6 +99,7 @@ class PositionSynchronizerTest {
 
         when(positionTracker.getPositions()).thenReturn(Map.of("AAPL|NASDAQ", ibPos));
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN)).thenReturn(List.of(dbPos));
+        when(positionRepository.findByStatus(Position.PositionStatus.CLOSING)).thenReturn(List.of());
         when(positionRepository.findByStatusAndSymbol(Position.PositionStatus.OPEN, "AAPL"))
                 .thenReturn(List.of(dbPos));
         when(positionRepository.countByStatus(any())).thenReturn(1L);
@@ -113,6 +119,7 @@ class PositionSynchronizerTest {
 
         when(positionTracker.getPositions()).thenReturn(Map.of("AAPL|", ibPos));
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN)).thenReturn(List.of(dbPos));
+        when(positionRepository.findByStatus(Position.PositionStatus.CLOSING)).thenReturn(List.of());
         when(positionRepository.findByStatusAndSymbol(Position.PositionStatus.OPEN, "AAPL"))
                 .thenReturn(List.of(dbPos));
         when(positionRepository.countByStatus(any())).thenReturn(1L);
@@ -127,6 +134,7 @@ class PositionSynchronizerTest {
     void syncPositions_publishesSyncEvent_whenDbPositionClosed() {
         Position openPos = buildPosition("TSLA", "NASDAQ");
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN)).thenReturn(List.of(openPos));
+        when(positionRepository.findByStatus(Position.PositionStatus.CLOSING)).thenReturn(List.of());
         when(positionTracker.getPositions()).thenReturn(Map.of());
         when(positionRepository.countByStatus(any())).thenReturn(0L);
 
@@ -136,6 +144,43 @@ class PositionSynchronizerTest {
         verify(orderEventPublisher).publishOrderEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().type()).isEqualTo("POSITION_SYNC");
         assertThat(eventCaptor.getValue().symbol()).isEqualTo("TSLA");
+    }
+
+    @Test
+    void syncPositions_dbClosingButIbkrMissing_confirmsClose() {
+        Position closingPos = buildPosition("AAPL", "NASDAQ");
+        closingPos.setStatus(Position.PositionStatus.CLOSING);
+
+        when(positionTracker.getPositions()).thenReturn(Map.of());
+        when(positionRepository.findByStatus(Position.PositionStatus.OPEN)).thenReturn(List.of());
+        when(positionRepository.findByStatus(Position.PositionStatus.CLOSING)).thenReturn(List.of(closingPos));
+        when(positionRepository.countByStatus(any())).thenReturn(0L);
+
+        synchronizer.syncPositions();
+
+        assertThat(closingPos.getStatus()).isEqualTo(Position.PositionStatus.CLOSED);
+        assertThat(closingPos.getClosedAt()).isNotNull();
+        verify(positionRepository).save(closingPos);
+    }
+
+    @Test
+    void syncPositions_dbClosingAndIbkrHasPosition_doesNotCreateDuplicate() {
+        IBPosition ibPos = new IBPosition("AAPL", "NASDAQ", 10.0, 150.0, 1500.0, 0.0);
+        Position closingPos = buildPosition("AAPL", "NASDAQ");
+        closingPos.setStatus(Position.PositionStatus.CLOSING);
+
+        when(positionTracker.getPositions()).thenReturn(Map.of("AAPL|NASDAQ", ibPos));
+        when(positionRepository.findByStatus(Position.PositionStatus.OPEN)).thenReturn(List.of());
+        when(positionRepository.findByStatus(Position.PositionStatus.CLOSING)).thenReturn(List.of(closingPos));
+        when(positionRepository.findByStatusAndSymbol(Position.PositionStatus.OPEN, "AAPL"))
+                .thenReturn(List.of());
+        when(positionRepository.findByStatusAndSymbol(Position.PositionStatus.CLOSING, "AAPL"))
+                .thenReturn(List.of(closingPos));
+        when(positionRepository.countByStatus(any())).thenReturn(1L);
+
+        synchronizer.syncPositions();
+
+        verify(positionRepository, never()).save(any());
     }
 
     // ─── Helper ───────────────────────────────────────────────────────────────

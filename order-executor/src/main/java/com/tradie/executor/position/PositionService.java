@@ -71,7 +71,8 @@ public class PositionService {
         Position position = positionRepository.findById(positionId)
                 .orElseThrow(() -> new IllegalArgumentException("Position not found: " + positionId));
 
-        if (position.getStatus() != Position.PositionStatus.OPEN) {
+        if (position.getStatus() != Position.PositionStatus.OPEN
+                && position.getStatus() != Position.PositionStatus.CLOSING) {
             throw new IllegalStateException("Position is not open: " + positionId);
         }
         if (!connectionManager.isConnected()) {
@@ -101,15 +102,13 @@ public class PositionService {
         log.info("Manual close MARKET order submitted: positionId={} symbol={} ibOrderId={}",
                 positionId, position.getSymbol(), closeOrderId);
 
-        // Update DB — the actual fill price will arrive via orderStatus callback;
-        // mark as closing by recording the exit intent
+        // Mark CLOSING — the actual fill will be confirmed via IBKR position sync
         BigDecimal currentPrice = marketDataService.getLatestPrice(position.getSymbol());
         if (currentPrice != null) {
             position.setExitPrice(currentPrice);
             position.setRealizedPnl(pnlCalculator.realizedPnl(position, currentPrice));
         }
-        position.setStatus(Position.PositionStatus.CLOSED);
-        position.setClosedAt(Instant.now());
+        position.setStatus(Position.PositionStatus.CLOSING);
         positionRepository.save(position);
 
         orderEventPublisher.publishOrderEvent(new OrderEvent(

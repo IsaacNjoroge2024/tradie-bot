@@ -10,6 +10,7 @@ public class TelegramProperties {
     private String botToken = "";
     private String chatId = "";
     private boolean enabled = true;
+    private String parseMode = "MarkdownV2";
 
     private Alerts alerts = new Alerts();
     private Throttling throttling = new Throttling();
@@ -23,6 +24,9 @@ public class TelegramProperties {
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+    public String getParseMode() { return parseMode; }
+    public void setParseMode(String parseMode) { this.parseMode = parseMode; }
 
     public Alerts getAlerts() { return alerts; }
     public void setAlerts(Alerts alerts) { this.alerts = alerts; }

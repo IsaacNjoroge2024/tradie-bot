@@ -143,6 +143,6 @@ public class Position {
     public void setStatus(PositionStatus status) { this.status = status; }
 
     public enum PositionStatus {
-        OPEN, CLOSED
+        OPEN, CLOSING, CLOSED
     }
 }

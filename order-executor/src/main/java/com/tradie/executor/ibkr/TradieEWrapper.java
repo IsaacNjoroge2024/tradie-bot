@@ -222,7 +222,10 @@ public class TradieEWrapper extends DefaultEWrapper {
                 log.warn("Connectivity restored but data lost (2110): {}. Re-requesting positions.", errorMsg);
                 connectionCallback.onConnected();
             }
-            case 201 -> log.error("Order rejected (201): id={} msg={}", id, errorMsg);
+            case 201 -> {
+                log.error("Order rejected (201): id={} msg={}", id, errorMsg);
+                orderStatusTracker.handleOrderRejection(id, errorMsg);
+            }
             case 202 -> log.warn("Order cancelled (202): id={} msg={}", id, errorMsg);
             default  -> {
                 if (errorCode < 1000) {

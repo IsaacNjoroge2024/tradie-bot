@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -25,7 +26,8 @@ import java.util.Map;
  * <ul>
  *   <li>IBKR has position, DB doesn't → create a DB record (manual/external trade)</li>
  *   <li>DB has OPEN position, IBKR doesn't → mark as CLOSED (filled while disconnected)</li>
- *   <li>Quantities differ → update DB to match IBKR (IBKR is source of truth)</li>
+ *   <li>DB has CLOSING position, IBKR doesn't → close confirmed, mark as CLOSED</li>
+ *   <li>Quantities differ (OPEN only) → update DB to match IBKR (IBKR is source of truth)</li>
  * </ul>
  */
 @Service
@@ -82,16 +84,25 @@ public class PositionSynchronizer {
 
     void syncPositions() {
         Map<String, IBPosition> ibkrPositions = positionTracker.getPositions();
-        List<Position> dbOpenPositions = positionRepository.findByStatus(Position.PositionStatus.OPEN);
 
-        // Case 1: DB has OPEN position but IBKR doesn't → mark CLOSED
+        // Collect all active DB positions (OPEN + awaiting manual close confirmation)
+        List<Position> dbActivePositions = new ArrayList<>();
+        dbActivePositions.addAll(positionRepository.findByStatus(Position.PositionStatus.OPEN));
+        dbActivePositions.addAll(positionRepository.findByStatus(Position.PositionStatus.CLOSING));
+
+        // Case 1: DB has active position but IBKR doesn't → mark CLOSED
         // Match by symbol only; IBKR may report a blank/different exchange than what we stored.
-        for (Position dbPos : dbOpenPositions) {
+        for (Position dbPos : dbActivePositions) {
             boolean ibkrHasSymbol = ibkrPositions.values().stream()
                     .anyMatch(ibPos -> dbPos.getSymbol().equals(ibPos.symbol()));
             if (!ibkrHasSymbol) {
-                log.warn("Position closed in IBKR but OPEN in DB (filled while disconnected): symbol={} id={}",
-                        dbPos.getSymbol(), dbPos.getId());
+                if (dbPos.getStatus() == Position.PositionStatus.CLOSING) {
+                    log.info("Manual close confirmed by IBKR (position flat): symbol={} id={}",
+                            dbPos.getSymbol(), dbPos.getId());
+                } else {
+                    log.warn("Position closed in IBKR but OPEN in DB (filled while disconnected): symbol={} id={}",
+                            dbPos.getSymbol(), dbPos.getId());
+                }
                 dbPos.setStatus(Position.PositionStatus.CLOSED);
                 dbPos.setClosedAt(Instant.now());
                 positionRepository.save(dbPos);
@@ -104,6 +115,11 @@ public class PositionSynchronizer {
             IBPosition ibPos = entry.getValue();
             List<Position> matching = positionRepository.findByStatusAndSymbol(
                     Position.PositionStatus.OPEN, ibPos.symbol());
+            if (matching.isEmpty()) {
+                // Also check CLOSING positions to avoid creating a duplicate when a close is in flight
+                matching = positionRepository.findByStatusAndSymbol(
+                        Position.PositionStatus.CLOSING, ibPos.symbol());
+            }
 
             if (matching.isEmpty()) {
                 // IBKR has position, DB doesn't — create a record (manual trade)
@@ -113,8 +129,9 @@ public class PositionSynchronizer {
                 marketDataService.subscribeToPosition(newPos);
                 publishSyncEvent(newPos, "Position created from IBKR sync (manual trade)");
             } else {
-                // Check for quantity mismatch
+                // Check for quantity mismatch; skip CLOSING positions (close order is in flight)
                 for (Position dbPos : matching) {
+                    if (dbPos.getStatus() == Position.PositionStatus.CLOSING) continue;
                     BigDecimal ibQty = BigDecimal.valueOf(Math.abs(ibPos.quantity()));
                     if (dbPos.getQuantity().compareTo(ibQty) != 0) {
                         log.warn("Quantity mismatch for {}: DB={} IBKR={}. Updating to IBKR value.",

@@ -1,6 +1,7 @@
 package com.tradie.alert.service;
 
 import com.tradie.alert.client.TelegramClient;
+import com.tradie.alert.config.TelegramProperties;
 import com.tradie.alert.formatter.MessageFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,18 +22,25 @@ public class DailySummaryJob {
     private final DailySummaryService dailySummaryService;
     private final MessageFormatter messageFormatter;
     private final TelegramClient telegramClient;
+    private final TelegramProperties properties;
 
     public DailySummaryJob(
             DailySummaryService dailySummaryService,
             MessageFormatter messageFormatter,
-            TelegramClient telegramClient) {
+            TelegramClient telegramClient,
+            TelegramProperties properties) {
         this.dailySummaryService = dailySummaryService;
         this.messageFormatter = messageFormatter;
         this.telegramClient = telegramClient;
+        this.properties = properties;
     }
 
-    @Scheduled(cron = "0 0 17 * * MON-FRI", zone = "America/New_York")
+    @Scheduled(cron = "${tradie.telegram.summary.cron:0 0 17 * * MON-FRI}", zone = "${tradie.telegram.summary.timezone:America/New_York}")
     public void sendDailySummary() {
+        if (!properties.getSummary().isEnabled()) {
+            log.debug("Daily summary is disabled, skipping");
+            return;
+        }
         log.info("Sending daily P&L summary");
         try {
             DailySummaryService.DailySummaryData summary = dailySummaryService.getDailySummary();

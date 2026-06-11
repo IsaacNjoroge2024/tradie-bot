@@ -201,6 +201,30 @@ class OrderStatusTrackerTest {
         verify(orderRepository).save(dbOrder);
     }
 
+    // ─── Order Rejection ─────────────────────────────────────────────────────
+
+    @Test
+    void handleOrderRejection_knownOrder_updatesStatusToRejectedAndPublishesAlert() {
+        Order dbOrder = buildDbOrder(PARENT_ID);
+        when(orderRepository.findByIbOrderId(PARENT_ID)).thenReturn(Optional.of(dbOrder));
+
+        tracker.handleOrderRejection(PARENT_ID, "Insufficient margin");
+
+        assertThat(dbOrder.getStatus()).isEqualTo(Order.OrderStatus.REJECTED);
+        verify(orderRepository).save(dbOrder);
+        verify(orderEventPublisher).publishSystemAlert(eq("IBKR"), eq("ORDER_REJECTED"), anyString());
+    }
+
+    @Test
+    void handleOrderRejection_unknownOrder_publishesAlertWithoutDbUpdate() {
+        when(orderRepository.findByIbOrderId(999)).thenReturn(Optional.empty());
+
+        tracker.handleOrderRejection(999, "Unknown order");
+
+        verify(orderRepository, never()).save(any());
+        verify(orderEventPublisher).publishSystemAlert(eq("IBKR"), eq("ORDER_REJECTED"), anyString());
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private OrderGroup buildOrderGroup() {

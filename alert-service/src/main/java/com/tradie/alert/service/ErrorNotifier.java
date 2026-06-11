@@ -41,10 +41,22 @@ public class ErrorNotifier {
      * @param exception the exception, or null if not available
      */
     public void notifyError(String service, String error, Throwable exception) {
+        notifySystemAlert(service, "ERROR", error, exception);
+    }
+
+    /**
+     * Sends a system alert to Telegram with a custom type.
+     *
+     * @param service   the service where the alert occurred
+     * @param type      the type of system alert (e.g. "CONNECTION_LOST")
+     * @param messageText short description of the alert
+     * @param exception the exception, or null if not available
+     */
+    public void notifySystemAlert(String service, String type, String messageText, Throwable exception) {
         if (!properties.getAlerts().isSystemAlerts()) return;
 
         try {
-            String message = messageFormatter.formatSystemAlert(service, "ERROR", error);
+            String message = messageFormatter.formatSystemAlert(service, type, messageText);
 
             if (exception != null) {
                 String trace = trimStackTrace(exception);
@@ -53,7 +65,7 @@ public class ErrorNotifier {
 
             telegramClient.sendMessage(message);
         } catch (Exception e) {
-            log.error("Failed to send error notification to Telegram: {}", e.getMessage());
+            log.error("Failed to send system alert notification to Telegram: {}", e.getMessage());
         }
     }
 

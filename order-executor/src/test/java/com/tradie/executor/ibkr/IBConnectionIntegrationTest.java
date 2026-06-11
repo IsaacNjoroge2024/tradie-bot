@@ -60,9 +60,10 @@ class IBConnectionIntegrationTest {
                 mock(OrderRepository.class),
                 mock(PositionRepository.class),
                 mock(OrderEventPublisher.class));
+        OrderEventPublisher orderEventPublisher = mock(OrderEventPublisher.class);
         connectionManager = new IBConnectionManager(
                 properties, accountService, positionTracker, orderIdManager, orderStatusTracker,
-                mock(PositionSynchronizer.class), mock(MarketDataService.class));
+                mock(PositionSynchronizer.class), mock(MarketDataService.class), orderEventPublisher);
     }
 
     @AfterEach

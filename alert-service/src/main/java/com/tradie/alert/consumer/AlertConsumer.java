@@ -6,6 +6,7 @@ import com.tradie.alert.client.TelegramClient;
 import com.tradie.alert.config.TelegramProperties;
 import com.tradie.alert.formatter.MessageFormatter;
 import com.tradie.alert.service.AlertThrottler;
+import com.tradie.alert.service.ErrorNotifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -35,18 +36,21 @@ public class AlertConsumer {
     private final MessageFormatter messageFormatter;
     private final AlertThrottler alertThrottler;
     private final TelegramProperties properties;
+    private final ErrorNotifier errorNotifier;
 
     public AlertConsumer(
             ObjectMapper objectMapper,
             TelegramClient telegramClient,
             MessageFormatter messageFormatter,
             AlertThrottler alertThrottler,
-            TelegramProperties properties) {
+            TelegramProperties properties,
+            ErrorNotifier errorNotifier) {
         this.objectMapper = objectMapper;
         this.telegramClient = telegramClient;
         this.messageFormatter = messageFormatter;
         this.alertThrottler = alertThrottler;
         this.properties = properties;
+        this.errorNotifier = errorNotifier;
     }
 
     @KafkaListener(topics = "tradie.alerts", groupId = "${spring.kafka.consumer.group-id:alert-service}")
@@ -61,7 +65,19 @@ public class AlertConsumer {
             String formatted = null;
             String throttleKey;
 
-            if (node.has("type")) {
+            if (node.has("service")) {
+                // System Alert / Error notification from Kafka
+                String service = node.path("service").asText("UNKNOWN");
+                String type = node.path("type").asText("ERROR");
+                String messageText = node.path("message").asText("");
+                throttleKey = "SYSTEM_ALERT:" + service + ":" + type;
+
+                if (properties.getAlerts().isSystemAlerts()
+                        && alertThrottler.shouldSend(throttleKey)) {
+                    errorNotifier.notifySystemAlert(service, type, messageText, null);
+                }
+
+            } else if (node.has("type")) {
                 // OrderEvent from order-executor
                 String type   = node.path("type").asText();
                 String symbol = node.path("symbol").asText("UNKNOWN");

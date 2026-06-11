@@ -3,6 +3,8 @@ package com.tradie.strategy.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradie.strategy.dto.OrderDTO;
 import com.tradie.strategy.dto.RejectionEvent;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -36,5 +38,42 @@ public class OrderPublisher {
         String json = objectMapper.writeValueAsString(event);
         kafkaTemplate.send(ALERTS_TOPIC, event.symbol(), json).get(5, TimeUnit.SECONDS);
         log.debug("Rejection event for signal {} published to alerts", event.signalId());
+    }
+
+    public void publishSystemAlert(String service, String type, String message) {
+        try {
+            var node = objectMapper.createObjectNode();
+            node.put("service", service);
+            node.put("type", type);
+            node.put("message", message);
+            node.put("timestamp", java.time.Instant.now().toString());
+
+            String json = objectMapper.writeValueAsString(node);
+            kafkaTemplate.send(ALERTS_TOPIC, service, json);
+            log.info("System alert published: service={} type={}", service, type);
+        } catch (Exception e) {
+            log.error("Failed to serialize system alert service={} type={}: {}",
+                    service, type, e.getMessage(), e);
+        }
+    }
+
+    @PostConstruct
+    public void onStart() {
+        publishSystemAlert("Strategy Engine", "SERVICE_START", "Service started successfully");
+    }
+
+    @PreDestroy
+    public void onStop() {
+        try {
+            var node = objectMapper.createObjectNode();
+            node.put("service", "Strategy Engine");
+            node.put("type", "SERVICE_SHUTDOWN");
+            node.put("message", "Service is shutting down");
+            node.put("timestamp", java.time.Instant.now().toString());
+            kafkaTemplate.send(ALERTS_TOPIC, "Strategy Engine", objectMapper.writeValueAsString(node))
+                    .get(2, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("Failed to send shutdown alert: {}", e.getMessage());
+        }
     }
 }

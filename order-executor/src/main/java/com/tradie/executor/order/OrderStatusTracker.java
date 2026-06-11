@@ -273,4 +273,24 @@ public class OrderStatusTracker {
         // Each group is registered under 3 keys; divide to get unique group count
         return activeGroups.size() / 3;
     }
+
+    /**
+     * Handles order rejections reported by IBKR error callbacks.
+     * Updates the status of the order in the database to REJECTED and sends a system alert.
+     */
+    public void handleOrderRejection(int orderId, String errorMsg) {
+        Order dbOrder = orderRepository.findByIbOrderId(orderId).orElse(null);
+        if (dbOrder != null) {
+            dbOrder.setStatus(Order.OrderStatus.REJECTED);
+            orderRepository.save(dbOrder);
+            log.warn("Order rejected by broker: ibOrderId={} msg={}", orderId, errorMsg);
+
+            orderEventPublisher.publishSystemAlert("IBKR", "ORDER_REJECTED",
+                    "Order rejected for ibOrderId=" + orderId + ": " + errorMsg);
+        } else {
+            log.warn("Order rejected by broker but not found in DB: ibOrderId={} msg={}", orderId, errorMsg);
+            orderEventPublisher.publishSystemAlert("IBKR", "ORDER_REJECTED",
+                    "Order rejected for untracked ibOrderId=" + orderId + ": " + errorMsg);
+        }
+    }
 }

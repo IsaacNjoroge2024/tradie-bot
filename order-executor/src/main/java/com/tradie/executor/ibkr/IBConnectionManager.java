@@ -8,6 +8,7 @@ import com.ib.client.Order;
 import com.ib.client.OrderCancel;
 import com.tradie.executor.config.IbkrProperties;
 import com.tradie.executor.order.OrderStatusTracker;
+import com.tradie.executor.order.OrderEventPublisher;
 import com.tradie.executor.position.MarketDataService;
 import com.tradie.executor.position.PositionSynchronizer;
 import jakarta.annotation.PostConstruct;
@@ -47,6 +48,7 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
     private final OrderStatusTracker orderStatusTracker;
     private final PositionSynchronizer positionSynchronizer;
     private final MarketDataService marketDataService;
+    private final OrderEventPublisher orderEventPublisher;
 
     private EClientSocket client;
     private EJavaSignal signal;
@@ -72,7 +74,8 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
             OrderIdManager orderIdManager,
             OrderStatusTracker orderStatusTracker,
             PositionSynchronizer positionSynchronizer,
-            MarketDataService marketDataService) {
+            MarketDataService marketDataService,
+            OrderEventPublisher orderEventPublisher) {
         this.properties = properties;
         this.accountService = accountService;
         this.positionTracker = positionTracker;
@@ -80,6 +83,7 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
         this.orderStatusTracker = orderStatusTracker;
         this.positionSynchronizer = positionSynchronizer;
         this.marketDataService = marketDataService;
+        this.orderEventPublisher = orderEventPublisher;
     }
 
     @PostConstruct
@@ -181,6 +185,7 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
         requestAccountSummary(IbkrAccountService.getAccountSummaryReqId(), IbkrAccountService.getAccountTags());
         requestPositions();
         // Market data subscriptions are re-established in PositionSynchronizer.onPositionsLoaded()
+        orderEventPublisher.publishSystemAlert("IBKR", "CONNECTION_RESTORED", "Connection to TWS established.");
     }
 
     @Override
@@ -189,6 +194,7 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
             state.set(ConnectionState.DISCONNECTED);
             positionTracker.clear();
             scheduleReconnect();
+            orderEventPublisher.publishSystemAlert("IBKR", "CONNECTION_LOST", "Connection to TWS lost, attempting reconnect...");
         }
     }
 
@@ -197,9 +203,12 @@ public class IBConnectionManager implements TradieEWrapper.IBConnectionCallback 
         switch (errorCode) {
             case 504, 1100 -> {
                 // Not connected / connectivity lost — trigger reconnect
-                state.set(ConnectionState.DISCONNECTED);
-                positionTracker.clear();
-                scheduleReconnect();
+                if (state.get() != ConnectionState.DISCONNECTED) {
+                    state.set(ConnectionState.DISCONNECTED);
+                    positionTracker.clear();
+                    scheduleReconnect();
+                    orderEventPublisher.publishSystemAlert("IBKR", "CONNECTION_LOST", "Connection to TWS lost: code=" + errorCode + " msg=" + errorMsg);
+                }
             }
             default -> log.warn("Unhandled IBKR error in connection manager: code={} msg={}", errorCode, errorMsg);
         }

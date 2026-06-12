@@ -79,7 +79,19 @@ class SentimentAnalyzer:
         symbol: Optional[str] = None,
         category: str = "general",
     ) -> List[NewsItem]:
-        """Fetch recent market news from Finnhub."""
+        """Fetch recent market news from Finnhub, with Alpha Vantage as fallback."""
+        items = await self._fetch_from_finnhub(symbol=symbol, category=category)
+        if not items and settings.alpha_vantage_api_key:
+            logger.info("Finnhub returned no news; falling back to Alpha Vantage")
+            items = await self._fetch_from_alpha_vantage(symbol=symbol)
+        return items
+
+    async def _fetch_from_finnhub(
+        self,
+        symbol: Optional[str] = None,
+        category: str = "general",
+    ) -> List[NewsItem]:
+        """Fetch news from Finnhub (primary source)."""
         if not settings.finnhub_api_key:
             logger.warning("FINNHUB_API_KEY not configured; returning empty news")
             return []
@@ -119,7 +131,49 @@ class SentimentAnalyzer:
             return news_items
 
         except (httpx.HTTPError, ValueError) as e:
-            logger.error(f"Failed to fetch news: {e}")
+            logger.error(f"Failed to fetch news from Finnhub: {e}")
+            return []
+
+    async def _fetch_from_alpha_vantage(self, symbol: Optional[str] = None) -> List[NewsItem]:
+        """Fetch news from Alpha Vantage (fallback source)."""
+        params: dict = {"function": "NEWS_SENTIMENT", "apikey": settings.alpha_vantage_api_key}
+        if symbol:
+            params["tickers"] = symbol
+        else:
+            params["topics"] = "financial_markets"
+
+        try:
+            response = await self.client.get(
+                "https://www.alphavantage.co/query", params=params
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "Information" in data:
+                logger.warning(f"Alpha Vantage API limit reached: {data['Information']}")
+                return []
+
+            news_items = []
+            for item in data.get("feed", [])[:20]:
+                try:
+                    published_at = datetime.strptime(
+                        item["time_published"], "%Y%m%dT%H%M%S"
+                    ).replace(tzinfo=timezone.utc)
+                    news = NewsItem(
+                        headline=item.get("title", ""),
+                        summary=item.get("summary"),
+                        source=item.get("source", "alpha_vantage"),
+                        published_at=published_at,
+                        url=item.get("url"),
+                    )
+                    news_items.append(news)
+                except (KeyError, TypeError, ValueError) as e:
+                    logger.warning(f"Skipping malformed Alpha Vantage news item: {e}")
+
+            return news_items
+
+        except (httpx.HTTPError, ValueError) as e:
+            logger.error(f"Failed to fetch news from Alpha Vantage: {e}")
             return []
 
     def analyze_sentiment(self, text: str) -> float:

@@ -71,8 +71,10 @@ public class PositionService {
         Position position = positionRepository.findById(positionId)
                 .orElseThrow(() -> new IllegalArgumentException("Position not found: " + positionId));
 
-        if (position.getStatus() != Position.PositionStatus.OPEN
-                && position.getStatus() != Position.PositionStatus.CLOSING) {
+        if (position.getStatus() == Position.PositionStatus.CLOSING) {
+            throw new IllegalStateException("Position close already in progress: " + positionId);
+        }
+        if (position.getStatus() != Position.PositionStatus.OPEN) {
             throw new IllegalStateException("Position is not open: " + positionId);
         }
         if (!connectionManager.isConnected()) {

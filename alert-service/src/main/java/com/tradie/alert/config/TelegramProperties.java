@@ -9,7 +9,7 @@ public class TelegramProperties {
 
     private String botToken = "";
     private String chatId = "";
-    private boolean enabled = true;
+    private boolean enabled = false;
     private String parseMode = "MarkdownV2";
 
     private Alerts alerts = new Alerts();

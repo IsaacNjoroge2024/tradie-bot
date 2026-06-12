@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
+import java.util.Locale;
 
 import static com.tradie.alert.util.TelegramEscaper.escape;
 
@@ -129,8 +130,8 @@ public class TelegramCommandHandler {
         int i = 1;
         for (Position p : positions) {
             String side  = p.getSide() != null ? p.getSide().name() : "?";
-            String qty   = p.getQuantity() != null ? String.format("%.0f", p.getQuantity().doubleValue()) : "?";
-            String entry = p.getEntryPrice() != null ? String.format("%.2f", p.getEntryPrice().doubleValue()) : "?";
+            String qty   = p.getQuantity() != null ? String.format(Locale.US, "%.0f", p.getQuantity().doubleValue()) : "?";
+            String entry = p.getEntryPrice() != null ? String.format(Locale.US, "%.2f", p.getEntryPrice().doubleValue()) : "?";
             sb.append(escape(String.valueOf(i++))).append("\\. ")
               .append(escape(p.getSymbol())).append(" ")
               .append(escape(side)).append(" ")
@@ -141,7 +142,7 @@ public class TelegramCommandHandler {
                 double upnl = p.getUnrealizedPnl().doubleValue();
                 String sign = upnl >= 0 ? "\\+" : "\\-";
                 sb.append(" P&L: ").append(sign).append("\\$")
-                  .append(escape(String.format("%.2f", Math.abs(upnl))));
+                  .append(escape(String.format(Locale.US, "%.2f", Math.abs(upnl))));
             }
             sb.append("\n");
         }
@@ -194,8 +195,8 @@ public class TelegramCommandHandler {
         sb.append("⚖️ *RISK DASHBOARD*\n");
         sb.append(MessageFormatter.SEP).append("\n");
         sb.append("Open Positions: ").append(escape(String.valueOf(openCount))).append("\n");
-        sb.append("Total Exposure: \\$").append(escape(String.format("%.2f", totalExposure))).append("\n");
-        sb.append("Total Risk: \\$").append(escape(String.format("%.2f", totalRisk))).append("\n");
+        sb.append("Total Exposure: \\$").append(escape(String.format(Locale.US, "%.2f", totalExposure))).append("\n");
+        sb.append("Total Risk: \\$").append(escape(String.format(Locale.US, "%.2f", totalRisk))).append("\n");
         sb.append(MessageFormatter.SEP);
 
         telegramClient.sendMessage(chatId, sb.toString());
@@ -222,6 +223,11 @@ public class TelegramCommandHandler {
         int successCount = 0;
         int failCount = 0;
         for (Order order : activeOrders) {
+            if (order.getId() == null) {
+                log.warn("Skipping cancel for order with null id: symbol={}", upperSymbol);
+                failCount++;
+                continue;
+            }
             try {
                 String url = orderExecutorUrl + "/api/orders/" + order.getId() + "/cancel";
                 ResponseEntity<String> response = restTemplate.postForEntity(url, null, String.class);

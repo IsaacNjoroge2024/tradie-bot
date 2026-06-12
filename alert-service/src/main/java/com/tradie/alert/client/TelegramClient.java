@@ -79,17 +79,21 @@ public class TelegramClient {
         }
     }
 
-    private synchronized void enforceRateLimit() {
-        long now = System.currentTimeMillis();
-        long elapsed = now - lastSendTimeMs;
-        if (elapsed < MIN_SEND_INTERVAL_MS) {
+    private void enforceRateLimit() {
+        long sleepTime;
+        synchronized (this) {
+            long now = System.currentTimeMillis();
+            long elapsed = now - lastSendTimeMs;
+            sleepTime = elapsed < MIN_SEND_INTERVAL_MS ? MIN_SEND_INTERVAL_MS - elapsed : 0;
+            lastSendTimeMs = now + sleepTime;
+        }
+        if (sleepTime > 0) {
             try {
-                Thread.sleep(MIN_SEND_INTERVAL_MS - elapsed);
+                Thread.sleep(sleepTime);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }
-        lastSendTimeMs = System.currentTimeMillis();
     }
 
     private void doSendWithRetry(String chatId, String text, String parseMode, int attempt) {

@@ -21,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -214,8 +215,8 @@ class TelegramCommandHandlerTest {
 
     @Test
     void handle_cancel_withSymbol_hasPendingOrders_showsCount() {
-        Order order = new Order();
-        order.setSymbol("AAPL");
+        Order order = mock(Order.class);
+        when(order.getId()).thenReturn(UUID.randomUUID());
         when(orderRepository.findBySymbolAndStatusIn(eq("AAPL"), any()))
                 .thenReturn(List.of(order));
         when(restTemplate.postForEntity(anyString(), any(), eq(String.class)))

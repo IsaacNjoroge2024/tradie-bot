@@ -6,6 +6,8 @@ import com.tradie.alert.service.DailySummaryService.DailySummaryData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Locale;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class MessageFormatterTest {
@@ -163,6 +165,22 @@ class MessageFormatterTest {
         assertFalse(result.contains("Best Trade: \\+"));
         assertTrue(result.contains("\\-$50"));
         assertTrue(result.contains("\\-$500"));
+    }
+
+    @Test
+    void formatDailySummary_decimalFormattingUsesDotsRegardlessOfLocale() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.GERMANY);
+            DailySummaryData data = new DailySummaryData(1250.50, 5, 4, 1, 80.0, 500.25, -250.75, 2);
+            String result = formatter.formatDailySummary(data);
+            // MarkdownV2 escapes '.' to '\.' — German locale would produce "1250,50" (no escaping needed for comma)
+            assertFalse(result.contains("1250,50"), "Comma decimal separator found — locale leak in formatDailySummary");
+            // Dot-separated form must be present (escaped to '\.' in MarkdownV2)
+            assertTrue(result.contains("1250\\.50"), "Expected escaped-dot decimal in output, got: " + result);
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 
     // ─── Helper ───────────────────────────────────────────────────────────────

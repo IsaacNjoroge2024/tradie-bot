@@ -1,6 +1,7 @@
 package com.tradie.strategy.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tradie.strategy.dto.OrderDTO;
 import com.tradie.strategy.dto.RejectionEvent;
 import jakarta.annotation.PostConstruct;
@@ -42,13 +43,7 @@ public class OrderPublisher {
 
     public void publishSystemAlert(String service, String type, String message) {
         try {
-            var node = objectMapper.createObjectNode();
-            node.put("service", service);
-            node.put("type", type);
-            node.put("message", message);
-            node.put("timestamp", java.time.Instant.now().toString());
-
-            String json = objectMapper.writeValueAsString(node);
+            String json = objectMapper.writeValueAsString(buildSystemAlertJson(service, type, message));
             kafkaTemplate.send(ALERTS_TOPIC, service, json);
             log.info("System alert published: service={} type={}", service, type);
         } catch (Exception e) {
@@ -65,15 +60,21 @@ public class OrderPublisher {
     @PreDestroy
     public void onStop() {
         try {
-            var node = objectMapper.createObjectNode();
-            node.put("service", "Strategy Engine");
-            node.put("type", "SERVICE_SHUTDOWN");
-            node.put("message", "Service is shutting down");
-            node.put("timestamp", java.time.Instant.now().toString());
-            kafkaTemplate.send(ALERTS_TOPIC, "Strategy Engine", objectMapper.writeValueAsString(node))
+            kafkaTemplate.send(ALERTS_TOPIC, "Strategy Engine",
+                    objectMapper.writeValueAsString(
+                            buildSystemAlertJson("Strategy Engine", "SERVICE_SHUTDOWN", "Service is shutting down")))
                     .get(2, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("Failed to send shutdown alert: {}", e.getMessage());
         }
+    }
+
+    private ObjectNode buildSystemAlertJson(String service, String type, String message) {
+        var node = objectMapper.createObjectNode();
+        node.put("service", service);
+        node.put("type", type);
+        node.put("message", message);
+        node.put("timestamp", java.time.Instant.now().toString());
+        return node;
     }
 }

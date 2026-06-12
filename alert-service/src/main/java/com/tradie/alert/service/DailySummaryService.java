@@ -46,8 +46,8 @@ public class DailySummaryService {
             double pnl = p.getRealizedPnl().doubleValue();
             totalTrades++;
             totalPnl += pnl;
-            if (pnl > 0) wins++;
-            else if (pnl < 0) losses++;
+            if (pnl >= 0) wins++;
+            else losses++;
             if (first) {
                 bestTrade = pnl;
                 worstTrade = pnl;

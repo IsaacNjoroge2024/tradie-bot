@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 import static com.tradie.alert.util.TelegramEscaper.escape;
 
@@ -79,10 +80,10 @@ public class MessageFormatter {
         String pnlSign   = data.totalPnl()  >= 0 ? "\\+" : "\\-";
         String bestSign  = data.bestTrade() >= 0 ? "\\+" : "\\-";
         String worstSign = data.worstTrade() >= 0 ? "\\+" : "\\-";
-        String pnlValue  = escape(String.format("%.2f", Math.abs(data.totalPnl())));
-        String winRate   = escape(String.format("%.1f", data.winRate()));
-        String bestStr   = escape(String.format("%.2f", Math.abs(data.bestTrade())));
-        String worstStr  = escape(String.format("%.2f", Math.abs(data.worstTrade())));
+        String pnlValue  = escape(String.format(Locale.US, "%.2f", Math.abs(data.totalPnl())));
+        String winRate   = escape(String.format(Locale.US, "%.1f", data.winRate()));
+        String bestStr   = escape(String.format(Locale.US, "%.2f", Math.abs(data.bestTrade())));
+        String worstStr  = escape(String.format(Locale.US, "%.2f", Math.abs(data.worstTrade())));
         String openCount = escape(String.valueOf(data.openPositions()));
         String trades    = escape(String.valueOf(data.totalTrades()));
         String wins      = escape(String.valueOf(data.wins()));
@@ -115,23 +116,23 @@ public class MessageFormatter {
         sb.append(SEP).append("\n");
         sb.append("Symbol: ").append(escape(symbol)).append("\n");
         sb.append("Side: ").append(escape(side)).append("\n");
-        sb.append("Entry: $").append(escape(String.format("%.2f", price))).append("\n");
+        sb.append("Entry: $").append(escape(String.format(Locale.US, "%.2f", price))).append("\n");
 
         if (!node.path("stopLoss").isMissingNode() && !node.path("stopLoss").isNull()) {
             double sl    = node.path("stopLoss").asDouble();
             double slPct = price > 0 ? (sl - price) / price * 100 : 0;
-            String slPctStr = escape(String.format("%.1f", Math.abs(slPct)));
+            String slPctStr = escape(String.format(Locale.US, "%.1f", Math.abs(slPct)));
             String slPctSign = slPct < 0 ? "\\-" : "\\+";
-            sb.append("Stop Loss: $").append(escape(String.format("%.2f", sl)))
+            sb.append("Stop Loss: $").append(escape(String.format(Locale.US, "%.2f", sl)))
               .append(" \\(").append(slPctSign).append(slPctStr).append("%\\)\n");
         }
 
         if (!node.path("takeProfit").isMissingNode() && !node.path("takeProfit").isNull()) {
             double tp    = node.path("takeProfit").asDouble();
             double tpPct = price > 0 ? (tp - price) / price * 100 : 0;
-            String tpPctStr  = escape(String.format("%.1f", Math.abs(tpPct)));
+            String tpPctStr  = escape(String.format(Locale.US, "%.1f", Math.abs(tpPct)));
             String tpPctSign = tpPct >= 0 ? "\\+" : "\\-";
-            sb.append("Take Profit: $").append(escape(String.format("%.2f", tp)))
+            sb.append("Take Profit: $").append(escape(String.format(Locale.US, "%.2f", tp)))
               .append(" \\(").append(tpPctSign).append(tpPctStr).append("%\\)\n");
         }
 
@@ -173,13 +174,13 @@ public class MessageFormatter {
                     ? (entryPx - exitPx) * qty
                     : (exitPx - entryPx) * qty;
             String pnlSign  = pnl >= 0 ? "\\+" : "\\-";
-            String pnlValue = escape(String.format("%.2f", Math.abs(pnl)));
+            String pnlValue = escape(String.format(Locale.US, "%.2f", Math.abs(pnl)));
 
-            sb.append("Entry: $").append(escape(String.format("%.2f", entryPx))).append("\n");
-            sb.append("Exit: $").append(escape(String.format("%.2f", exitPx))).append("\n");
+            sb.append("Entry: $").append(escape(String.format(Locale.US, "%.2f", entryPx))).append("\n");
+            sb.append("Exit: $").append(escape(String.format(Locale.US, "%.2f", exitPx))).append("\n");
             sb.append("P&L: ").append(pnlSign).append("$").append(pnlValue).append("\n");
         } else {
-            sb.append("Exit: $").append(escape(String.format("%.2f", exitPx))).append("\n");
+            sb.append("Exit: $").append(escape(String.format(Locale.US, "%.2f", exitPx))).append("\n");
         }
 
         if (!strategy.isBlank()) {
@@ -192,9 +193,9 @@ public class MessageFormatter {
 
     private String formatQuantity(double qty) {
         if (qty == Math.floor(qty)) {
-            return String.format("%.0f", qty);
+            return String.format(Locale.US, "%.0f", qty);
         }
-        return String.format("%.4f", qty);
+        return String.format(Locale.US, "%.4f", qty);
     }
 
     private Instant parseTimestamp(JsonNode node) {

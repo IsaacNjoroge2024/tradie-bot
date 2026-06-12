@@ -287,6 +287,13 @@ public class OrderStatusTracker {
 
             orderEventPublisher.publishSystemAlert("IBKR", "ORDER_REJECTED",
                     "Order rejected for ibOrderId=" + orderId + ": " + errorMsg);
+
+            OrderGroup group = activeGroups.get(orderId);
+            if (group != null) {
+                deregisterOrderGroup(group);
+                log.info("Bracket group deregistered after rejection: signal={} ibOrderId={}",
+                        group.signalId(), orderId);
+            }
         } else {
             log.warn("Order rejected by broker but not found in DB: ibOrderId={} msg={}", orderId, errorMsg);
             orderEventPublisher.publishSystemAlert("IBKR", "ORDER_REJECTED",

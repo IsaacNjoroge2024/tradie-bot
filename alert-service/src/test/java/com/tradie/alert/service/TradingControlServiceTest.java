@@ -53,7 +53,7 @@ class TradingControlServiceTest {
     void pause_nullReason_usesDefaultReason() {
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         service.pause(null);
-        verify(valueOps).set(eq(TradingControlService.PAUSED_KEY), anyString());
+        verify(valueOps).set(TradingControlService.PAUSED_KEY, "manual pause");
     }
 
     @Test

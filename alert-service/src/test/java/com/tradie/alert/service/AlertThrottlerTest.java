@@ -43,6 +43,26 @@ class AlertThrottlerTest {
     }
 
     @Test
+    void shouldSend_maxPerMinuteZero_defaultsToOneAndAllowsFirstSend() {
+        TelegramProperties props = new TelegramProperties();
+        props.getThrottling().setMaxPerMinute(0);
+        AlertThrottler zeroThrottler = new AlertThrottler(props);
+
+        assertTrue(zeroThrottler.shouldSend("FILLED:AAPL"));
+        assertFalse(zeroThrottler.shouldSend("FILLED:AAPL"));
+    }
+
+    @Test
+    void shouldSend_maxPerMinuteNegative_defaultsToOneAndAllowsFirstSend() {
+        TelegramProperties props = new TelegramProperties();
+        props.getThrottling().setMaxPerMinute(-1);
+        AlertThrottler negThrottler = new AlertThrottler(props);
+
+        assertTrue(negThrottler.shouldSend("FILLED:AAPL"));
+        assertFalse(negThrottler.shouldSend("FILLED:AAPL"));
+    }
+
+    @Test
     void resetCounts_allowsSendingAgain() {
         for (int i = 0; i < 3; i++) {
             throttler.shouldSend("FILLED:AAPL");

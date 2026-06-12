@@ -25,7 +25,12 @@ public class AlertThrottler {
     private final int maxPerMinute;
 
     public AlertThrottler(TelegramProperties properties) {
-        this.maxPerMinute = properties.getThrottling().getMaxPerMinute();
+        int configured = properties.getThrottling().getMaxPerMinute();
+        if (configured <= 0) {
+            log.warn("Invalid tradie.telegram.throttling.max-per-minute={} — defaulting to 1", configured);
+            configured = 1;
+        }
+        this.maxPerMinute = configured;
     }
 
     /**

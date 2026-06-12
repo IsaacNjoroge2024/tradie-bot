@@ -78,7 +78,7 @@ class DailySummaryServiceTest {
         DailySummaryService.DailySummaryData data = service.getDailySummary();
 
         assertEquals(3, data.totalTrades());
-        assertEquals(1, data.wins());
+        assertEquals(2, data.wins());    // break-even (pnl=0) counts as a win
         assertEquals(1, data.losses());
         assertEquals(100.0, data.totalPnl(), 0.01);
     }

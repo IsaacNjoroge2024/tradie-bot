@@ -200,7 +200,7 @@ class TestFetchMarketNews:
         assert mock_get.call_count == 1  # only Finnhub, no Alpha Vantage attempt
 
     @pytest.mark.asyncio
-    async def test_alpha_vantage_api_limit_message_returns_empty(self, service, set_api_key):
+    async def test_alpha_vantage_daily_limit_returns_empty(self, service, set_api_key):
         set_api_key.alpha_vantage_api_key = "av-key"
 
         finnhub_response = MagicMock()
@@ -211,6 +211,27 @@ class TestFetchMarketNews:
         av_response.raise_for_status = MagicMock()
         av_response.json.return_value = {
             "Information": "Thank you for using Alpha Vantage! Our standard API rate limit..."
+        }
+
+        with patch.object(
+            service.client, "get", new=AsyncMock(side_effect=[finnhub_response, av_response])
+        ):
+            result = await service.fetch_market_news()
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_alpha_vantage_per_minute_limit_returns_empty(self, service, set_api_key):
+        set_api_key.alpha_vantage_api_key = "av-key"
+
+        finnhub_response = MagicMock()
+        finnhub_response.raise_for_status = MagicMock()
+        finnhub_response.json.return_value = []
+
+        av_response = MagicMock()
+        av_response.raise_for_status = MagicMock()
+        av_response.json.return_value = {
+            "Note": "Thank you for using Alpha Vantage! Our standard API call frequency is 5 calls per minute..."
         }
 
         with patch.object(

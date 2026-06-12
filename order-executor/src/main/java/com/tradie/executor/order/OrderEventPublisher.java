@@ -3,10 +3,13 @@ package com.tradie.executor.order;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradie.executor.dto.OrderEvent;
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -95,7 +98,8 @@ public class OrderEventPublisher {
         publishSystemAlert("Order Executor", "SERVICE_START", "Service started successfully");
     }
 
-    @PreDestroy
+    @EventListener(ContextClosedEvent.class)
+    @Order(Ordered.HIGHEST_PRECEDENCE)
     public void onStop() {
         try {
             var node = objectMapper.createObjectNode();

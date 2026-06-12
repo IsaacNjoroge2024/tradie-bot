@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tradie.strategy.dto.OrderDTO;
 import com.tradie.strategy.dto.RejectionEvent;
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -57,7 +60,8 @@ public class OrderPublisher {
         publishSystemAlert("Strategy Engine", "SERVICE_START", "Service started successfully");
     }
 
-    @PreDestroy
+    @EventListener(ContextClosedEvent.class)
+    @Order(Ordered.HIGHEST_PRECEDENCE)
     public void onStop() {
         try {
             kafkaTemplate.send(ALERTS_TOPIC, "Strategy Engine",

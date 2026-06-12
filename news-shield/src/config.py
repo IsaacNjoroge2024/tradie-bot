@@ -38,6 +38,11 @@ class Settings(BaseSettings):
                 "FINNHUB_API_KEY is not configured; "
                 "event/news calls will return empty results and market status will be uninformed"
             )
+        if not self.alpha_vantage_api_key:
+            logger.warning(
+                "ALPHA_VANTAGE_API_KEY is not configured; "
+                "Alpha Vantage fallback news source will be unavailable"
+            )
         return self
 
 

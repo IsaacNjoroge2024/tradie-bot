@@ -67,6 +67,7 @@ class TestFetchMarketNews:
     def set_api_key(self):
         with patch("src.services.sentiment_analyzer.settings") as mock_settings:
             mock_settings.finnhub_api_key = "test-key"
+            mock_settings.alpha_vantage_api_key = ""  # disable fallback by default
             yield mock_settings
 
     @pytest.fixture
@@ -153,6 +154,71 @@ class TestFetchMarketNews:
         call_args = mock_get.call_args
         assert "/news" in call_args[0][0]
         assert "company-news" not in call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_alpha_vantage_when_finnhub_empty(self, service, set_api_key):
+        set_api_key.alpha_vantage_api_key = "av-key"
+
+        finnhub_response = MagicMock()
+        finnhub_response.raise_for_status = MagicMock()
+        finnhub_response.json.return_value = []
+
+        av_response = MagicMock()
+        av_response.raise_for_status = MagicMock()
+        av_response.json.return_value = {
+            "feed": [
+                {
+                    "title": "Markets surge on Fed pivot hopes",
+                    "summary": "Investors cheer dovish signals",
+                    "source": "Bloomberg",
+                    "time_published": "20240115T120000",
+                    "url": "https://example.com/av-article",
+                }
+            ]
+        }
+
+        responses = [finnhub_response, av_response]
+        with patch.object(service.client, "get", new=AsyncMock(side_effect=responses)):
+            result = await service.fetch_market_news()
+
+        assert len(result) == 1
+        assert result[0].headline == "Markets surge on Fed pivot hopes"
+        assert result[0].source == "Bloomberg"
+
+    @pytest.mark.asyncio
+    async def test_no_fallback_when_alpha_vantage_key_missing(self, service):
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = []
+
+        with patch.object(
+            service.client, "get", new=AsyncMock(return_value=mock_response)
+        ) as mock_get:
+            result = await service.fetch_market_news()
+
+        assert result == []
+        assert mock_get.call_count == 1  # only Finnhub, no Alpha Vantage attempt
+
+    @pytest.mark.asyncio
+    async def test_alpha_vantage_api_limit_message_returns_empty(self, service, set_api_key):
+        set_api_key.alpha_vantage_api_key = "av-key"
+
+        finnhub_response = MagicMock()
+        finnhub_response.raise_for_status = MagicMock()
+        finnhub_response.json.return_value = []
+
+        av_response = MagicMock()
+        av_response.raise_for_status = MagicMock()
+        av_response.json.return_value = {
+            "Information": "Thank you for using Alpha Vantage! Our standard API rate limit..."
+        }
+
+        with patch.object(
+            service.client, "get", new=AsyncMock(side_effect=[finnhub_response, av_response])
+        ):
+            result = await service.fetch_market_news()
+
+        assert result == []
 
 
 class TestGetMarketSentiment:

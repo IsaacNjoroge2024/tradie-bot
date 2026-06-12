@@ -143,9 +143,7 @@ class SentimentAnalyzer:
             params["topics"] = "financial_markets"
 
         try:
-            response = await self.client.get(
-                "https://www.alphavantage.co/query", params=params
-            )
+            response = await self.client.get("https://www.alphavantage.co/query", params=params)
             response.raise_for_status()
             data = response.json()
 

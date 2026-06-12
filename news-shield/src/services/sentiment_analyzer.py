@@ -148,7 +148,11 @@ class SentimentAnalyzer:
             data = response.json()
 
             if "Information" in data:
-                logger.warning(f"Alpha Vantage API limit reached: {data['Information']}")
+                logger.warning(f"Alpha Vantage daily API limit reached: {data['Information']}")
+                return []
+
+            if "Note" in data:
+                logger.warning(f"Alpha Vantage per-minute API limit reached: {data['Note']}")
                 return []
 
             news_items = []

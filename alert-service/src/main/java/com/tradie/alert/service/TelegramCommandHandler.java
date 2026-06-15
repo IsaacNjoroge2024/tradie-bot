@@ -1,6 +1,7 @@
 package com.tradie.alert.service;
 
 import com.tradie.alert.client.TelegramClient;
+import com.tradie.alert.config.TelegramProperties;
 import com.tradie.alert.formatter.MessageFormatter;
 import com.tradie.common.entity.Order;
 import com.tradie.common.entity.Position;
@@ -37,6 +38,7 @@ public class TelegramCommandHandler {
     private final MessageFormatter messageFormatter;
     private final RestTemplate restTemplate;
     private final String orderExecutorUrl;
+    private final TelegramProperties properties;
 
     public TelegramCommandHandler(
             TelegramClient telegramClient,
@@ -46,7 +48,8 @@ public class TelegramCommandHandler {
             DailySummaryService dailySummaryService,
             MessageFormatter messageFormatter,
             @Qualifier("telegramRestTemplate") RestTemplate restTemplate,
-            @Value("${tradie.order-executor.url:http://localhost:8082}") String orderExecutorUrl) {
+            @Value("${tradie.order-executor.url:http://localhost:8082}") String orderExecutorUrl,
+            TelegramProperties properties) {
         this.telegramClient = telegramClient;
         this.tradingControlService = tradingControlService;
         this.positionRepository = positionRepository;
@@ -55,6 +58,7 @@ public class TelegramCommandHandler {
         this.messageFormatter = messageFormatter;
         this.restTemplate = restTemplate;
         this.orderExecutorUrl = orderExecutorUrl;
+        this.properties = properties;
     }
 
     /**
@@ -65,6 +69,13 @@ public class TelegramCommandHandler {
      */
     public void handle(String text, String chatId) {
         if (text == null || !text.startsWith("/")) return;
+
+        String configuredChatId = properties.getChatId();
+        if (configuredChatId != null && !configuredChatId.isBlank()
+                && !chatId.equals(configuredChatId)) {
+            log.warn("Rejected Telegram command from unauthorized chat: chatId={}", chatId);
+            return;
+        }
 
         String[] parts = text.trim().split("\\s+", 2);
         String command = parts[0].toLowerCase();

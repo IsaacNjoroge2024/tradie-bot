@@ -1,0 +1,47 @@
+groups:
+  - name: tradie-alerts
+    rules:
+      - alert: IBKRDisconnected
+        expr: tradie_ibkr_connected == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "IBKR connection lost"
+          description: "The order-executor has been disconnected from IBKR for more than 1 minute."
+
+      - alert: HighPortfolioHeat
+        expr: tradie_risk_portfolio_heat > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Portfolio heat exceeds 5%"
+          description: "Portfolio heat is {{ $value | printf \"%.2f\" }}%, above the 5% warning threshold."
+
+      - alert: DailyLossLimit
+        expr: tradie_pnl_daily < -3
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Daily loss limit reached"
+          description: "Daily P&L is {{ $value | printf \"%.2f\" }}, below the -3 loss limit."
+
+      - alert: HighErrorRate
+        expr: rate(tradie_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated error rate detected"
+          description: "Error rate is {{ $value | printf \"%.4f\" }} errors/sec over the last 5 minutes."
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been unreachable for more than 1 minute."

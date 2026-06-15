@@ -5,6 +5,7 @@ import com.tradie.alert.service.DailySummaryService.DailySummaryData;
 import com.tradie.alert.util.TelegramEscaper;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -77,13 +78,13 @@ public class MessageFormatter {
      * Formats the daily P&L summary for the scheduled 5 PM EST report.
      */
     public String formatDailySummary(DailySummaryData data) {
-        String pnlSign   = data.totalPnl()  >= 0 ? "\\+" : "\\-";
-        String bestSign  = data.bestTrade() >= 0 ? "\\+" : "\\-";
-        String worstSign = data.worstTrade() >= 0 ? "\\+" : "\\-";
-        String pnlValue  = escape(String.format(Locale.US, "%.2f", Math.abs(data.totalPnl())));
+        String pnlSign   = data.totalPnl().compareTo(BigDecimal.ZERO) >= 0 ? "\\+" : "\\-";
+        String bestSign  = data.bestTrade().compareTo(BigDecimal.ZERO) >= 0 ? "\\+" : "\\-";
+        String worstSign = data.worstTrade().compareTo(BigDecimal.ZERO) >= 0 ? "\\+" : "\\-";
+        String pnlValue  = escape(String.format(Locale.US, "%.2f", data.totalPnl().abs()));
         String winRate   = escape(String.format(Locale.US, "%.1f", data.winRate()));
-        String bestStr   = escape(String.format(Locale.US, "%.2f", Math.abs(data.bestTrade())));
-        String worstStr  = escape(String.format(Locale.US, "%.2f", Math.abs(data.worstTrade())));
+        String bestStr   = escape(String.format(Locale.US, "%.2f", data.bestTrade().abs()));
+        String worstStr  = escape(String.format(Locale.US, "%.2f", data.worstTrade().abs()));
         String openCount = escape(String.valueOf(data.openPositions()));
         String trades    = escape(String.valueOf(data.totalTrades()));
         String wins      = escape(String.valueOf(data.wins()));
@@ -166,9 +167,12 @@ public class MessageFormatter {
         sb.append("Symbol: ").append(escape(symbol)).append("\n");
         sb.append("Result: ").append(resultLabel).append("\n");
 
-        if (!node.path("entryPrice").isMissingNode() && !node.path("entryPrice").isNull()) {
+        boolean hasEntryPrice = !node.path("entryPrice").isMissingNode() && !node.path("entryPrice").isNull();
+        boolean hasQuantity   = !node.path("quantity").isMissingNode() && !node.path("quantity").isNull();
+
+        if (hasEntryPrice && hasQuantity) {
             double entryPx = node.path("entryPrice").asDouble();
-            double qty     = node.path("quantity").asDouble(0);
+            double qty     = node.path("quantity").asDouble();
             String sideStr = node.path("side").asText("BUY");
             double pnl     = "SELL".equalsIgnoreCase(sideStr)
                     ? (entryPx - exitPx) * qty
@@ -179,6 +183,10 @@ public class MessageFormatter {
             sb.append("Entry: $").append(escape(String.format(Locale.US, "%.2f", entryPx))).append("\n");
             sb.append("Exit: $").append(escape(String.format(Locale.US, "%.2f", exitPx))).append("\n");
             sb.append("P&L: ").append(pnlSign).append("$").append(pnlValue).append("\n");
+        } else if (hasEntryPrice) {
+            double entryPx = node.path("entryPrice").asDouble();
+            sb.append("Entry: $").append(escape(String.format(Locale.US, "%.2f", entryPx))).append("\n");
+            sb.append("Exit: $").append(escape(String.format(Locale.US, "%.2f", exitPx))).append("\n");
         } else {
             sb.append("Exit: $").append(escape(String.format(Locale.US, "%.2f", exitPx))).append("\n");
         }

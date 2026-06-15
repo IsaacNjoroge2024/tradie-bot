@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.common.repository.TradeSignalRepository;
 import com.tradie.gateway.dto.TradingViewSignal;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -23,18 +25,25 @@ public class SignalIngestionService {
     private final TradeSignalRepository signalRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final Counter signalsReceivedCounter;
 
     public SignalIngestionService(
             TradeSignalRepository signalRepository,
             KafkaTemplate<String, String> kafkaTemplate,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            MeterRegistry meterRegistry) {
         this.signalRepository = signalRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
+        this.signalsReceivedCounter = Counter.builder("tradie.signals.received")
+                .description("Number of webhook signals received from TradingView")
+                .tag("source", "tradingview")
+                .register(meterRegistry);
     }
 
     @Transactional
     public String processIncomingSignal(TradingViewSignal tvSignal) throws Exception {
+        signalsReceivedCounter.increment();
         TradeSignal signal = new TradeSignal();
         signal.setSymbol(tvSignal.symbol().toUpperCase());
         signal.setExchange(tvSignal.exchange());

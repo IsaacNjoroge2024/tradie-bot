@@ -60,15 +60,16 @@ public class TelegramPollingService {
             JsonNode results = response.path("result");
             if (results.isMissingNode() || !results.isArray()) return;
 
+            long maxProcessedId = lastUpdateId;
             for (JsonNode update : results) {
-                long updateId = update.path("update_id").asLong(0);
-                if (updateId > lastUpdateId) {
-                    lastUpdateId = updateId;
-                }
                 processUpdate(update);
+                long updateId = update.path("update_id").asLong(0);
+                if (updateId > maxProcessedId) {
+                    maxProcessedId = updateId;
+                }
             }
-
-            if (!results.isEmpty()) {
+            if (maxProcessedId > lastUpdateId) {
+                lastUpdateId = maxProcessedId;
                 persistLastUpdateId();
             }
 

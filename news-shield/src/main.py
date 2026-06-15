@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from contextlib import asynccontextmanager
-from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 import logging
 
 from .routers import market_status, events, sentiment
@@ -45,9 +46,12 @@ app.include_router(market_status.router, prefix="/api", tags=["Market Status"])
 app.include_router(events.router, prefix="/api", tags=["Economic Events"])
 app.include_router(sentiment.router, prefix="/api", tags=["Sentiment"])
 
-Instrumentator().instrument(app).expose(app, endpoint="/metrics")
-
 
 @app.get("/health")
 async def health():
     return {"status": "healthy", "service": "news-shield"}
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

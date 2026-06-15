@@ -1,5 +1,7 @@
 package com.tradie.strategy.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -10,6 +12,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class TradingControlService {
 
+    private static final Logger log = LoggerFactory.getLogger(TradingControlService.class);
+
     static final String PAUSED_KEY = "trading:paused";
 
     private final StringRedisTemplate redisTemplate;
@@ -19,10 +23,20 @@ public class TradingControlService {
     }
 
     public boolean isPaused() {
-        return Boolean.TRUE.equals(redisTemplate.hasKey(PAUSED_KEY));
+        try {
+            return Boolean.TRUE.equals(redisTemplate.hasKey(PAUSED_KEY));
+        } catch (Exception e) {
+            log.warn("Redis unavailable when checking pause state; treating as not paused: {}", e.getMessage());
+            return false;
+        }
     }
 
     public String getPauseReason() {
-        return redisTemplate.opsForValue().get(PAUSED_KEY);
+        try {
+            return redisTemplate.opsForValue().get(PAUSED_KEY);
+        } catch (Exception e) {
+            log.warn("Redis unavailable when fetching pause reason: {}", e.getMessage());
+            return null;
+        }
     }
 }

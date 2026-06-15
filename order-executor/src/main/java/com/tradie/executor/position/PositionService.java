@@ -81,37 +81,48 @@ public class PositionService {
             throw new IllegalStateException("Not connected to IBKR");
         }
 
-        // Cancel existing TP and SL bracket children
-        orderStatusTracker.findGroupBySignalId(position.getEntrySignalId()).ifPresent(group -> {
-            connectionManager.cancelOrder(group.takeProfitIbOrderId());
-            connectionManager.cancelOrder(group.stopLossIbOrderId());
-            orderStatusTracker.deregisterOrderGroup(group);
-            log.info("Bracket orders cancelled for manual close: signal={}", group.signalId());
-        });
+        // Durably mark CLOSING before any irreversible side effects so a retry cannot
+        // submit a second market order if the process crashes between cancel and placeOrder.
+        position.setStatus(Position.PositionStatus.CLOSING);
+        positionRepository.save(position);
 
-        // Submit MARKET order to close
-        int closeOrderId = orderIdManager.getNextOrderId();
-        String exitSide = position.getSide() == Order.OrderSide.BUY ? "SELL" : "BUY";
-        com.ib.client.Order marketOrder = new com.ib.client.Order();
-        marketOrder.orderId(closeOrderId);
-        marketOrder.action(exitSide);
-        marketOrder.orderType("MKT");
-        marketOrder.totalQuantity(Decimal.get(position.getQuantity().doubleValue()));
-        marketOrder.transmit(true);
+        try {
+            // Cancel existing TP and SL bracket children
+            orderStatusTracker.findGroupBySignalId(position.getEntrySignalId()).ifPresent(group -> {
+                connectionManager.cancelOrder(group.takeProfitIbOrderId());
+                connectionManager.cancelOrder(group.stopLossIbOrderId());
+                orderStatusTracker.deregisterOrderGroup(group);
+                log.info("Bracket orders cancelled for manual close: signal={}", group.signalId());
+            });
 
-        Contract contract = buildContract(position);
-        connectionManager.placeOrder(closeOrderId, contract, marketOrder);
-        log.info("Manual close MARKET order submitted: positionId={} symbol={} ibOrderId={}",
-                positionId, position.getSymbol(), closeOrderId);
+            // Submit MARKET order to close
+            int closeOrderId = orderIdManager.getNextOrderId();
+            String exitSide = position.getSide() == Order.OrderSide.BUY ? "SELL" : "BUY";
+            com.ib.client.Order marketOrder = new com.ib.client.Order();
+            marketOrder.orderId(closeOrderId);
+            marketOrder.action(exitSide);
+            marketOrder.orderType("MKT");
+            marketOrder.totalQuantity(Decimal.get(position.getQuantity().doubleValue()));
+            marketOrder.transmit(true);
 
-        // Mark CLOSING — the actual fill will be confirmed via IBKR position sync
+            Contract contract = buildContract(position);
+            connectionManager.placeOrder(closeOrderId, contract, marketOrder);
+            log.info("Manual close MARKET order submitted: positionId={} symbol={} ibOrderId={}",
+                    positionId, position.getSymbol(), closeOrderId);
+
+        } catch (Exception e) {
+            position.setStatus(Position.PositionStatus.OPEN);
+            positionRepository.save(position);
+            throw new IllegalStateException("Failed to submit close order: " + e.getMessage(), e);
+        }
+
+        // Store indicative exit price from market quote — confirmed by PositionSynchronizer on fill
         BigDecimal currentPrice = marketDataService.getLatestPrice(position.getSymbol());
         if (currentPrice != null) {
             position.setExitPrice(currentPrice);
             position.setRealizedPnl(pnlCalculator.realizedPnl(position, currentPrice));
+            positionRepository.save(position);
         }
-        position.setStatus(Position.PositionStatus.CLOSING);
-        positionRepository.save(position);
 
         orderEventPublisher.publishOrderEvent(new OrderEvent(
                 "POSITION_CLOSED_MANUAL",

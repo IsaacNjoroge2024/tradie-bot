@@ -6,6 +6,7 @@ import com.tradie.alert.service.DailySummaryService.DailySummaryData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -141,7 +142,8 @@ class MessageFormatterTest {
 
     @Test
     void formatDailySummary_positivePnl_showsPlusSign() {
-        DailySummaryData data = new DailySummaryData(1250.0, 5, 4, 1, 80.0, 500.0, -250.0, 2);
+        DailySummaryData data = new DailySummaryData(
+                BigDecimal.valueOf(1250.0), 5, 4, 1, 80.0, BigDecimal.valueOf(500.0), BigDecimal.valueOf(-250.0), 2);
         String result = formatter.formatDailySummary(data);
 
         assertTrue(result.contains("DAILY SUMMARY"));
@@ -150,7 +152,8 @@ class MessageFormatterTest {
 
     @Test
     void formatDailySummary_negativePnl_showsMinusSign() {
-        DailySummaryData data = new DailySummaryData(-300.0, 3, 1, 2, 33.3, 200.0, -500.0, 0);
+        DailySummaryData data = new DailySummaryData(
+                BigDecimal.valueOf(-300.0), 3, 1, 2, 33.3, BigDecimal.valueOf(200.0), BigDecimal.valueOf(-500.0), 0);
         String result = formatter.formatDailySummary(data);
 
         assertTrue(result.contains("300"));
@@ -159,7 +162,8 @@ class MessageFormatterTest {
     @Test
     void formatDailySummary_allLossDay_bestTradeShowsMinusNotPlus() {
         // bestTrade = -50 (smallest loss), worstTrade = -500 (largest loss)
-        DailySummaryData data = new DailySummaryData(-550.0, 2, 0, 2, 0.0, -50.0, -500.0, 0);
+        DailySummaryData data = new DailySummaryData(
+                BigDecimal.valueOf(-550.0), 2, 0, 2, 0.0, BigDecimal.valueOf(-50.0), BigDecimal.valueOf(-500.0), 0);
         String result = formatter.formatDailySummary(data);
 
         assertFalse(result.contains("Best Trade: \\+"));
@@ -172,7 +176,9 @@ class MessageFormatterTest {
         Locale original = Locale.getDefault();
         try {
             Locale.setDefault(Locale.GERMANY);
-            DailySummaryData data = new DailySummaryData(1250.50, 5, 4, 1, 80.0, 500.25, -250.75, 2);
+            DailySummaryData data = new DailySummaryData(
+                    BigDecimal.valueOf(1250.50), 5, 4, 1, 80.0,
+                    BigDecimal.valueOf(500.25), BigDecimal.valueOf(-250.75), 2);
             String result = formatter.formatDailySummary(data);
             // MarkdownV2 escapes '.' to '\.' — German locale would produce "1250,50" (no escaping needed for comma)
             assertFalse(result.contains("1250,50"), "Comma decimal separator found — locale leak in formatDailySummary");

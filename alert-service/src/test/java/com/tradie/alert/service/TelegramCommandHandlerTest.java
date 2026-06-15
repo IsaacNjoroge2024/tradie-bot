@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tradie.alert.client.TelegramClient;
+import com.tradie.alert.config.TelegramProperties;
 import com.tradie.alert.formatter.MessageFormatter;
 import com.tradie.common.entity.Order;
 import com.tradie.common.entity.Position;
@@ -47,7 +48,8 @@ class TelegramCommandHandlerTest {
                 telegramClient, tradingControlService,
                 positionRepository, orderRepository,
                 dailySummaryService, messageFormatter,
-                restTemplate, "http://localhost:8082");
+                restTemplate, "http://localhost:8082",
+                new TelegramProperties()); // chatId defaults to "" → no auth restriction in tests
     }
 
     @Test
@@ -190,6 +192,22 @@ class TelegramCommandHandlerTest {
     @Test
     void handle_nonCommand_doesNothing() {
         handler.handle("hello world", CHAT_ID);
+
+        verifyNoInteractions(telegramClient);
+    }
+
+    @Test
+    void handle_unauthorizedChatId_isRejected() {
+        TelegramProperties restricted = new TelegramProperties();
+        restricted.setChatId("authorized-chat-id");
+        TelegramCommandHandler restrictedHandler = new TelegramCommandHandler(
+                telegramClient, tradingControlService,
+                positionRepository, orderRepository,
+                dailySummaryService, messageFormatter,
+                restTemplate, "http://localhost:8082",
+                restricted);
+
+        restrictedHandler.handle("/status", "unauthorized-chat-id");
 
         verifyNoInteractions(telegramClient);
     }

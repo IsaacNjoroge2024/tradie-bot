@@ -83,12 +83,31 @@ class PositionServiceTest {
         service.closePosition(POSITION_ID, "Manual close");
 
         verify(connectionManager).placeOrder(eq(200), any(), any());
-        verify(positionRepository).save(pos);
+        // saved twice: once to mark CLOSING before side effects, once for exit price update
+        verify(positionRepository, times(2)).save(pos);
         assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.CLOSING);
 
         ArgumentCaptor<OrderEvent> eventCaptor = ArgumentCaptor.forClass(OrderEvent.class);
         verify(orderEventPublisher).publishOrderEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().type()).isEqualTo("POSITION_CLOSED_MANUAL");
+    }
+
+    @Test
+    void closePosition_placeOrderFails_revertsToOpen() {
+        Position pos = buildOpenPosition();
+        when(positionRepository.findById(POSITION_ID)).thenReturn(Optional.of(pos));
+        when(connectionManager.isConnected()).thenReturn(true);
+        when(orderIdManager.getNextOrderId()).thenReturn(200);
+        when(orderStatusTracker.findGroupBySignalId(SIGNAL_ID)).thenReturn(Optional.empty());
+        doThrow(new RuntimeException("IBKR error")).when(connectionManager).placeOrder(anyInt(), any(), any());
+
+        assertThatThrownBy(() -> service.closePosition(POSITION_ID, "Manual close"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Failed to submit close order");
+
+        assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.OPEN);
+        // saved twice: once to mark CLOSING, once to revert to OPEN on failure
+        verify(positionRepository, times(2)).save(pos);
     }
 
     @Test

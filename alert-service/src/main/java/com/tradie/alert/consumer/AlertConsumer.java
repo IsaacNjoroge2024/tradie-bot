@@ -53,7 +53,7 @@ public class AlertConsumer {
         this.errorNotifier = errorNotifier;
     }
 
-    @KafkaListener(topics = "tradie.alerts", groupId = "${spring.kafka.consumer.group-id:alert-service}")
+    @KafkaListener(topics = "${tradie.kafka.topics.alerts:tradie.alerts}", groupId = "${spring.kafka.consumer.group-id:alert-service}")
     public void consume(
             String message,
             @Header(value = KafkaHeaders.RECEIVED_KEY, required = false) String key,

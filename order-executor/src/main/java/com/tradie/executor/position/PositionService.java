@@ -86,14 +86,17 @@ public class PositionService {
         position.setStatus(Position.PositionStatus.CLOSING);
         positionRepository.save(position);
 
+        boolean bracketsDeregistered = false;
         try {
             // Cancel existing TP and SL bracket children
-            orderStatusTracker.findGroupBySignalId(position.getEntrySignalId()).ifPresent(group -> {
-                connectionManager.cancelOrder(group.takeProfitIbOrderId());
-                connectionManager.cancelOrder(group.stopLossIbOrderId());
-                orderStatusTracker.deregisterOrderGroup(group);
-                log.info("Bracket orders cancelled for manual close: signal={}", group.signalId());
-            });
+            Optional<OrderGroup> group = orderStatusTracker.findGroupBySignalId(position.getEntrySignalId());
+            if (group.isPresent()) {
+                connectionManager.cancelOrder(group.get().takeProfitIbOrderId());
+                connectionManager.cancelOrder(group.get().stopLossIbOrderId());
+                orderStatusTracker.deregisterOrderGroup(group.get());
+                bracketsDeregistered = true;
+                log.info("Bracket orders cancelled for manual close: signal={}", group.get().signalId());
+            }
 
             // Submit MARKET order to close
             int closeOrderId = orderIdManager.getNextOrderId();
@@ -111,8 +114,15 @@ public class PositionService {
                     positionId, position.getSymbol(), closeOrderId);
 
         } catch (Exception e) {
-            position.setStatus(Position.PositionStatus.OPEN);
-            positionRepository.save(position);
+            if (bracketsDeregistered) {
+                // TP/SL already cancelled at IBKR — reverting to OPEN would leave the position
+                // with no stop-loss protection. Keep CLOSING; manual intervention required.
+                log.error("CRITICAL: placeOrder failed after brackets were cancelled for positionId={}."
+                        + " Position stays CLOSING — manual intervention required.", positionId, e);
+            } else {
+                position.setStatus(Position.PositionStatus.OPEN);
+                positionRepository.save(position);
+            }
             throw new IllegalStateException("Failed to submit close order: " + e.getMessage(), e);
         }
 

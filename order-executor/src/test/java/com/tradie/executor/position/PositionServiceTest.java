@@ -71,7 +71,7 @@ class PositionServiceTest {
     // ─── closePosition ────────────────────────────────────────────────────────
 
     @Test
-    void closePosition_opensMarketOrderAndMarksAsClosed() {
+    void closePosition_submitsMarketOrderAndMarksAsClosing() {
         Position pos = buildOpenPosition();
         when(positionRepository.findById(POSITION_ID)).thenReturn(Optional.of(pos));
         when(connectionManager.isConnected()).thenReturn(true);
@@ -108,6 +108,29 @@ class PositionServiceTest {
         assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.OPEN);
         // saved twice: once to mark CLOSING, once to revert to OPEN on failure
         verify(positionRepository, times(2)).save(pos);
+    }
+
+    @Test
+    void closePosition_placeOrderFailsAfterBracketsDeregistered_keepsClosingState() {
+        // Brackets are cancelled first, then placeOrder throws. Reverting to OPEN would
+        // leave the position with no TP/SL protection at IBKR, so we keep CLOSING.
+        Position pos = buildOpenPosition();
+        when(positionRepository.findById(POSITION_ID)).thenReturn(Optional.of(pos));
+        when(connectionManager.isConnected()).thenReturn(true);
+        when(orderIdManager.getNextOrderId()).thenReturn(200);
+        when(orderStatusTracker.findGroupBySignalId(SIGNAL_ID)).thenReturn(Optional.of(buildOrderGroup()));
+        doThrow(new RuntimeException("IBKR error")).when(connectionManager).placeOrder(anyInt(), any(), any());
+
+        assertThatThrownBy(() -> service.closePosition(POSITION_ID, "Manual close"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Failed to submit close order");
+
+        // Must NOT revert to OPEN — position would be unprotected at IBKR
+        assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.CLOSING);
+        // Only the initial CLOSING save — no revert save
+        verify(positionRepository, times(1)).save(pos);
+        // Both bracket orders must have been cancelled
+        verify(connectionManager, times(2)).cancelOrder(anyInt());
     }
 
     @Test

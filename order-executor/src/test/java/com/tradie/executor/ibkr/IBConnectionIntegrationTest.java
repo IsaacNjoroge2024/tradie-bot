@@ -2,6 +2,7 @@ package com.tradie.executor.ibkr;
 
 import com.tradie.executor.config.IbkrProperties;
 import com.tradie.executor.dto.AccountData;
+import com.tradie.executor.metrics.TradingMetrics;
 import com.tradie.executor.order.OrderEventPublisher;
 import com.tradie.executor.order.OrderStatusTracker;
 import com.tradie.executor.position.MarketDataService;
@@ -59,7 +60,8 @@ class IBConnectionIntegrationTest {
         orderStatusTracker = new OrderStatusTracker(
                 mock(OrderRepository.class),
                 mock(PositionRepository.class),
-                mock(OrderEventPublisher.class));
+                mock(OrderEventPublisher.class),
+                mock(TradingMetrics.class));
         OrderEventPublisher orderEventPublisher = mock(OrderEventPublisher.class);
         connectionManager = new IBConnectionManager(
                 properties, accountService, positionTracker, orderIdManager, orderStatusTracker,

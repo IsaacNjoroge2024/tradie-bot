@@ -58,7 +58,7 @@ public class ErrorNotifier {
         try {
             String message = messageFormatter.formatSystemAlert(service, type, messageText);
 
-            if (exception != null) {
+            if (exception != null && properties.isDebugTraces()) {
                 String trace = trimStackTrace(exception);
                 message = message + "\n\n```\n" + escapeCode(trace) + "\n```";
             }

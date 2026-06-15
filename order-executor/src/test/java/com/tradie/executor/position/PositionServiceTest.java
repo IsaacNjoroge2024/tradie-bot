@@ -71,7 +71,7 @@ class PositionServiceTest {
     // ─── closePosition ────────────────────────────────────────────────────────
 
     @Test
-    void closePosition_opensMarketOrderAndMarksAsClosed() {
+    void closePosition_submitsMarketOrderAndMarksAsClosing() {
         Position pos = buildOpenPosition();
         when(positionRepository.findById(POSITION_ID)).thenReturn(Optional.of(pos));
         when(connectionManager.isConnected()).thenReturn(true);
@@ -83,7 +83,8 @@ class PositionServiceTest {
         service.closePosition(POSITION_ID, "Manual close");
 
         verify(connectionManager).placeOrder(eq(200), any(), any());
-        verify(positionRepository).save(pos);
+        // saved twice: once to mark CLOSING before side effects, once for exit price update
+        verify(positionRepository, times(2)).save(pos);
         assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.CLOSING);
 
         ArgumentCaptor<OrderEvent> eventCaptor = ArgumentCaptor.forClass(OrderEvent.class);
@@ -92,20 +93,55 @@ class PositionServiceTest {
     }
 
     @Test
-    void closePosition_closingPosition_allowsRetry() {
+    void closePosition_placeOrderFails_revertsToOpen() {
+        Position pos = buildOpenPosition();
+        when(positionRepository.findById(POSITION_ID)).thenReturn(Optional.of(pos));
+        when(connectionManager.isConnected()).thenReturn(true);
+        when(orderIdManager.getNextOrderId()).thenReturn(200);
+        when(orderStatusTracker.findGroupBySignalId(SIGNAL_ID)).thenReturn(Optional.empty());
+        doThrow(new RuntimeException("IBKR error")).when(connectionManager).placeOrder(anyInt(), any(), any());
+
+        assertThatThrownBy(() -> service.closePosition(POSITION_ID, "Manual close"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Failed to submit close order");
+
+        assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.OPEN);
+        // saved twice: once to mark CLOSING, once to revert to OPEN on failure
+        verify(positionRepository, times(2)).save(pos);
+    }
+
+    @Test
+    void closePosition_placeOrderFailsAfterBracketsDeregistered_keepsClosingState() {
+        // Brackets are cancelled first, then placeOrder throws. Reverting to OPEN would
+        // leave the position with no TP/SL protection at IBKR, so we keep CLOSING.
+        Position pos = buildOpenPosition();
+        when(positionRepository.findById(POSITION_ID)).thenReturn(Optional.of(pos));
+        when(connectionManager.isConnected()).thenReturn(true);
+        when(orderIdManager.getNextOrderId()).thenReturn(200);
+        when(orderStatusTracker.findGroupBySignalId(SIGNAL_ID)).thenReturn(Optional.of(buildOrderGroup()));
+        doThrow(new RuntimeException("IBKR error")).when(connectionManager).placeOrder(anyInt(), any(), any());
+
+        assertThatThrownBy(() -> service.closePosition(POSITION_ID, "Manual close"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Failed to submit close order");
+
+        // Must NOT revert to OPEN — position would be unprotected at IBKR
+        assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.CLOSING);
+        // Only the initial CLOSING save — no revert save
+        verify(positionRepository, times(1)).save(pos);
+        // Both bracket orders must have been cancelled
+        verify(connectionManager, times(2)).cancelOrder(anyInt());
+    }
+
+    @Test
+    void closePosition_closingPosition_throwsIllegalState() {
         Position pos = buildOpenPosition();
         pos.setStatus(Position.PositionStatus.CLOSING);
         when(positionRepository.findById(POSITION_ID)).thenReturn(Optional.of(pos));
-        when(connectionManager.isConnected()).thenReturn(true);
-        when(orderIdManager.getNextOrderId()).thenReturn(201);
-        when(orderStatusTracker.findGroupBySignalId(SIGNAL_ID)).thenReturn(Optional.empty());
-        when(marketDataService.getLatestPrice("AAPL")).thenReturn(null);
 
-        service.closePosition(POSITION_ID, "Retry close");
-
-        verify(connectionManager).placeOrder(eq(201), any(), any());
-        verify(positionRepository).save(pos);
-        assertThat(pos.getStatus()).isEqualTo(Position.PositionStatus.CLOSING);
+        assertThatThrownBy(() -> service.closePosition(POSITION_ID, "Retry close"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("already in progress");
     }
 
     @Test

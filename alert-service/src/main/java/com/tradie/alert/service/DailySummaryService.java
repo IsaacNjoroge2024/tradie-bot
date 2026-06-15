@@ -5,6 +5,7 @@ import com.tradie.common.repository.PositionRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -31,47 +32,56 @@ public class DailySummaryService {
                 .toInstant();
 
         List<Position> closedToday = positionRepository
-                .findByStatusAndClosedAtAfter(Position.PositionStatus.CLOSED, startOfDay);
+                .findByStatusAndClosedAtGreaterThanEqual(Position.PositionStatus.CLOSED, startOfDay);
 
         int wins = 0;
         int losses = 0;
         int totalTrades = 0;
-        double totalPnl = 0;
-        double bestTrade = 0;
-        double worstTrade = 0;
-        boolean first = true;
+        BigDecimal totalPnl = BigDecimal.ZERO;
+        BigDecimal bestTrade = null;
+        BigDecimal worstTrade = null;
 
         for (Position p : closedToday) {
             if (p.getRealizedPnl() == null) continue;
-            double pnl = p.getRealizedPnl().doubleValue();
+            BigDecimal pnl = p.getRealizedPnl();
             totalTrades++;
-            totalPnl += pnl;
-            if (pnl >= 0) wins++;
+            totalPnl = totalPnl.add(pnl);
+            if (pnl.compareTo(BigDecimal.ZERO) >= 0) wins++;
             else losses++;
-            if (first) {
+            if (bestTrade == null) {
                 bestTrade = pnl;
                 worstTrade = pnl;
-                first = false;
             } else {
-                if (pnl > bestTrade) bestTrade = pnl;
-                if (pnl < worstTrade) worstTrade = pnl;
+                if (pnl.compareTo(bestTrade) > 0) bestTrade = pnl;
+                if (pnl.compareTo(worstTrade) < 0) worstTrade = pnl;
             }
         }
-        double winRate = totalTrades > 0 ? (double) wins / totalTrades * 100 : 0;
+
+        double winRate = totalTrades > 0
+                ? BigDecimal.valueOf(wins).divide(BigDecimal.valueOf(totalTrades), 4, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100)).doubleValue()
+                : 0.0;
         long openPositions = positionRepository.countByStatus(Position.PositionStatus.OPEN);
 
-        return new DailySummaryData(totalPnl, totalTrades, wins, losses, winRate,
-                bestTrade, worstTrade, (int) openPositions);
+        return new DailySummaryData(
+                totalPnl,
+                totalTrades,
+                wins,
+                losses,
+                winRate,
+                bestTrade != null ? bestTrade : BigDecimal.ZERO,
+                worstTrade != null ? worstTrade : BigDecimal.ZERO,
+                (int) openPositions);
     }
 
     public record DailySummaryData(
-            double totalPnl,
+            BigDecimal totalPnl,
             int totalTrades,
             int wins,
             int losses,
             double winRate,
-            double bestTrade,
-            double worstTrade,
+            BigDecimal bestTrade,
+            BigDecimal worstTrade,
             int openPositions
     ) {}
 }

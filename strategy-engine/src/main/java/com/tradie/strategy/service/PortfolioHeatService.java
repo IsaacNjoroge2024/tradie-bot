@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradie.common.entity.Position;
 import com.tradie.common.repository.PositionRepository;
 import com.tradie.strategy.dto.PortfolioHeatData;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -30,11 +32,16 @@ public class PortfolioHeatService {
     public PortfolioHeatService(PositionRepository positionRepository,
                                  StringRedisTemplate redisTemplate,
                                  ObjectMapper objectMapper,
-                                 AccountService accountService) {
+                                 AccountService accountService,
+                                 MeterRegistry meterRegistry) {
         this.positionRepository = positionRepository;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.accountService = accountService;
+
+        Gauge.builder("tradie.risk.portfolio_heat", this, PortfolioHeatService::getCurrentHeatPct)
+                .description("Current portfolio heat as a percentage of account value")
+                .register(meterRegistry);
     }
 
     public double getCurrentHeatPct() {

@@ -7,6 +7,7 @@ import com.tradie.common.entity.Position;
 import com.tradie.common.repository.PositionRepository;
 import com.tradie.strategy.dto.AccountInfo;
 import com.tradie.strategy.dto.PortfolioHeatData;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,7 +54,7 @@ class PortfolioHeatServiceTest {
     @BeforeEach
     void setUp() {
         service = new PortfolioHeatService(
-                positionRepository, redisTemplate, objectMapper, accountService);
+                positionRepository, redisTemplate, objectMapper, accountService, new SimpleMeterRegistry());
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
     }
 

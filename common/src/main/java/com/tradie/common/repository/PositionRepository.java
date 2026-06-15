@@ -19,6 +19,8 @@ public interface PositionRepository extends JpaRepository<Position, UUID> {
 
     List<Position> findByStatusAndClosedAtAfter(Position.PositionStatus status, Instant closedAt);
 
+    List<Position> findByStatusAndClosedAtGreaterThanEqual(Position.PositionStatus status, Instant closedAt);
+
     @Query(nativeQuery = true, value =
             "SELECT COUNT(*) FILTER (WHERE realized_pnl > 0), " +
             "COUNT(*) FILTER (WHERE realized_pnl < 0), " +

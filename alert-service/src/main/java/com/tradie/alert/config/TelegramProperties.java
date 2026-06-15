@@ -1,9 +1,12 @@
 package com.tradie.alert.config;
 
+import jakarta.validation.constraints.AssertTrue;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.validation.annotation.Validated;
 
 @Component
+@Validated
 @ConfigurationProperties(prefix = "tradie.telegram")
 public class TelegramProperties {
 
@@ -11,6 +14,7 @@ public class TelegramProperties {
     private String chatId = "";
     private boolean enabled = false;
     private String parseMode = "MarkdownV2";
+    private boolean debugTraces = false;
 
     private Alerts alerts = new Alerts();
     private Throttling throttling = new Throttling();
@@ -27,6 +31,16 @@ public class TelegramProperties {
 
     public String getParseMode() { return parseMode; }
     public void setParseMode(String parseMode) { this.parseMode = parseMode; }
+
+    public boolean isDebugTraces() { return debugTraces; }
+    public void setDebugTraces(boolean debugTraces) { this.debugTraces = debugTraces; }
+
+    @AssertTrue(message = "When tradie.telegram.enabled=true, both botToken and chatId must be set")
+    public boolean isConfigurationValid() {
+        return !enabled
+                || (botToken != null && !botToken.isBlank()
+                && chatId != null && !chatId.isBlank());
+    }
 
     public Alerts getAlerts() { return alerts; }
     public void setAlerts(Alerts alerts) { this.alerts = alerts; }

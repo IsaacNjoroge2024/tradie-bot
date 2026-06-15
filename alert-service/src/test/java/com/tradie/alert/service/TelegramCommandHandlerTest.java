@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tradie.alert.client.TelegramClient;
+import com.tradie.alert.config.TelegramProperties;
 import com.tradie.alert.formatter.MessageFormatter;
 import com.tradie.common.entity.Order;
 import com.tradie.common.entity.Position;
@@ -47,7 +48,8 @@ class TelegramCommandHandlerTest {
                 telegramClient, tradingControlService,
                 positionRepository, orderRepository,
                 dailySummaryService, messageFormatter,
-                restTemplate, "http://localhost:8082");
+                restTemplate, "http://localhost:8082",
+                new TelegramProperties());
     }
 
     @Test
@@ -228,6 +230,21 @@ class TelegramCommandHandlerTest {
         verify(telegramClient).sendMessage(eq(CHAT_ID), msg.capture());
         assertTrue(msg.getValue().contains("1"));
         assertTrue(msg.getValue().toLowerCase().contains("cancelled"));
+    }
+
+    @Test
+    void handle_unauthorizedChatId_isRejected() {
+        TelegramProperties restrictedProps = new TelegramProperties();
+        restrictedProps.setChatId("111111");
+
+        TelegramCommandHandler restricted = new TelegramCommandHandler(
+                telegramClient, tradingControlService, positionRepository,
+                orderRepository, dailySummaryService, messageFormatter,
+                restTemplate, "http://localhost:8082", restrictedProps);
+
+        restricted.handle("/status", "999999");
+
+        verifyNoInteractions(telegramClient);
     }
 
     // ─── Helper ───────────────────────────────────────────────────────────────

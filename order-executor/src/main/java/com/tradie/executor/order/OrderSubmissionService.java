@@ -7,6 +7,7 @@ import com.tradie.executor.dto.OrderDTO;
 import com.tradie.executor.dto.OrderEvent;
 import com.tradie.executor.ibkr.IBConnectionManager;
 import com.tradie.executor.ibkr.OrderIdManager;
+import com.tradie.executor.metrics.TradingMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,7 @@ public class OrderSubmissionService {
     private final OrderRepository orderRepository;
     private final OrderStatusTracker orderStatusTracker;
     private final OrderEventPublisher orderEventPublisher;
+    private final TradingMetrics tradingMetrics;
 
     public OrderSubmissionService(
             IBConnectionManager connectionManager,
@@ -51,7 +53,8 @@ public class OrderSubmissionService {
             OrderIdManager orderIdManager,
             OrderRepository orderRepository,
             OrderStatusTracker orderStatusTracker,
-            OrderEventPublisher orderEventPublisher) {
+            OrderEventPublisher orderEventPublisher,
+            TradingMetrics tradingMetrics) {
         this.connectionManager = connectionManager;
         this.contractBuilder = contractBuilder;
         this.bracketOrderBuilder = bracketOrderBuilder;
@@ -59,6 +62,7 @@ public class OrderSubmissionService {
         this.orderRepository = orderRepository;
         this.orderStatusTracker = orderStatusTracker;
         this.orderEventPublisher = orderEventPublisher;
+        this.tradingMetrics = tradingMetrics;
     }
 
     /**
@@ -124,6 +128,7 @@ public class OrderSubmissionService {
         }
 
         log.info("Bracket order submitted to IBKR: parentId={} tpId={} slId={}", parentId, tpId, slId);
+        tradingMetrics.orderSubmitted(orderDTO.side());
 
         // 6. Publish submitted event
         orderEventPublisher.publishOrderEvent(new OrderEvent(

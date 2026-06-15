@@ -5,6 +5,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.common.repository.TradeSignalRepository;
 import com.tradie.gateway.dto.TradingViewSignal;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,7 +53,7 @@ class SignalIngestionServiceTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
-        signalIngestionService = new SignalIngestionService(signalRepository, kafkaTemplate, objectMapper);
+        signalIngestionService = new SignalIngestionService(signalRepository, kafkaTemplate, objectMapper, new SimpleMeterRegistry());
 
         txSyncMock = mockStatic(TransactionSynchronizationManager.class);
         txSyncMock.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))

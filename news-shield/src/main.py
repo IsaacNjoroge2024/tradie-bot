@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
 import logging
 
 from .routers import market_status, events, sentiment
@@ -43,6 +44,8 @@ app.add_middleware(
 app.include_router(market_status.router, prefix="/api", tags=["Market Status"])
 app.include_router(events.router, prefix="/api", tags=["Economic Events"])
 app.include_router(sentiment.router, prefix="/api", tags=["Sentiment"])
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
 @app.get("/health")

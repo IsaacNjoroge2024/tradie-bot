@@ -215,10 +215,11 @@ class TestFetchMarketNews:
 
         with patch.object(
             service.client, "get", new=AsyncMock(side_effect=[finnhub_response, av_response])
-        ):
+        ) as mock_get:
             result = await service.fetch_market_news()
 
         assert result == []
+        assert mock_get.call_count == 2
 
     @pytest.mark.asyncio
     async def test_alpha_vantage_per_minute_limit_returns_empty(self, service, set_api_key):
@@ -236,10 +237,11 @@ class TestFetchMarketNews:
 
         with patch.object(
             service.client, "get", new=AsyncMock(side_effect=[finnhub_response, av_response])
-        ):
+        ) as mock_get:
             result = await service.fetch_market_news()
 
         assert result == []
+        assert mock_get.call_count == 2
 
 
 class TestGetMarketSentiment:

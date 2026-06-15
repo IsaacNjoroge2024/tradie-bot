@@ -7,6 +7,7 @@ import com.tradie.common.repository.OrderRepository;
 import com.tradie.common.repository.PositionRepository;
 import com.tradie.executor.dto.OrderEvent;
 import com.tradie.executor.ibkr.IBConnectionManager;
+import com.tradie.executor.metrics.TradingMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,7 @@ public class OrderStatusTracker {
     private final OrderRepository orderRepository;
     private final PositionRepository positionRepository;
     private final OrderEventPublisher orderEventPublisher;
+    private final TradingMetrics tradingMetrics;
 
     // ibkrOrderId → OrderGroup; all three IDs of a bracket map to the same group
     private final ConcurrentHashMap<Integer, OrderGroup> activeGroups = new ConcurrentHashMap<>();
@@ -47,10 +49,12 @@ public class OrderStatusTracker {
     public OrderStatusTracker(
             OrderRepository orderRepository,
             PositionRepository positionRepository,
-            OrderEventPublisher orderEventPublisher) {
+            OrderEventPublisher orderEventPublisher,
+            TradingMetrics tradingMetrics) {
         this.orderRepository = orderRepository;
         this.positionRepository = positionRepository;
         this.orderEventPublisher = orderEventPublisher;
+        this.tradingMetrics = tradingMetrics;
     }
 
     /** Called by IBConnectionManager during init to wire the back-reference. */
@@ -134,6 +138,8 @@ public class OrderStatusTracker {
         Position position = buildPosition(group, avgFillPrice);
         positionRepository.save(position);
         log.info("Position opened: signal={} symbol={} entry={}", group.signalId(), group.symbol(), avgFillPrice);
+        tradingMetrics.orderFilled();
+        tradingMetrics.recordOrderLatency(group.submittedAt());
 
         orderEventPublisher.publishOrderEvent(new OrderEvent(
                 "FILLED",
@@ -154,6 +160,7 @@ public class OrderStatusTracker {
     private void handleChildFill(OrderGroup group, boolean isTP, double avgFillPrice) {
         // Capture entry price from the open position before closing it
         AtomicReference<Double> capturedEntryPrice = new AtomicReference<>(null);
+        AtomicReference<BigDecimal> closedPnl = new AtomicReference<>(null);
 
         List<Position> openPositions = positionRepository.findByStatus(Position.PositionStatus.OPEN);
         openPositions.stream()
@@ -166,11 +173,23 @@ public class OrderStatusTracker {
                     position.setExitPrice(exitPrice);
                     position.setClosedAt(Instant.now());
                     position.setStatus(Position.PositionStatus.CLOSED);
-                    position.setRealizedPnl(calculatePnl(position.getEntryPrice(), group.side(), group.quantity(), exitPrice));
+                    BigDecimal pnl = calculatePnl(position.getEntryPrice(), group.side(), group.quantity(), exitPrice);
+                    position.setRealizedPnl(pnl);
+                    closedPnl.set(pnl);
                     positionRepository.save(position);
                     log.info("Position closed: signal={} symbol={} exit={} pnl={}",
                             group.signalId(), group.symbol(), avgFillPrice, position.getRealizedPnl());
                 });
+
+        // Record win/loss metrics
+        if (closedPnl.get() != null) {
+            double pnlValue = closedPnl.get().doubleValue();
+            if (isTP) {
+                tradingMetrics.tradeWin(pnlValue);
+            } else {
+                tradingMetrics.tradeLoss(pnlValue);
+            }
+        }
 
         // Cancel the sibling order
         int siblingId = isTP ? group.stopLossIbOrderId() : group.takeProfitIbOrderId();

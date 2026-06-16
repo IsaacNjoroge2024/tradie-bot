@@ -20,13 +20,13 @@ groups:
           description: "Portfolio heat is {{ $value | printf \"%.2f\" }}%, above the 5% warning threshold."
 
       - alert: DailyLossLimit
-        expr: tradie_pnl_daily < -3
+        expr: tradie_account_balance > 0 and (tradie_pnl_daily / tradie_account_balance) * 100 < -3
         for: 1m
         labels:
           severity: critical
         annotations:
           summary: "Daily loss limit reached"
-          description: "Daily P&L is {{ $value | printf \"%.2f\" }}, below the -3 loss limit."
+          description: "Daily P&L has exceeded the 3% daily loss limit relative to configured account balance."
 
       - alert: HighSignalRejectionRate
         expr: rate(tradie_signals_rejected_total[5m]) > 0.5

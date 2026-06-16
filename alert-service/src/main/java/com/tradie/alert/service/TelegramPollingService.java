@@ -62,8 +62,12 @@ public class TelegramPollingService {
 
             long maxProcessedId = lastUpdateId;
             for (JsonNode update : results) {
-                processUpdate(update);
                 long updateId = update.path("update_id").asLong(0);
+                try {
+                    processUpdate(update);
+                } catch (Exception e) {
+                    log.warn("Failed to process Telegram update_id={}, skipping: {}", updateId, e.getMessage());
+                }
                 if (updateId > maxProcessedId) {
                     maxProcessedId = updateId;
                 }

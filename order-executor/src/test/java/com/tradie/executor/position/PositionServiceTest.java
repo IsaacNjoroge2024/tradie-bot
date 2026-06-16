@@ -131,6 +131,8 @@ class PositionServiceTest {
         verify(positionRepository, times(1)).save(pos);
         // Both bracket orders must have been cancelled
         verify(connectionManager, times(2)).cancelOrder(anyInt());
+        // Order group must have been deregistered from tracker
+        verify(orderStatusTracker).deregisterOrderGroup(any(OrderGroup.class));
     }
 
     @Test

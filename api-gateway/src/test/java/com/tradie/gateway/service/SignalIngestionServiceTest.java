@@ -39,6 +39,7 @@ class SignalIngestionServiceTest {
     private KafkaTemplate<String, String> kafkaTemplate;
 
     private SignalIngestionService signalIngestionService;
+    private SimpleMeterRegistry meterRegistry;
 
     // Intercepts TransactionSynchronizationManager.registerSynchronization() and
     // immediately invokes afterCommit(), simulating a successful DB transaction commit
@@ -53,7 +54,8 @@ class SignalIngestionServiceTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
-        signalIngestionService = new SignalIngestionService(signalRepository, kafkaTemplate, objectMapper, new SimpleMeterRegistry());
+        meterRegistry = new SimpleMeterRegistry();
+        signalIngestionService = new SignalIngestionService(signalRepository, kafkaTemplate, objectMapper, meterRegistry);
 
         txSyncMock = mockStatic(TransactionSynchronizationManager.class);
         txSyncMock.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
@@ -143,6 +145,22 @@ class SignalIngestionServiceTest {
         String result = signalIngestionService.processIncomingSignal(buildValidSignal());
 
         assertEquals(signalId.toString(), result);
+    }
+
+    @Test
+    void processIncomingSignal_incrementsSignalsReceivedCounter() throws Exception {
+        UUID signalId = UUID.randomUUID();
+        when(signalRepository.save(any(TradeSignal.class))).thenReturn(buildSavedSignal(signalId, "AAPL"));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successfulSend);
+
+        signalIngestionService.processIncomingSignal(buildValidSignal());
+
+        assertEquals(1.0,
+                meterRegistry.get("tradie.signals.received")
+                        .tag("source", "tradingview")
+                        .counter()
+                        .count(),
+                0.0001);
     }
 
     @Test

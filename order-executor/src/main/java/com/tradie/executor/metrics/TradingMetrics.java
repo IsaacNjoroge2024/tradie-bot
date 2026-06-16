@@ -11,6 +11,7 @@ import io.micrometer.core.instrument.Timer;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,8 +34,8 @@ public class TradingMetrics {
     private final Timer orderLatency;
 
     // Mutable state for gauges that cannot be computed from a simple supplier
-    private final AtomicReference<Double> dailyPnl = new AtomicReference<>(0.0);
-    private final AtomicReference<Double> totalPnl = new AtomicReference<>(0.0);
+    private final AtomicReference<BigDecimal> dailyPnl = new AtomicReference<>(BigDecimal.ZERO);
+    private final AtomicReference<BigDecimal> totalPnl = new AtomicReference<>(BigDecimal.ZERO);
 
     public TradingMetrics(MeterRegistry registry,
                           PositionRepository positionRepository,
@@ -76,11 +77,11 @@ public class TradingMetrics {
                 .description("Number of currently open trading positions")
                 .register(registry);
 
-        Gauge.builder("tradie.pnl.daily", dailyPnl, AtomicReference::get)
+        Gauge.builder("tradie.pnl.daily", dailyPnl, ref -> ref.get().doubleValue())
                 .description("Cumulative realized P&L for the current trading day")
                 .register(registry);
 
-        Gauge.builder("tradie.pnl.total", totalPnl, AtomicReference::get)
+        Gauge.builder("tradie.pnl.total", totalPnl, ref -> ref.get().doubleValue())
                 .description("Cumulative realized P&L across all time")
                 .register(registry);
     }
@@ -97,16 +98,16 @@ public class TradingMetrics {
         ordersFilled.increment();
     }
 
-    public void tradeWin(double pnl) {
+    public void tradeWin(BigDecimal pnl) {
         tradeWins.increment();
-        dailyPnl.updateAndGet(v -> v + pnl);
-        totalPnl.updateAndGet(v -> v + pnl);
+        dailyPnl.updateAndGet(v -> v.add(pnl));
+        totalPnl.updateAndGet(v -> v.add(pnl));
     }
 
-    public void tradeLoss(double pnl) {
+    public void tradeLoss(BigDecimal pnl) {
         tradeLosses.increment();
-        dailyPnl.updateAndGet(v -> v + pnl);
-        totalPnl.updateAndGet(v -> v + pnl);
+        dailyPnl.updateAndGet(v -> v.add(pnl));
+        totalPnl.updateAndGet(v -> v.add(pnl));
     }
 
     public void recordOrderLatency(Instant signalTime) {
@@ -117,6 +118,6 @@ public class TradingMetrics {
     }
 
     public void resetDailyPnl() {
-        dailyPnl.set(0.0);
+        dailyPnl.set(BigDecimal.ZERO);
     }
 }

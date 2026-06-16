@@ -16,4 +16,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate Docker Compose configuration
+        env:
+          GRAFANA_ADMIN_PASSWORD: ci-placeholder
+          DB_USER: ci
+          DB_PASSWORD: ci
+          DB_NAME: ci
         run: docker compose -f infrastructure/docker-compose.yml config

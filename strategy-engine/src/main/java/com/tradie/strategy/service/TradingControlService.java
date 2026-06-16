@@ -2,6 +2,7 @@ package com.tradie.strategy.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +25,7 @@ public class TradingControlService {
     public boolean isPaused() {
         try {
             return Boolean.TRUE.equals(redisTemplate.hasKey(PAUSED_KEY));
-        } catch (Exception e) {
+        } catch (DataAccessException e) {
             log.warn("Redis unavailable when checking pause state; treating as not paused: {}", e.getMessage());
             return false;
         }
@@ -33,7 +34,7 @@ public class TradingControlService {
     public String getPauseReason() {
         try {
             return redisTemplate.opsForValue().get(PAUSED_KEY);
-        } catch (Exception e) {
+        } catch (DataAccessException e) {
             log.warn("Redis unavailable when fetching pause reason: {}", e.getMessage());
             return null;
         }

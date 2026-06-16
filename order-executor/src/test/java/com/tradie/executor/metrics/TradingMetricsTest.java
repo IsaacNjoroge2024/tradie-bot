@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,7 +73,7 @@ class TradingMetricsTest {
 
     @Test
     void tradeWin_incrementsWinCounterAndUpdatesPnl() {
-        tradingMetrics.tradeWin(500.0);
+        tradingMetrics.tradeWin(BigDecimal.valueOf(500.0));
 
         Counter wins = registry.find("tradie.trades.wins").counter();
         assertThat(wins).isNotNull();
@@ -89,7 +90,7 @@ class TradingMetricsTest {
 
     @Test
     void tradeLoss_incrementsLossCounterAndUpdatesPnl() {
-        tradingMetrics.tradeLoss(-300.0);
+        tradingMetrics.tradeLoss(BigDecimal.valueOf(-300.0));
 
         Counter losses = registry.find("tradie.trades.losses").counter();
         assertThat(losses).isNotNull();
@@ -102,8 +103,8 @@ class TradingMetricsTest {
 
     @Test
     void tradeWinAndLoss_accumulatePnl() {
-        tradingMetrics.tradeWin(1000.0);
-        tradingMetrics.tradeLoss(-400.0);
+        tradingMetrics.tradeWin(BigDecimal.valueOf(1000.0));
+        tradingMetrics.tradeLoss(BigDecimal.valueOf(-400.0));
 
         Gauge total = registry.find("tradie.pnl.total").gauge();
         assertThat(total).isNotNull();
@@ -114,7 +115,7 @@ class TradingMetricsTest {
 
     @Test
     void resetDailyPnl_setsGaugeToZero() {
-        tradingMetrics.tradeWin(200.0);
+        tradingMetrics.tradeWin(BigDecimal.valueOf(200.0));
         tradingMetrics.resetDailyPnl();
 
         Gauge daily = registry.find("tradie.pnl.daily").gauge();

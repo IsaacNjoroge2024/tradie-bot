@@ -183,11 +183,10 @@ public class OrderStatusTracker {
 
         // Record win/loss metrics
         if (closedPnl.get() != null) {
-            double pnlValue = closedPnl.get().doubleValue();
             if (isTP) {
-                tradingMetrics.tradeWin(pnlValue);
+                tradingMetrics.tradeWin(closedPnl.get());
             } else {
-                tradingMetrics.tradeLoss(pnlValue);
+                tradingMetrics.tradeLoss(closedPnl.get());
             }
         }
 

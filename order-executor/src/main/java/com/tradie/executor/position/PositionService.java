@@ -5,6 +5,7 @@ import com.ib.client.Decimal;
 import com.tradie.common.entity.Order;
 import com.tradie.common.entity.Position;
 import com.tradie.common.repository.PositionRepository;
+import com.tradie.common.service.AuditLogger;
 import com.tradie.executor.dto.OrderEvent;
 import com.tradie.executor.ibkr.IBConnectionManager;
 import com.tradie.executor.ibkr.OrderIdManager;
@@ -37,6 +38,7 @@ public class PositionService {
     private final MarketDataService marketDataService;
     private final PnLCalculator pnlCalculator;
     private final OrderEventPublisher orderEventPublisher;
+    private final AuditLogger auditLogger;
 
     public PositionService(
             PositionRepository positionRepository,
@@ -45,7 +47,8 @@ public class PositionService {
             OrderIdManager orderIdManager,
             MarketDataService marketDataService,
             PnLCalculator pnlCalculator,
-            OrderEventPublisher orderEventPublisher) {
+            OrderEventPublisher orderEventPublisher,
+            AuditLogger auditLogger) {
         this.positionRepository = positionRepository;
         this.connectionManager = connectionManager;
         this.orderStatusTracker = orderStatusTracker;
@@ -53,6 +56,7 @@ public class PositionService {
         this.marketDataService = marketDataService;
         this.pnlCalculator = pnlCalculator;
         this.orderEventPublisher = orderEventPublisher;
+        this.auditLogger = auditLogger;
     }
 
     public List<Position> getOpenPositions() {
@@ -130,6 +134,8 @@ public class PositionService {
             position.setExitPrice(currentPrice);
             position.setRealizedPnl(pnlCalculator.realizedPnl(position, currentPrice));
             positionRepository.save(position);
+            double pnl = position.getRealizedPnl() != null ? position.getRealizedPnl().doubleValue() : 0.0;
+            auditLogger.logPositionClosed("order-executor", position, pnl);
         }
 
         orderEventPublisher.publishOrderEvent(new OrderEvent(

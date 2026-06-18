@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.common.repository.TradeSignalRepository;
+import com.tradie.common.service.AuditLogger;
 import com.tradie.gateway.dto.TradingViewSignal;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -38,6 +39,9 @@ class SignalIngestionServiceTest {
     @Mock
     private KafkaTemplate<String, String> kafkaTemplate;
 
+    @Mock
+    private AuditLogger auditLogger;
+
     private SignalIngestionService signalIngestionService;
     private SimpleMeterRegistry meterRegistry;
 
@@ -55,7 +59,7 @@ class SignalIngestionServiceTest {
     void setUp() {
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         meterRegistry = new SimpleMeterRegistry();
-        signalIngestionService = new SignalIngestionService(signalRepository, kafkaTemplate, objectMapper, meterRegistry);
+        signalIngestionService = new SignalIngestionService(signalRepository, kafkaTemplate, objectMapper, meterRegistry, auditLogger);
 
         txSyncMock = mockStatic(TransactionSynchronizationManager.class);
         txSyncMock.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))

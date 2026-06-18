@@ -5,8 +5,10 @@ import com.tradie.common.entity.Order;
 import com.tradie.common.entity.Position;
 import com.tradie.common.repository.OrderRepository;
 import com.tradie.common.repository.PositionRepository;
+import com.tradie.common.service.AuditLogger;
 import com.tradie.executor.dto.OrderEvent;
 import com.tradie.executor.ibkr.IBConnectionManager;
+import com.tradie.executor.journal.TradeJournalService;
 import com.tradie.executor.metrics.TradingMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +41,8 @@ public class OrderStatusTracker {
     private final PositionRepository positionRepository;
     private final OrderEventPublisher orderEventPublisher;
     private final TradingMetrics tradingMetrics;
+    private final AuditLogger auditLogger;
+    private final TradeJournalService tradeJournalService;
 
     // ibkrOrderId → OrderGroup; all three IDs of a bracket map to the same group
     private final ConcurrentHashMap<Integer, OrderGroup> activeGroups = new ConcurrentHashMap<>();
@@ -50,11 +54,15 @@ public class OrderStatusTracker {
             OrderRepository orderRepository,
             PositionRepository positionRepository,
             OrderEventPublisher orderEventPublisher,
-            TradingMetrics tradingMetrics) {
+            TradingMetrics tradingMetrics,
+            AuditLogger auditLogger,
+            TradeJournalService tradeJournalService) {
         this.orderRepository = orderRepository;
         this.positionRepository = positionRepository;
         this.orderEventPublisher = orderEventPublisher;
         this.tradingMetrics = tradingMetrics;
+        this.auditLogger = auditLogger;
+        this.tradeJournalService = tradeJournalService;
     }
 
     /** Called by IBConnectionManager during init to wire the back-reference. */
@@ -122,6 +130,8 @@ public class OrderStatusTracker {
         dbOrder.setFilledAt(Instant.now());
         orderRepository.save(dbOrder);
 
+        auditLogger.logOrderFilled("order-executor", dbOrder, avgFillPrice);
+
         boolean isParent = orderId == group.parentIbOrderId();
         boolean isTP     = orderId == group.takeProfitIbOrderId();
         boolean isSL     = orderId == group.stopLossIbOrderId();
@@ -138,6 +148,7 @@ public class OrderStatusTracker {
         Position position = buildPosition(group, avgFillPrice);
         positionRepository.save(position);
         log.info("Position opened: signal={} symbol={} entry={}", group.signalId(), group.symbol(), avgFillPrice);
+        auditLogger.logPositionOpened("order-executor", position);
         tradingMetrics.orderFilled();
         tradingMetrics.recordOrderLatency(group.submittedAt());
 
@@ -179,6 +190,8 @@ public class OrderStatusTracker {
                     positionRepository.save(position);
                     log.info("Position closed: signal={} symbol={} exit={} pnl={}",
                             group.signalId(), group.symbol(), avgFillPrice, position.getRealizedPnl());
+                    auditLogger.logPositionClosed("order-executor", position, pnl.doubleValue());
+                    tradeJournalService.createEntry(position);
                 });
 
         // Record win/loss metrics

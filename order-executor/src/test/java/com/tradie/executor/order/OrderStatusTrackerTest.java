@@ -5,8 +5,10 @@ import com.tradie.common.entity.Order;
 import com.tradie.common.entity.Position;
 import com.tradie.common.repository.OrderRepository;
 import com.tradie.common.repository.PositionRepository;
+import com.tradie.common.service.AuditLogger;
 import com.tradie.executor.dto.OrderEvent;
 import com.tradie.executor.ibkr.IBConnectionManager;
+import com.tradie.executor.journal.TradeJournalService;
 import com.tradie.executor.metrics.TradingMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +35,8 @@ class OrderStatusTrackerTest {
     @Mock private OrderEventPublisher orderEventPublisher;
     @Mock private IBConnectionManager connectionManager;
     @Mock private TradingMetrics tradingMetrics;
+    @Mock private AuditLogger auditLogger;
+    @Mock private TradeJournalService tradeJournalService;
 
     private OrderStatusTracker tracker;
 
@@ -46,7 +50,8 @@ class OrderStatusTrackerTest {
 
     @BeforeEach
     void setUp() {
-        tracker = new OrderStatusTracker(orderRepository, positionRepository, orderEventPublisher, tradingMetrics);
+        tracker = new OrderStatusTracker(orderRepository, positionRepository, orderEventPublisher,
+                tradingMetrics, auditLogger, tradeJournalService);
         tracker.setConnectionManager(connectionManager);
         tracker.registerOrderGroup(buildOrderGroup());
     }

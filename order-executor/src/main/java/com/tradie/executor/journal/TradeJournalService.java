@@ -42,9 +42,10 @@ public class TradeJournalService {
     public TradeJournal createEntry(Position position) {
         if (!autoCreate) return null;
 
-        if (tradeJournalRepository.findByPositionId(position.getId()).isPresent()) {
+        Optional<TradeJournal> existing = tradeJournalRepository.findByPositionId(position.getId());
+        if (existing.isPresent()) {
             log.debug("Journal entry already exists for position {}", position.getId());
-            return tradeJournalRepository.findByPositionId(position.getId()).get();
+            return existing.get();
         }
 
         TradeJournal entry = new TradeJournal();

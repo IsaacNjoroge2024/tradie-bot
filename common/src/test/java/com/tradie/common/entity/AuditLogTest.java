@@ -53,12 +53,19 @@ class AuditLogTest {
     }
 
     @Test
-    void auditLog_prePersist_setsIdAndTime() {
+    void auditLog_prePersist_setsIdAndTime() throws Exception {
         AuditLog log = new AuditLog();
         log.setService("test");
         log.setAction("TEST_ACTION");
-        // Simulate @PrePersist by calling it directly
-        // (JPA would call this; in unit tests we call the method directly)
-        assertThat(log.getId()).isNull(); // id not set before persist
+        assertThat(log.getId()).isNull();
+
+        // Invoke @PrePersist via reflection (JPA calls this before INSERT)
+        var method = AuditLog.class.getDeclaredMethod("onCreate");
+        method.setAccessible(true);
+        method.invoke(log);
+
+        assertThat(log.getId()).isNotNull();
+        assertThat(log.getId().getId()).isNotNull();
+        assertThat(log.getId().getTime()).isNotNull();
     }
 }

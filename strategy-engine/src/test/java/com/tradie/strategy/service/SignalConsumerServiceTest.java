@@ -5,6 +5,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.tradie.common.entity.Order;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.common.repository.TradeSignalRepository;
+import com.tradie.common.service.AuditLogger;
 import com.tradie.strategy.dto.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,9 @@ class SignalConsumerServiceTest {
     @Mock
     private TradingControlService tradingControlService;
 
+    @Mock
+    private AuditLogger auditLogger;
+
     private SignalConsumerService consumer;
     private ObjectMapper objectMapper;
 
@@ -61,7 +65,7 @@ class SignalConsumerServiceTest {
         objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         consumer = new SignalConsumerService(
                 objectMapper, signalRepository, validationService, orderPublisher,
-                kafkaTemplate, tradingControlService);
+                kafkaTemplate, tradingControlService, auditLogger);
 
         successFuture = CompletableFuture.completedFuture(mock(SendResult.class));
     }

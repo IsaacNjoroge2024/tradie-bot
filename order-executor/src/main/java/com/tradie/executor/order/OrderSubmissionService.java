@@ -3,6 +3,7 @@ package com.tradie.executor.order;
 import com.ib.client.Contract;
 import com.tradie.common.entity.Order;
 import com.tradie.common.repository.OrderRepository;
+import com.tradie.common.service.AuditLogger;
 import com.tradie.executor.dto.OrderDTO;
 import com.tradie.executor.dto.OrderEvent;
 import com.tradie.executor.ibkr.IBConnectionManager;
@@ -45,6 +46,7 @@ public class OrderSubmissionService {
     private final OrderStatusTracker orderStatusTracker;
     private final OrderEventPublisher orderEventPublisher;
     private final TradingMetrics tradingMetrics;
+    private final AuditLogger auditLogger;
 
     public OrderSubmissionService(
             IBConnectionManager connectionManager,
@@ -54,7 +56,8 @@ public class OrderSubmissionService {
             OrderRepository orderRepository,
             OrderStatusTracker orderStatusTracker,
             OrderEventPublisher orderEventPublisher,
-            TradingMetrics tradingMetrics) {
+            TradingMetrics tradingMetrics,
+            AuditLogger auditLogger) {
         this.connectionManager = connectionManager;
         this.contractBuilder = contractBuilder;
         this.bracketOrderBuilder = bracketOrderBuilder;
@@ -63,6 +66,7 @@ public class OrderSubmissionService {
         this.orderStatusTracker = orderStatusTracker;
         this.orderEventPublisher = orderEventPublisher;
         this.tradingMetrics = tradingMetrics;
+        this.auditLogger = auditLogger;
     }
 
     /**
@@ -92,6 +96,7 @@ public class OrderSubmissionService {
         Order parentDb = persistOrder(orderDTO, parentId, true, null, Order.OrderType.LIMIT, orderDTO.limitPrice(), null);
         Order tpDb     = persistOrder(orderDTO, tpId, false, parentDb.getId(), Order.OrderType.LIMIT, orderDTO.takeProfit(), null);
         Order slDb     = persistOrder(orderDTO, slId, false, parentDb.getId(), Order.OrderType.STOP, null, orderDTO.stopLoss());
+        auditLogger.logOrderSubmitted("order-executor", parentDb);
 
         // 4. Register in OrderStatusTracker
         OrderGroup group = new OrderGroup(

@@ -3,6 +3,7 @@ package com.tradie.executor.position;
 import com.tradie.common.entity.Order;
 import com.tradie.common.entity.Position;
 import com.tradie.common.repository.PositionRepository;
+import com.tradie.common.service.AuditLogger;
 import com.tradie.executor.dto.OrderEvent;
 import com.tradie.executor.ibkr.IBConnectionManager;
 import com.tradie.executor.ibkr.OrderIdManager;
@@ -37,6 +38,7 @@ class PositionServiceTest {
     @Mock private MarketDataService marketDataService;
     @Mock private PnLCalculator pnlCalculator;
     @Mock private OrderEventPublisher orderEventPublisher;
+    @Mock private AuditLogger auditLogger;
 
     private PositionService service;
 
@@ -46,7 +48,7 @@ class PositionServiceTest {
     @BeforeEach
     void setUp() {
         service = new PositionService(positionRepository, connectionManager, orderStatusTracker,
-                orderIdManager, marketDataService, pnlCalculator, orderEventPublisher);
+                orderIdManager, marketDataService, pnlCalculator, orderEventPublisher, auditLogger);
     }
 
     // ─── getPosition ─────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ package com.tradie.gateway.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.common.repository.TradeSignalRepository;
+import com.tradie.common.service.AuditLogger;
 import com.tradie.gateway.dto.TradingViewSignal;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -26,15 +27,18 @@ public class SignalIngestionService {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
     private final Counter signalsReceivedCounter;
+    private final AuditLogger auditLogger;
 
     public SignalIngestionService(
             TradeSignalRepository signalRepository,
             KafkaTemplate<String, String> kafkaTemplate,
             ObjectMapper objectMapper,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            AuditLogger auditLogger) {
         this.signalRepository = signalRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
+        this.auditLogger = auditLogger;
         this.signalsReceivedCounter = Counter.builder("tradie.signals.received")
                 .description("Number of webhook signals received from TradingView")
                 .tag("source", "tradingview")
@@ -58,6 +62,7 @@ public class SignalIngestionService {
         signal.setRawPayload(objectMapper.writeValueAsString(tvSignal));
 
         TradeSignal saved = signalRepository.save(signal);
+        auditLogger.logSignalReceived("api-gateway", saved);
 
         String messageKey = saved.getSymbol();
         String messageValue = objectMapper.writeValueAsString(saved);

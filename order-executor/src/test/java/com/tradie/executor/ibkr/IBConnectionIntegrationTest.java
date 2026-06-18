@@ -1,14 +1,16 @@
 package com.tradie.executor.ibkr;
 
+import com.tradie.common.repository.OrderRepository;
+import com.tradie.common.repository.PositionRepository;
+import com.tradie.common.service.AuditLogger;
 import com.tradie.executor.config.IbkrProperties;
 import com.tradie.executor.dto.AccountData;
+import com.tradie.executor.journal.TradeJournalService;
 import com.tradie.executor.metrics.TradingMetrics;
 import com.tradie.executor.order.OrderEventPublisher;
 import com.tradie.executor.order.OrderStatusTracker;
 import com.tradie.executor.position.MarketDataService;
 import com.tradie.executor.position.PositionSynchronizer;
-import com.tradie.common.repository.OrderRepository;
-import com.tradie.common.repository.PositionRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -61,7 +63,9 @@ class IBConnectionIntegrationTest {
                 mock(OrderRepository.class),
                 mock(PositionRepository.class),
                 mock(OrderEventPublisher.class),
-                mock(TradingMetrics.class));
+                mock(TradingMetrics.class),
+                mock(AuditLogger.class),
+                mock(TradeJournalService.class));
         OrderEventPublisher orderEventPublisher = mock(OrderEventPublisher.class);
         connectionManager = new IBConnectionManager(
                 properties, accountService, positionTracker, orderIdManager, orderStatusTracker,

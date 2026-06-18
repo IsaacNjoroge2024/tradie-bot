@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.common.repository.TradeSignalRepository;
+import com.tradie.common.service.AuditLogger;
 import com.tradie.strategy.dto.RejectionEvent;
 import com.tradie.strategy.dto.ValidationResult;
 import org.slf4j.Logger;
@@ -30,6 +31,7 @@ public class SignalConsumerService {
     private final OrderPublisher orderPublisher;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final TradingControlService tradingControlService;
+    private final AuditLogger auditLogger;
 
     public SignalConsumerService(
             ObjectMapper objectMapper,
@@ -37,13 +39,15 @@ public class SignalConsumerService {
             SignalValidationService validationService,
             OrderPublisher orderPublisher,
             KafkaTemplate<String, String> kafkaTemplate,
-            TradingControlService tradingControlService) {
+            TradingControlService tradingControlService,
+            AuditLogger auditLogger) {
         this.objectMapper = objectMapper;
         this.signalRepository = signalRepository;
         this.validationService = validationService;
         this.orderPublisher = orderPublisher;
         this.kafkaTemplate = kafkaTemplate;
         this.tradingControlService = tradingControlService;
+        this.auditLogger = auditLogger;
     }
 
     @KafkaListener(topics = "tradie.signals", groupId = "strategy-engine-group")
@@ -95,6 +99,7 @@ public class SignalConsumerService {
                 signal.setRejectionReason(rejectionReason);
                 signal.setProcessedAt(Instant.now());
                 signalRepository.save(signal);
+                auditLogger.logSignalRejected("strategy-engine", signal, rejectionReason);
                 orderPublisher.publishRejection(new RejectionEvent(
                         signal.getId(), signal.getSymbol(), signal.getAction().name(),
                         signal.getStrategy(), rejectionReason, Instant.now()));
@@ -112,12 +117,14 @@ public class SignalConsumerService {
                 signal.setStatus(TradeSignal.SignalStatus.VALIDATED);
                 signal.setProcessedAt(Instant.now());
                 signalRepository.save(signal);
+                auditLogger.logSignalValidated("strategy-engine", signal);
                 orderPublisher.publishOrder(result.order());
             } else {
                 signal.setStatus(TradeSignal.SignalStatus.REJECTED);
                 signal.setRejectionReason(result.rejectionReason());
                 signal.setProcessedAt(Instant.now());
                 signalRepository.save(signal);
+                auditLogger.logSignalRejected("strategy-engine", signal, result.rejectionReason());
                 orderPublisher.publishRejection(new RejectionEvent(
                         signal.getId(),
                         signal.getSymbol(),

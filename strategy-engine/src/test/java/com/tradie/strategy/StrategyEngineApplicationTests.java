@@ -1,7 +1,9 @@
 package com.tradie.strategy;
 
+import com.tradie.common.repository.AuditLogRepository;
 import com.tradie.common.repository.OHLCVCandleRepository;
 import com.tradie.common.repository.PositionRepository;
+import com.tradie.common.repository.TradeJournalRepository;
 import com.tradie.common.repository.TradeSignalRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,6 +40,12 @@ class StrategyEngineApplicationTests {
 
     @MockBean
     StringRedisTemplate stringRedisTemplate;
+
+    @MockBean
+    AuditLogRepository auditLogRepository;
+
+    @MockBean
+    TradeJournalRepository tradeJournalRepository;
 
     @Test
     void contextLoads() {

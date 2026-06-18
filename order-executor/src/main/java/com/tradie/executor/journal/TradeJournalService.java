@@ -4,11 +4,13 @@ import com.tradie.common.entity.Position;
 import com.tradie.common.entity.TradeJournal;
 import com.tradie.common.repository.TradeJournalRepository;
 import com.tradie.executor.dto.TradeJournalUpdateRequest;
+import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -101,11 +103,25 @@ public class TradeJournalService {
 
         Double resolvedMin = minPnl;
         Double resolvedMax = maxPnl;
-        if ("WIN".equalsIgnoreCase(result) && resolvedMin == null) resolvedMin = 0.0;
+        if ("WIN".equalsIgnoreCase(result) && resolvedMin == null)  resolvedMin = 0.0;
         if ("LOSS".equalsIgnoreCase(result) && resolvedMax == null) resolvedMax = 0.0;
 
-        return tradeJournalRepository.findByFilters(
-                symbol, strategy, start, end, resolvedMin, resolvedMax, pageable);
+        final Double finalMin = resolvedMin;
+        final Double finalMax = resolvedMax;
+
+        Specification<TradeJournal> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (symbol != null)    predicates.add(cb.equal(root.get("symbol"), symbol));
+            if (strategy != null)  predicates.add(cb.equal(root.get("strategy"), strategy));
+            if (start != null)     predicates.add(cb.greaterThanOrEqualTo(root.get("entryTime"), start));
+            if (end != null)       predicates.add(cb.lessThanOrEqualTo(root.get("entryTime"), end));
+            if (finalMin != null)  predicates.add(cb.greaterThanOrEqualTo(root.get("realizedPnl"), finalMin));
+            if (finalMax != null)  predicates.add(cb.lessThanOrEqualTo(root.get("realizedPnl"), finalMax));
+            query.orderBy(cb.desc(root.get("entryTime")));
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return tradeJournalRepository.findAll(spec, pageable);
     }
 
     public List<TradeJournal> getByDateRange(LocalDate start, LocalDate end) {

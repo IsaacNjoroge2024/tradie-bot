@@ -11,13 +11,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -31,9 +32,10 @@ class AuditControllerTest {
 
     @Test
     void queryAuditLogs_noFilters_returnsPage() throws Exception {
-        Page<AuditLog> page = new PageImpl<>(List.of(buildAuditLog("api-gateway", "SIGNAL_RECEIVED")), PageRequest.of(0, 20), 1);
-        when(auditLogRepository.findByFilters(isNull(), isNull(), isNull(), isNull(), isNull(), any(Pageable.class)))
-                .thenReturn(page);
+        Page<AuditLog> page = new PageImpl<>(
+                List.of(buildAuditLog("api-gateway", "SIGNAL_RECEIVED")),
+                PageRequest.of(0, 50), 1);
+        when(auditLogRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
 
         mockMvc.perform(get("/api/audit"))
                 .andExpect(status().isOk())
@@ -44,9 +46,8 @@ class AuditControllerTest {
 
     @Test
     void queryAuditLogs_withServiceFilter_passesFilter() throws Exception {
-        Page<AuditLog> page = new PageImpl<>(List.of(), PageRequest.of(0, 20), 0);
-        when(auditLogRepository.findByFilters(eq("order-executor"), isNull(), isNull(), isNull(), isNull(), any(Pageable.class)))
-                .thenReturn(page);
+        Page<AuditLog> page = new PageImpl<>(List.of(), PageRequest.of(0, 50), 0);
+        when(auditLogRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
 
         mockMvc.perform(get("/api/audit").param("service", "order-executor"))
                 .andExpect(status().isOk())
@@ -55,9 +56,8 @@ class AuditControllerTest {
 
     @Test
     void queryAuditLogs_emptyResult_returnsEmptyPage() throws Exception {
-        Page<AuditLog> page = new PageImpl<>(List.of(), PageRequest.of(0, 20), 0);
-        when(auditLogRepository.findByFilters(any(), any(), any(), any(), any(), any(Pageable.class)))
-                .thenReturn(page);
+        Page<AuditLog> page = new PageImpl<>(List.of(), PageRequest.of(0, 50), 0);
+        when(auditLogRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
 
         mockMvc.perform(get("/api/audit"))
                 .andExpect(status().isOk())

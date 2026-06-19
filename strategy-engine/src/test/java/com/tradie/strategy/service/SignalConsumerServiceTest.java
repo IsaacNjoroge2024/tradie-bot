@@ -116,6 +116,7 @@ class SignalConsumerServiceTest {
         verify(signalRepository).save(captor.capture());
         assertEquals(TradeSignal.SignalStatus.VALIDATED, captor.getValue().getStatus());
         verify(orderPublisher).publishOrder(order);
+        verify(auditLogger).logSignalValidated(eq("strategy-engine"), eq(signal));
         verify(ack).acknowledge();
     }
 
@@ -136,6 +137,7 @@ class SignalConsumerServiceTest {
         assertEquals(TradeSignal.SignalStatus.REJECTED, captor.getValue().getStatus());
         assertEquals("Outside Kill Zone", captor.getValue().getRejectionReason());
         verify(orderPublisher).publishRejection(any(RejectionEvent.class));
+        verify(auditLogger).logSignalRejected(eq("strategy-engine"), eq(signal), eq("Outside Kill Zone"));
         verify(ack).acknowledge();
     }
 
@@ -180,6 +182,7 @@ class SignalConsumerServiceTest {
         ArgumentCaptor<TradeSignal> captor = ArgumentCaptor.forClass(TradeSignal.class);
         verify(signalRepository).save(captor.capture());
         assertEquals(TradeSignal.SignalStatus.PUBLISH_FAILED, captor.getValue().getStatus());
+        verify(auditLogger).logSignalRejected(eq("strategy-engine"), any(TradeSignal.class), anyString());
         verify(ack).acknowledge();
     }
 
@@ -200,6 +203,7 @@ class SignalConsumerServiceTest {
         assertEquals(TradeSignal.SignalStatus.REJECTED, captor.getValue().getStatus());
         assertTrue(captor.getValue().getRejectionReason().contains("Trading paused"));
         verify(orderPublisher).publishRejection(any(RejectionEvent.class));
+        verify(auditLogger).logSignalRejected(eq("strategy-engine"), any(TradeSignal.class), anyString());
         verify(validationService, never()).validate(any());
         verify(ack).acknowledge();
     }

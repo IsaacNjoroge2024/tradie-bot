@@ -2,6 +2,7 @@ package com.tradie.common.entity;
 
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -19,12 +20,12 @@ class TradeJournalTest {
         journal.setSide("BUY");
         journal.setEntryTime(entryTime);
         journal.setExitTime(exitTime);
-        journal.setEntryPrice(150.0);
-        journal.setExitPrice(165.0);
-        journal.setQuantity(10.0);
-        journal.setRealizedPnl(150.0);
-        journal.setRealizedPnlPct(10.0);
-        journal.setCommissions(2.0);
+        journal.setEntryPrice(BigDecimal.valueOf(150.0));
+        journal.setExitPrice(BigDecimal.valueOf(165.0));
+        journal.setQuantity(BigDecimal.valueOf(10.0));
+        journal.setRealizedPnl(BigDecimal.valueOf(150.0));
+        journal.setRealizedPnlPct(BigDecimal.valueOf(10.0));
+        journal.setCommissions(BigDecimal.valueOf(2.0));
         journal.setStrategy("FVG");
         journal.setTimeframe("1H");
         journal.setSetupQuality("A");
@@ -37,12 +38,12 @@ class TradeJournalTest {
         assertThat(journal.getSide()).isEqualTo("BUY");
         assertThat(journal.getEntryTime()).isEqualTo(entryTime);
         assertThat(journal.getExitTime()).isEqualTo(exitTime);
-        assertThat(journal.getEntryPrice()).isEqualTo(150.0);
-        assertThat(journal.getExitPrice()).isEqualTo(165.0);
-        assertThat(journal.getQuantity()).isEqualTo(10.0);
-        assertThat(journal.getRealizedPnl()).isEqualTo(150.0);
-        assertThat(journal.getRealizedPnlPct()).isEqualTo(10.0);
-        assertThat(journal.getCommissions()).isEqualTo(2.0);
+        assertThat(journal.getEntryPrice()).isEqualByComparingTo(BigDecimal.valueOf(150.0));
+        assertThat(journal.getExitPrice()).isEqualByComparingTo(BigDecimal.valueOf(165.0));
+        assertThat(journal.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(10.0));
+        assertThat(journal.getRealizedPnl()).isEqualByComparingTo(BigDecimal.valueOf(150.0));
+        assertThat(journal.getRealizedPnlPct()).isEqualByComparingTo(BigDecimal.valueOf(10.0));
+        assertThat(journal.getCommissions()).isEqualByComparingTo(BigDecimal.valueOf(2.0));
         assertThat(journal.getStrategy()).isEqualTo("FVG");
         assertThat(journal.getTimeframe()).isEqualTo("1H");
         assertThat(journal.getSetupQuality()).isEqualTo("A");
@@ -74,5 +75,16 @@ class TradeJournalTest {
     void tagsConverter_emptyList_returnsNull() {
         TagsConverter converter = new TagsConverter();
         assertThat(converter.convertToDatabaseColumn(List.of())).isNull();
+    }
+
+    @Test
+    void tagsConverter_tagWithComma_roundTripsCorrectly() {
+        TagsConverter converter = new TagsConverter();
+
+        List<String> tags = List.of("ny,open", "fvg");
+        String dbValue = converter.convertToDatabaseColumn(tags);
+        List<String> recovered = converter.convertToEntityAttribute(dbValue);
+
+        assertThat(recovered).containsExactly("ny,open", "fvg");
     }
 }

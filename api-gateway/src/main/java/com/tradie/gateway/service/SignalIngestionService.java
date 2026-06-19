@@ -62,16 +62,16 @@ public class SignalIngestionService {
         signal.setRawPayload(objectMapper.writeValueAsString(tvSignal));
 
         TradeSignal saved = signalRepository.save(signal);
-        auditLogger.logSignalReceived("api-gateway", saved);
 
         String messageKey = saved.getSymbol();
         String messageValue = objectMapper.writeValueAsString(saved);
 
-        // Publish to Kafka only after the DB transaction commits successfully,
-        // preventing divergence where Kafka has the event but the DB does not (or vice versa).
+        // Publish to Kafka and emit the audit event only after the DB transaction commits
+        // successfully, preventing an audit entry for a signal that was never persisted.
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
+                auditLogger.logSignalReceived("api-gateway", saved);
                 kafkaTemplate.send(SIGNALS_TOPIC, messageKey, messageValue)
                         .whenComplete((result, ex) -> {
                             if (ex != null) {

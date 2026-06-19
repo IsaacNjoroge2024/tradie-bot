@@ -151,6 +151,8 @@ public class SignalConsumerService {
                     signal.setRejectionReason("Processing error: " + e.getMessage());
                     signal.setProcessedAt(Instant.now());
                     signalRepository.save(signal);
+                    auditLogger.logSignalRejected("strategy-engine", signal,
+                            "Processing error: " + e.getMessage());
                 } catch (Exception saveEx) {
                     log.error("Failed to persist error status for signal: {}", saveEx.getMessage());
                 }

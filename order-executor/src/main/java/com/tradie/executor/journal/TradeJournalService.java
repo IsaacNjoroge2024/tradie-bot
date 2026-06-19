@@ -54,18 +54,18 @@ public class TradeJournalService {
         entry.setSide(position.getSide() != null ? position.getSide().name() : null);
         entry.setEntryTime(position.getOpenedAt());
         entry.setExitTime(position.getClosedAt());
-        entry.setEntryPrice(position.getEntryPrice() != null ? position.getEntryPrice().doubleValue() : null);
-        entry.setExitPrice(position.getExitPrice() != null ? position.getExitPrice().doubleValue() : null);
-        entry.setQuantity(position.getQuantity() != null ? position.getQuantity().doubleValue() : null);
+        entry.setEntryPrice(position.getEntryPrice());
+        entry.setExitPrice(position.getExitPrice());
+        entry.setQuantity(position.getQuantity());
         entry.setStrategy(position.getStrategy());
 
         if (position.getRealizedPnl() != null) {
-            entry.setRealizedPnl(position.getRealizedPnl().doubleValue());
+            entry.setRealizedPnl(position.getRealizedPnl());
             entry.setRealizedPnlPct(calculatePnlPct(position));
         }
 
         if (position.getCommissionTotal() != null) {
-            entry.setCommissions(position.getCommissionTotal().doubleValue());
+            entry.setCommissions(position.getCommissionTotal());
         }
 
         TradeJournal saved = tradeJournalRepository.save(entry);
@@ -100,12 +100,13 @@ public class TradeJournalService {
                                           Double minPnl, Double maxPnl, String result,
                                           Pageable pageable) {
         Instant start = startDate != null ? startDate.atStartOfDay(ZoneOffset.UTC).toInstant() : null;
-        Instant end   = endDate   != null ? endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        Instant end   = endDate   != null
+                ? endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).minusNanos(1).toInstant() : null;
 
         Double resolvedMin = minPnl;
         Double resolvedMax = maxPnl;
-        if ("WIN".equalsIgnoreCase(result) && resolvedMin == null)  resolvedMin = 0.0;
-        if ("LOSS".equalsIgnoreCase(result) && resolvedMax == null) resolvedMax = 0.0;
+        if ("WIN".equalsIgnoreCase(result) && resolvedMin == null)  resolvedMin = Math.nextUp(0.0d);
+        if ("LOSS".equalsIgnoreCase(result) && resolvedMax == null) resolvedMax = Math.nextDown(0.0d);
 
         final Double finalMin = resolvedMin;
         final Double finalMax = resolvedMax;
@@ -116,8 +117,8 @@ public class TradeJournalService {
             if (strategy != null)  predicates.add(cb.equal(root.get("strategy"), strategy));
             if (start != null)     predicates.add(cb.greaterThanOrEqualTo(root.get("entryTime"), start));
             if (end != null)       predicates.add(cb.lessThanOrEqualTo(root.get("entryTime"), end));
-            if (finalMin != null)  predicates.add(cb.greaterThanOrEqualTo(root.get("realizedPnl"), finalMin));
-            if (finalMax != null)  predicates.add(cb.lessThanOrEqualTo(root.get("realizedPnl"), finalMax));
+            if (finalMin != null)  predicates.add(cb.greaterThanOrEqualTo(root.get("realizedPnl"), BigDecimal.valueOf(finalMin)));
+            if (finalMax != null)  predicates.add(cb.lessThanOrEqualTo(root.get("realizedPnl"), BigDecimal.valueOf(finalMax)));
             query.orderBy(cb.desc(root.get("entryTime")));
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -128,7 +129,7 @@ public class TradeJournalService {
     public List<TradeJournal> getByDateRange(LocalDate start, LocalDate end) {
         return tradeJournalRepository.findByEntryTimeBetween(
                 start.atStartOfDay(ZoneOffset.UTC).toInstant(),
-                end.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant());
+                end.plusDays(1).atStartOfDay(ZoneOffset.UTC).minusNanos(1).toInstant());
     }
 
     public List<TradeJournal> getByStrategy(String strategy) {
@@ -144,38 +145,46 @@ public class TradeJournalService {
         csv.append("id,symbol,side,entryTime,exitTime,entryPrice,exitPrice,quantity,"
                 + "realizedPnl,realizedPnlPct,commissions,strategy,setupQuality,executionQuality,notes\n");
         for (TradeJournal e : entries) {
-            csv.append(String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\"\n",
-                    e.getId(),
-                    nvl(e.getSymbol()),
-                    nvl(e.getSide()),
-                    nvl(e.getEntryTime()),
-                    nvl(e.getExitTime()),
-                    nvl(e.getEntryPrice()),
-                    nvl(e.getExitPrice()),
-                    nvl(e.getQuantity()),
-                    nvl(e.getRealizedPnl()),
-                    nvl(e.getRealizedPnlPct()),
-                    nvl(e.getCommissions()),
-                    nvl(e.getStrategy()),
-                    nvl(e.getSetupQuality()),
-                    nvl(e.getExecutionQuality()),
-                    e.getNotes() != null ? e.getNotes().replace("\"", "\"\"") : ""));
+            csv.append(String.join(",",
+                    csvCell(e.getId()),
+                    csvCell(e.getSymbol()),
+                    csvCell(e.getSide()),
+                    csvCell(e.getEntryTime()),
+                    csvCell(e.getExitTime()),
+                    csvCell(e.getEntryPrice()),
+                    csvCell(e.getExitPrice()),
+                    csvCell(e.getQuantity()),
+                    csvCell(e.getRealizedPnl()),
+                    csvCell(e.getRealizedPnlPct()),
+                    csvCell(e.getCommissions()),
+                    csvCell(e.getStrategy()),
+                    csvCell(e.getSetupQuality()),
+                    csvCell(e.getExecutionQuality()),
+                    csvCell(e.getNotes())
+            )).append('\n');
         }
         return csv.toString();
     }
 
-    private double calculatePnlPct(Position position) {
-        if (position.getEntryPrice() == null || position.getQuantity() == null
-                || position.getRealizedPnl() == null) return 0.0;
-        BigDecimal entryValue = position.getEntryPrice().multiply(position.getQuantity());
-        if (entryValue.compareTo(BigDecimal.ZERO) == 0) return 0.0;
-        return position.getRealizedPnl()
-                .divide(entryValue, 8, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(100))
-                .doubleValue();
+    private String csvCell(Object value) {
+        String raw = value == null ? "" : value.toString();
+        if (!raw.isEmpty()) {
+            char c = raw.charAt(0);
+            if (c == '=' || c == '+' || c == '-' || c == '@') {
+                raw = "'" + raw;
+            }
+        }
+        return "\"" + raw.replace("\"", "\"\"") + "\"";
     }
 
-    private String nvl(Object value) {
-        return value != null ? value.toString() : "";
+    private BigDecimal calculatePnlPct(Position position) {
+        if (position.getEntryPrice() == null || position.getQuantity() == null
+                || position.getRealizedPnl() == null) return BigDecimal.ZERO;
+        BigDecimal entryValue = position.getEntryPrice().multiply(position.getQuantity());
+        if (entryValue.compareTo(BigDecimal.ZERO) == 0) return BigDecimal.ZERO;
+        return position.getRealizedPnl()
+                .divide(entryValue, 8, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100));
     }
+
 }

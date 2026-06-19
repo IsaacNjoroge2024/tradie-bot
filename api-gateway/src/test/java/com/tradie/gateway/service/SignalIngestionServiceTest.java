@@ -104,6 +104,7 @@ class SignalIngestionServiceTest {
         signalIngestionService.processIncomingSignal(buildValidSignal());
 
         verify(signalRepository, times(1)).save(any(TradeSignal.class));
+        verify(auditLogger, times(1)).logSignalReceived(eq("api-gateway"), any(TradeSignal.class));
     }
 
     @Test

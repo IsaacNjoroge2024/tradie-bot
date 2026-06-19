@@ -64,6 +64,18 @@ class AuditControllerTest {
                 .andExpect(jsonPath("$.totalElements").value(0));
     }
 
+    @Test
+    void queryAuditLogs_negativePage_returnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/audit").param("page", "-1"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void queryAuditLogs_oversizedSize_returnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/audit").param("size", "201"))
+                .andExpect(status().isBadRequest());
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private AuditLog buildAuditLog(String service, String action) {

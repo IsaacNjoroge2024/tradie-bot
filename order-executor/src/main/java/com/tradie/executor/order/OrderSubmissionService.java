@@ -96,7 +96,6 @@ public class OrderSubmissionService {
         Order parentDb = persistOrder(orderDTO, parentId, true, null, Order.OrderType.LIMIT, orderDTO.limitPrice(), null);
         Order tpDb     = persistOrder(orderDTO, tpId, false, parentDb.getId(), Order.OrderType.LIMIT, orderDTO.takeProfit(), null);
         Order slDb     = persistOrder(orderDTO, slId, false, parentDb.getId(), Order.OrderType.STOP, null, orderDTO.stopLoss());
-        auditLogger.logOrderSubmitted("order-executor", parentDb);
 
         // 4. Register in OrderStatusTracker
         OrderGroup group = new OrderGroup(
@@ -126,6 +125,11 @@ public class OrderSubmissionService {
             connectionManager.placeOrder(tpId, contract, bracketOrders.get(1));
             placedIds.add(tpId);
             connectionManager.placeOrder(slId, contract, bracketOrders.get(2));
+            try {
+                auditLogger.logOrderSubmitted("order-executor", parentDb);
+            } catch (Exception ex) {
+                log.warn("Audit log failed for submitted order {}: {}", parentDb.getId(), ex.getMessage());
+            }
         } catch (Exception e) {
             log.error("Bracket placement failed after {} leg(s), compensating: {}", placedIds.size(), e.getMessage());
             compensate(placedIds, parentDb, tpDb, slDb, group);

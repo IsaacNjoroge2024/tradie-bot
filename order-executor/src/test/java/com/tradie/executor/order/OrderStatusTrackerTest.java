@@ -24,7 +24,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -99,6 +99,8 @@ class OrderStatusTrackerTest {
         assertThat(saved.getSymbol()).isEqualTo("AAPL");
         assertThat(saved.getEntryPrice()).isEqualByComparingTo(BigDecimal.valueOf(150.50));
         assertThat(saved.getStatus()).isEqualTo(Position.PositionStatus.OPEN);
+        verify(auditLogger).logOrderFilled(eq("order-executor"), any(Order.class), eq(150.50));
+        verify(auditLogger).logPositionOpened(eq("order-executor"), any(Position.class));
     }
 
     @Test
@@ -137,6 +139,9 @@ class OrderStatusTrackerTest {
 
         verify(connectionManager).cancelOrder(SL_ID);
         assertThat(siblingOrder.getStatus()).isEqualTo(Order.OrderStatus.CANCELLED);
+        verify(auditLogger).logOrderFilled(eq("order-executor"), any(Order.class), eq(165.00));
+        verify(auditLogger).logPositionClosed(eq("order-executor"), any(Position.class), anyDouble());
+        verify(tradeJournalService).createEntry(any(Position.class));
     }
 
     @Test
@@ -178,6 +183,9 @@ class OrderStatusTrackerTest {
         ArgumentCaptor<OrderEvent> eventCaptor = ArgumentCaptor.forClass(OrderEvent.class);
         verify(orderEventPublisher).publishOrderEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().type()).isEqualTo("STOP_LOSS_HIT");
+        verify(auditLogger).logOrderFilled(eq("order-executor"), any(Order.class), eq(140.00));
+        verify(auditLogger).logPositionClosed(eq("order-executor"), any(Position.class), anyDouble());
+        verify(tradeJournalService).createEntry(any(Position.class));
     }
 
     // ─── Cancellation ────────────────────────────────────────────────────────

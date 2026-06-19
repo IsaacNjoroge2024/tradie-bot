@@ -14,6 +14,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+
+import java.math.BigDecimal;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -24,6 +26,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -112,8 +115,51 @@ class TradeJournalControllerTest {
     }
 
     @Test
+    void getStats_withStrategyFilter_appliesBothFilters() throws Exception {
+        TradeJournal fvgEntry = buildJournal();
+        fvgEntry.setStrategy("FVG");
+        TradeJournal obEntry = buildJournal();
+        obEntry.setStrategy("OB");
+
+        PerformanceStats stats = new PerformanceStats(
+                1, 1, 0, 1.0, 150.0, 0.0, 0.0, 0.0, 0.0,
+                Map.of(), Map.of(), Map.of(), Map.of());
+        // Both entries are returned from the date range call...
+        when(journalService.getByDateRange(any(), any())).thenReturn(List.of(fvgEntry, obEntry));
+        // ...but analytics sees only the FVG-filtered subset
+        when(analyticsService.calculateStats(argThat(list -> list.size() == 1))).thenReturn(stats);
+
+        mockMvc.perform(get("/api/journal/stats").param("strategy", "FVG"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalTrades").value(1));
+    }
+
+    @Test
+    void getStats_withStrategyAndDateRange_appliesBothFilters() throws Exception {
+        TradeJournal fvgEntry = buildJournal();
+        fvgEntry.setStrategy("FVG");
+        TradeJournal obEntry = buildJournal();
+        obEntry.setStrategy("OB");
+
+        PerformanceStats stats = new PerformanceStats(
+                1, 1, 0, 1.0, 150.0, 0.0, 0.0, 0.0, 0.0,
+                Map.of(), Map.of(), Map.of(), Map.of());
+        when(journalService.getByDateRange(any(), any())).thenReturn(List.of(fvgEntry, obEntry));
+        when(analyticsService.calculateStats(argThat(list -> list.size() == 1))).thenReturn(stats);
+
+        mockMvc.perform(get("/api/journal/stats")
+                        .param("strategy", "FVG")
+                        .param("startDate", "2026-01-01")
+                        .param("endDate", "2026-06-30"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalTrades").value(1));
+    }
+
+    @Test
     void exportCsv_returnsTextCsv() throws Exception {
-        when(journalService.getByDateRange(any(), any())).thenReturn(List.of(buildJournal()));
+        Page<TradeJournal> page = new PageImpl<>(List.of(buildJournal()));
+        when(journalService.getEntries(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+                .thenReturn(page);
         when(journalService.exportToCsv(any())).thenReturn("id,symbol\n" + UUID.randomUUID() + ",AAPL\n");
 
         mockMvc.perform(get("/api/journal/export"))
@@ -128,9 +174,9 @@ class TradeJournalControllerTest {
         j.setSymbol("AAPL");
         j.setSide("BUY");
         j.setEntryTime(Instant.now().minusSeconds(3600));
-        j.setEntryPrice(150.0);
-        j.setQuantity(10.0);
-        j.setRealizedPnl(150.0);
+        j.setEntryPrice(BigDecimal.valueOf(150.0));
+        j.setQuantity(BigDecimal.valueOf(10.0));
+        j.setRealizedPnl(BigDecimal.valueOf(150.0));
         j.setStrategy("FVG");
         return j;
     }

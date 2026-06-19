@@ -78,6 +78,9 @@ public class TradeJournalController {
 
         LocalDate from = startDate != null ? startDate : LocalDate.of(2000, 1, 1);
         LocalDate to   = endDate   != null ? endDate   : LocalDate.now();
+        if (from.isAfter(to)) {
+            return ResponseEntity.<PerformanceStats>badRequest().build();
+        }
         List<TradeJournal> entries = journalService.getByDateRange(from, to);
 
         if (strategy != null) {
@@ -96,6 +99,9 @@ public class TradeJournalController {
             @RequestParam(required = false) String symbol,
             @RequestParam(required = false) String strategy) {
 
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            return ResponseEntity.<String>badRequest().build();
+        }
         List<TradeJournal> entries = journalService
                 .getEntries(symbol, strategy, startDate, endDate, null, null, null, Pageable.unpaged())
                 .getContent();

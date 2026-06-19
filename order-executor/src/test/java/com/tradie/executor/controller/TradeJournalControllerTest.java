@@ -127,7 +127,9 @@ class TradeJournalControllerTest {
         // Both entries are returned from the date range call...
         when(journalService.getByDateRange(any(), any())).thenReturn(List.of(fvgEntry, obEntry));
         // ...but analytics sees only the FVG-filtered subset
-        when(analyticsService.calculateStats(argThat(list -> list.size() == 1))).thenReturn(stats);
+        when(analyticsService.calculateStats(argThat(list ->
+                list.size() == 1 && list.stream().allMatch(e -> "FVG".equals(e.getStrategy()))
+        ))).thenReturn(stats);
 
         mockMvc.perform(get("/api/journal/stats").param("strategy", "FVG"))
                 .andExpect(status().isOk())
@@ -145,7 +147,9 @@ class TradeJournalControllerTest {
                 1, 1, 0, 1.0, 150.0, 0.0, 0.0, 0.0, 0.0,
                 Map.of(), Map.of(), Map.of(), Map.of());
         when(journalService.getByDateRange(any(), any())).thenReturn(List.of(fvgEntry, obEntry));
-        when(analyticsService.calculateStats(argThat(list -> list.size() == 1))).thenReturn(stats);
+        when(analyticsService.calculateStats(argThat(list ->
+                list.size() == 1 && list.stream().allMatch(e -> "FVG".equals(e.getStrategy()))
+        ))).thenReturn(stats);
 
         mockMvc.perform(get("/api/journal/stats")
                         .param("strategy", "FVG")
@@ -153,6 +157,22 @@ class TradeJournalControllerTest {
                         .param("endDate", "2026-06-30"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalTrades").value(1));
+    }
+
+    @Test
+    void getStats_invertedDateRange_returnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/journal/stats")
+                        .param("startDate", "2026-06-30")
+                        .param("endDate", "2026-01-01"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void exportCsv_invertedDateRange_returnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/journal/export")
+                        .param("startDate", "2026-06-30")
+                        .param("endDate", "2026-01-01"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

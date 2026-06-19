@@ -8,6 +8,7 @@ import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -68,10 +69,16 @@ public class TradeJournalService {
             entry.setCommissions(position.getCommissionTotal());
         }
 
-        TradeJournal saved = tradeJournalRepository.save(entry);
-        log.info("Journal entry created for position {}: symbol={} pnl={}",
-                position.getId(), position.getSymbol(), entry.getRealizedPnl());
-        return saved;
+        try {
+            TradeJournal saved = tradeJournalRepository.save(entry);
+            log.info("Journal entry created for position {}: symbol={} pnl={}",
+                    position.getId(), position.getSymbol(), entry.getRealizedPnl());
+            return saved;
+        } catch (DataIntegrityViolationException ex) {
+            // Concurrent call already inserted for this position — return the existing row.
+            return tradeJournalRepository.findByPositionId(position.getId())
+                    .orElseThrow(() -> ex);
+        }
     }
 
     @Transactional
@@ -105,8 +112,8 @@ public class TradeJournalService {
 
         Double resolvedMin = minPnl;
         Double resolvedMax = maxPnl;
-        if ("WIN".equalsIgnoreCase(result) && resolvedMin == null)  resolvedMin = Math.nextUp(0.0d);
-        if ("LOSS".equalsIgnoreCase(result) && resolvedMax == null) resolvedMax = Math.nextDown(0.0d);
+        if ("WIN".equalsIgnoreCase(result) && resolvedMin == null)  resolvedMin =  0.00000001d;
+        if ("LOSS".equalsIgnoreCase(result) && resolvedMax == null) resolvedMax = -0.00000001d;
 
         final Double finalMin = resolvedMin;
         final Double finalMax = resolvedMax;

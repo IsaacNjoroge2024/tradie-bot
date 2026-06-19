@@ -1,6 +1,7 @@
 package com.tradie.common.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -28,23 +29,23 @@ public class TradeJournal {
     @Column(name = "exit_time")
     private Instant exitTime;
 
-    @Column(name = "entry_price", nullable = false)
-    private Double entryPrice;
+    @Column(name = "entry_price", nullable = false, precision = 20, scale = 8)
+    private BigDecimal entryPrice;
 
-    @Column(name = "exit_price")
-    private Double exitPrice;
+    @Column(name = "exit_price", precision = 20, scale = 8)
+    private BigDecimal exitPrice;
 
-    @Column(nullable = false)
-    private Double quantity;
+    @Column(nullable = false, precision = 20, scale = 8)
+    private BigDecimal quantity;
 
-    @Column(name = "realized_pnl")
-    private Double realizedPnl;
+    @Column(name = "realized_pnl", precision = 20, scale = 8)
+    private BigDecimal realizedPnl;
 
-    @Column(name = "realized_pnl_pct")
-    private Double realizedPnlPct;
+    @Column(name = "realized_pnl_pct", precision = 20, scale = 8)
+    private BigDecimal realizedPnlPct;
 
-    @Column
-    private Double commissions;
+    @Column(precision = 20, scale = 8)
+    private BigDecimal commissions;
 
     @Column(length = 50)
     private String strategy;
@@ -116,23 +117,23 @@ public class TradeJournal {
     public Instant getExitTime() { return exitTime; }
     public void setExitTime(Instant exitTime) { this.exitTime = exitTime; }
 
-    public Double getEntryPrice() { return entryPrice; }
-    public void setEntryPrice(Double entryPrice) { this.entryPrice = entryPrice; }
+    public BigDecimal getEntryPrice() { return entryPrice; }
+    public void setEntryPrice(BigDecimal entryPrice) { this.entryPrice = entryPrice; }
 
-    public Double getExitPrice() { return exitPrice; }
-    public void setExitPrice(Double exitPrice) { this.exitPrice = exitPrice; }
+    public BigDecimal getExitPrice() { return exitPrice; }
+    public void setExitPrice(BigDecimal exitPrice) { this.exitPrice = exitPrice; }
 
-    public Double getQuantity() { return quantity; }
-    public void setQuantity(Double quantity) { this.quantity = quantity; }
+    public BigDecimal getQuantity() { return quantity; }
+    public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
 
-    public Double getRealizedPnl() { return realizedPnl; }
-    public void setRealizedPnl(Double realizedPnl) { this.realizedPnl = realizedPnl; }
+    public BigDecimal getRealizedPnl() { return realizedPnl; }
+    public void setRealizedPnl(BigDecimal realizedPnl) { this.realizedPnl = realizedPnl; }
 
-    public Double getRealizedPnlPct() { return realizedPnlPct; }
-    public void setRealizedPnlPct(Double realizedPnlPct) { this.realizedPnlPct = realizedPnlPct; }
+    public BigDecimal getRealizedPnlPct() { return realizedPnlPct; }
+    public void setRealizedPnlPct(BigDecimal realizedPnlPct) { this.realizedPnlPct = realizedPnlPct; }
 
-    public Double getCommissions() { return commissions; }
-    public void setCommissions(Double commissions) { this.commissions = commissions; }
+    public BigDecimal getCommissions() { return commissions; }
+    public void setCommissions(BigDecimal commissions) { this.commissions = commissions; }
 
     public String getStrategy() { return strategy; }
     public void setStrategy(String strategy) { this.strategy = strategy; }

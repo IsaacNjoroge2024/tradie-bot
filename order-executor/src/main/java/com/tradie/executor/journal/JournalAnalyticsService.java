@@ -4,9 +4,9 @@ import com.tradie.common.entity.TradeJournal;
 import com.tradie.executor.dto.PerformanceStats;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.ZoneOffset;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -20,36 +20,33 @@ public class JournalAnalyticsService {
                 .toList();
 
         int totalTrades = closed.size();
-        int wins  = (int) closed.stream().filter(e -> e.getRealizedPnl() > 0).count();
-        int losses = (int) closed.stream().filter(e -> e.getRealizedPnl() < 0).count();
+        int wins  = (int) closed.stream().filter(e -> e.getRealizedPnl().compareTo(BigDecimal.ZERO) > 0).count();
+        int losses = (int) closed.stream().filter(e -> e.getRealizedPnl().compareTo(BigDecimal.ZERO) < 0).count();
         double winRate = totalTrades > 0 ? (double) wins / totalTrades : 0.0;
 
         double avgWin = closed.stream()
-                .filter(e -> e.getRealizedPnl() > 0)
-                .mapToDouble(TradeJournal::getRealizedPnl)
+                .filter(e -> e.getRealizedPnl().compareTo(BigDecimal.ZERO) > 0)
+                .mapToDouble(e -> e.getRealizedPnl().doubleValue())
                 .average().orElse(0.0);
 
         double avgLoss = closed.stream()
-                .filter(e -> e.getRealizedPnl() < 0)
-                .mapToDouble(TradeJournal::getRealizedPnl)
+                .filter(e -> e.getRealizedPnl().compareTo(BigDecimal.ZERO) < 0)
+                .mapToDouble(e -> e.getRealizedPnl().doubleValue())
                 .average().orElse(0.0);
 
         double totalWins = closed.stream()
-                .filter(e -> e.getRealizedPnl() > 0)
-                .mapToDouble(TradeJournal::getRealizedPnl)
+                .filter(e -> e.getRealizedPnl().compareTo(BigDecimal.ZERO) > 0)
+                .mapToDouble(e -> e.getRealizedPnl().doubleValue())
                 .sum();
 
         double totalLosses = Math.abs(closed.stream()
-                .filter(e -> e.getRealizedPnl() < 0)
-                .mapToDouble(TradeJournal::getRealizedPnl)
+                .filter(e -> e.getRealizedPnl().compareTo(BigDecimal.ZERO) < 0)
+                .mapToDouble(e -> e.getRealizedPnl().doubleValue())
                 .sum());
 
         double profitFactor = totalLosses > 0 ? totalWins / totalLosses : 0.0;
 
-        double maxDrawdown = closed.stream()
-                .filter(e -> e.getRealizedPnl() < 0)
-                .mapToDouble(TradeJournal::getRealizedPnl)
-                .min().orElse(0.0);
+        double maxDrawdown = calculateMaxDrawdown(closed);
 
         double sharpeRatio = calculateSharpeRatio(closed);
 
@@ -62,10 +59,22 @@ public class JournalAnalyticsService {
                 profitFactor, maxDrawdown, sharpeRatio, byStrategy, bySymbol, byDayOfWeek, byHour);
     }
 
+    private double calculateMaxDrawdown(List<TradeJournal> closed) {
+        double equity = 0.0;
+        double peak = 0.0;
+        double maxDrawdown = 0.0;
+        for (TradeJournal e : closed) {
+            equity += e.getRealizedPnl().doubleValue();
+            peak = Math.max(peak, equity);
+            maxDrawdown = Math.min(maxDrawdown, equity - peak);
+        }
+        return maxDrawdown;
+    }
+
     private double calculateSharpeRatio(List<TradeJournal> closed) {
         if (closed.size() < 2) return 0.0;
-        double[] pnls = closed.stream().mapToDouble(TradeJournal::getRealizedPnl).toArray();
-        double mean = closed.stream().mapToDouble(TradeJournal::getRealizedPnl).average().orElse(0.0);
+        double[] pnls = closed.stream().mapToDouble(e -> e.getRealizedPnl().doubleValue()).toArray();
+        double mean = closed.stream().mapToDouble(e -> e.getRealizedPnl().doubleValue()).average().orElse(0.0);
         double variance = 0.0;
         for (double pnl : pnls) {
             variance += Math.pow(pnl - mean, 2);
@@ -82,9 +91,9 @@ public class JournalAnalyticsService {
                         TradeJournal::getStrategy,
                         Collectors.collectingAndThen(Collectors.toList(), group -> {
                             int trades = group.size();
-                            int wins = (int) group.stream().filter(e -> e.getRealizedPnl() > 0).count();
+                            int wins = (int) group.stream().filter(e -> e.getRealizedPnl().compareTo(BigDecimal.ZERO) > 0).count();
                             double winRate = trades > 0 ? (double) wins / trades : 0.0;
-                            double totalPnl = group.stream().mapToDouble(TradeJournal::getRealizedPnl).sum();
+                            double totalPnl = group.stream().mapToDouble(e -> e.getRealizedPnl().doubleValue()).sum();
                             return new PerformanceStats.StrategyStats(trades, wins, winRate, totalPnl);
                         })
                 ));
@@ -95,28 +104,24 @@ public class JournalAnalyticsService {
                 .filter(e -> e.getSymbol() != null)
                 .collect(Collectors.groupingBy(
                         TradeJournal::getSymbol,
-                        Collectors.summingDouble(TradeJournal::getRealizedPnl)));
+                        Collectors.summingDouble(e -> e.getRealizedPnl().doubleValue())));
     }
 
     private Map<DayOfWeek, Double> buildDayOfWeekStats(List<TradeJournal> closed) {
-        Map<DayOfWeek, Double> result = new LinkedHashMap<>();
-        closed.stream()
+        return closed.stream()
                 .filter(e -> e.getEntryTime() != null)
                 .collect(Collectors.groupingBy(
                         e -> e.getEntryTime().atZone(ZoneOffset.UTC).getDayOfWeek(),
-                        Collectors.summingDouble(TradeJournal::getRealizedPnl)))
-                .forEach(result::put);
-        return result;
+                        () -> new java.util.EnumMap<>(DayOfWeek.class),
+                        Collectors.summingDouble(e -> e.getRealizedPnl().doubleValue())));
     }
 
     private Map<Integer, Double> buildHourStats(List<TradeJournal> closed) {
-        Map<Integer, Double> result = new LinkedHashMap<>();
-        closed.stream()
+        return closed.stream()
                 .filter(e -> e.getEntryTime() != null)
                 .collect(Collectors.groupingBy(
                         e -> e.getEntryTime().atZone(ZoneOffset.UTC).getHour(),
-                        Collectors.summingDouble(TradeJournal::getRealizedPnl)))
-                .forEach(result::put);
-        return result;
+                        java.util.TreeMap::new,
+                        Collectors.summingDouble(e -> e.getRealizedPnl().doubleValue())));
     }
 }

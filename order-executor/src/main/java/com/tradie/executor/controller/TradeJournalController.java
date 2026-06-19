@@ -5,6 +5,8 @@ import com.tradie.executor.dto.PerformanceStats;
 import com.tradie.executor.dto.TradeJournalUpdateRequest;
 import com.tradie.executor.journal.JournalAnalyticsService;
 import com.tradie.executor.journal.TradeJournalService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -12,12 +14,14 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+@Validated
 @RestController
 @RequestMapping("/api/journal")
 public class TradeJournalController {
@@ -40,8 +44,8 @@ public class TradeJournalController {
             @RequestParam(required = false) String result,
             @RequestParam(required = false) Double minPnl,
             @RequestParam(required = false) Double maxPnl,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size) {
 
         Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(
@@ -72,15 +76,14 @@ public class TradeJournalController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String strategy) {
 
-        List<TradeJournal> entries;
-        if (startDate != null || endDate != null) {
-            LocalDate from = startDate != null ? startDate : LocalDate.of(2000, 1, 1);
-            LocalDate to   = endDate   != null ? endDate   : LocalDate.now();
-            entries = journalService.getByDateRange(from, to);
-        } else if (strategy != null) {
-            entries = journalService.getByStrategy(strategy);
-        } else {
-            entries = journalService.getByDateRange(LocalDate.of(2000, 1, 1), LocalDate.now());
+        LocalDate from = startDate != null ? startDate : LocalDate.of(2000, 1, 1);
+        LocalDate to   = endDate   != null ? endDate   : LocalDate.now();
+        List<TradeJournal> entries = journalService.getByDateRange(from, to);
+
+        if (strategy != null) {
+            entries = entries.stream()
+                    .filter(e -> strategy.equals(e.getStrategy()))
+                    .toList();
         }
 
         return ResponseEntity.ok(analyticsService.calculateStats(entries));
@@ -93,16 +96,9 @@ public class TradeJournalController {
             @RequestParam(required = false) String symbol,
             @RequestParam(required = false) String strategy) {
 
-        List<TradeJournal> entries;
-        if (symbol != null) {
-            entries = journalService.getBySymbol(symbol);
-        } else if (strategy != null) {
-            entries = journalService.getByStrategy(strategy);
-        } else {
-            LocalDate from = startDate != null ? startDate : LocalDate.of(2000, 1, 1);
-            LocalDate to   = endDate   != null ? endDate   : LocalDate.now();
-            entries = journalService.getByDateRange(from, to);
-        }
+        List<TradeJournal> entries = journalService
+                .getEntries(symbol, strategy, startDate, endDate, null, null, null, Pageable.unpaged())
+                .getContent();
 
         String csv = journalService.exportToCsv(entries);
         return ResponseEntity.ok()

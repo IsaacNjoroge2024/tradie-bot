@@ -1,6 +1,7 @@
 package com.tradie.executor.journal;
 
 import com.tradie.common.repository.AuditLogRepository;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,7 +25,15 @@ public class DataRetentionService {
         this.auditLogRepository = auditLogRepository;
     }
 
-    @Scheduled(cron = "0 0 0 1 * *")
+    @PostConstruct
+    void validateRetentionDays() {
+        if (retentionDays < 1) {
+            throw new IllegalArgumentException(
+                    "tradie.audit.retention-days must be >= 1, was: " + retentionDays);
+        }
+    }
+
+    @Scheduled(cron = "0 0 0 1 * *", zone = "UTC")
     public void purgeOldAuditLogs() {
         Instant cutoff = Instant.now().minus(retentionDays, ChronoUnit.DAYS);
         int deleted = auditLogRepository.deleteOlderThan(cutoff);

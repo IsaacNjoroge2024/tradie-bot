@@ -24,8 +24,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -92,6 +91,7 @@ class PositionServiceTest {
         ArgumentCaptor<OrderEvent> eventCaptor = ArgumentCaptor.forClass(OrderEvent.class);
         verify(orderEventPublisher).publishOrderEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().type()).isEqualTo("POSITION_CLOSED_MANUAL");
+        verify(auditLogger).logCloseRequested(eq("order-executor"), any(Position.class), anyString());
     }
 
     @Test

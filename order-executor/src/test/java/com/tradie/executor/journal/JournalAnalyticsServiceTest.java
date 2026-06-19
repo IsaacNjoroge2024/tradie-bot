@@ -5,6 +5,7 @@ import com.tradie.executor.dto.PerformanceStats;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -95,10 +96,23 @@ class JournalAnalyticsServiceTest {
     }
 
     @Test
+    void calculateStats_cumulativeDrawdown_peakToTrough() {
+        // +200, -50, -50 → equity: 200, 150, 100 → peak=200 → maxDrawdown=100-200=-100
+        List<TradeJournal> entries = List.of(
+                buildEntry("AAPL", "FVG", 200.0),
+                buildEntry("AAPL", "FVG", -50.0),
+                buildEntry("AAPL", "FVG", -50.0));
+
+        PerformanceStats stats = service.calculateStats(entries);
+
+        assertThat(stats.maxDrawdown()).isEqualTo(-100.0);
+    }
+
+    @Test
     void calculateStats_entriesWithNullPnl_ignored() {
         TradeJournal open = new TradeJournal();
         open.setSymbol("AAPL");
-        open.setRealizedPnl(null); // open trade, no PnL yet
+        open.setRealizedPnl((BigDecimal) null); // open trade, no PnL yet
 
         List<TradeJournal> entries = List.of(open, buildEntry("AAPL", "FVG", 100.0));
 
@@ -113,7 +127,7 @@ class JournalAnalyticsServiceTest {
         TradeJournal e = new TradeJournal();
         e.setSymbol(symbol);
         e.setStrategy(strategy);
-        e.setRealizedPnl(pnl);
+        e.setRealizedPnl(BigDecimal.valueOf(pnl));
         e.setEntryTime(Instant.now());
         return e;
     }

@@ -54,10 +54,10 @@ class TradeJournalServiceTest {
 
         assertThat(saved.getSymbol()).isEqualTo("AAPL");
         assertThat(saved.getSide()).isEqualTo("BUY");
-        assertThat(saved.getEntryPrice()).isEqualTo(150.0);
-        assertThat(saved.getExitPrice()).isEqualTo(165.0);
-        assertThat(saved.getQuantity()).isEqualTo(10.0);
-        assertThat(saved.getRealizedPnl()).isEqualTo(150.0);
+        assertThat(saved.getEntryPrice()).isEqualByComparingTo(BigDecimal.valueOf(150.0));
+        assertThat(saved.getExitPrice()).isEqualByComparingTo(BigDecimal.valueOf(165.0));
+        assertThat(saved.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(10.0));
+        assertThat(saved.getRealizedPnl()).isEqualByComparingTo(BigDecimal.valueOf(150.0));
         assertThat(saved.getStrategy()).isEqualTo("FVG");
     }
 
@@ -124,8 +124,8 @@ class TradeJournalServiceTest {
         TradeJournal entry = new TradeJournal();
         entry.setSymbol("AAPL");
         entry.setSide("BUY");
-        entry.setEntryPrice(150.0);
-        entry.setRealizedPnl(50.0);
+        entry.setEntryPrice(BigDecimal.valueOf(150.0));
+        entry.setRealizedPnl(BigDecimal.valueOf(50.0));
 
         String csv = service.exportToCsv(List.of(entry));
 
@@ -142,10 +142,42 @@ class TradeJournalServiceTest {
         assertThat(lines).isEqualTo(1);
     }
 
+    @Test
+    void exportToCsv_commasInNotesAreProperlyQuoted() {
+        TradeJournal entry = new TradeJournal();
+        entry.setSymbol("AAPL");
+        entry.setNotes("Great trade, perfect entry");
+
+        String csv = service.exportToCsv(List.of(entry));
+
+        String dataRow = csv.lines().skip(1).findFirst().orElse("");
+        assertThat(dataRow).contains("\"Great trade, perfect entry\"");
+    }
+
+    @Test
+    void exportToCsv_formulaLeadingCharsAreNeutralized() {
+        TradeJournal entry = new TradeJournal();
+        entry.setSymbol("AAPL");
+        entry.setNotes("=SUM(A1:A5)");
+
+        String csv = service.exportToCsv(List.of(entry));
+
+        String dataRow = csv.lines().skip(1).findFirst().orElse("");
+        assertThat(dataRow).contains("'=SUM");
+        assertThat(dataRow).doesNotContain("\"=SUM");
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private Position buildClosedPosition() {
         Position p = new Position();
+        try {
+            var idField = Position.class.getDeclaredField("id");
+            idField.setAccessible(true);
+            idField.set(p, UUID.randomUUID());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         p.setSymbol("AAPL");
         p.setSide(Order.OrderSide.BUY);
         p.setQuantity(BigDecimal.valueOf(10));

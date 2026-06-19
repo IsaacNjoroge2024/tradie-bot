@@ -89,6 +89,7 @@ public class PositionService {
         // submit a second market order if the process crashes between cancel and placeOrder.
         position.setStatus(Position.PositionStatus.CLOSING);
         positionRepository.save(position);
+        auditLogger.logCloseRequested("order-executor", position, reason);
 
         boolean bracketsDeregistered = false;
         try {
@@ -128,14 +129,13 @@ public class PositionService {
             throw new IllegalStateException("Failed to submit close order: " + e.getMessage(), e);
         }
 
-        // Store indicative exit price from market quote — confirmed by PositionSynchronizer on fill
+        // Store indicative exit price from market quote — confirmed fill with POSITION_CLOSED
+        // audit is logged by OrderStatusTracker when the market order actually fills.
         BigDecimal currentPrice = marketDataService.getLatestPrice(position.getSymbol());
         if (currentPrice != null) {
             position.setExitPrice(currentPrice);
             position.setRealizedPnl(pnlCalculator.realizedPnl(position, currentPrice));
             positionRepository.save(position);
-            double pnl = position.getRealizedPnl() != null ? position.getRealizedPnl().doubleValue() : 0.0;
-            auditLogger.logPositionClosed("order-executor", position, pnl);
         }
 
         orderEventPublisher.publishOrderEvent(new OrderEvent(

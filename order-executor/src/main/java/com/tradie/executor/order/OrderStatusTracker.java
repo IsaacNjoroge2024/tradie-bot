@@ -191,7 +191,11 @@ public class OrderStatusTracker {
                     log.info("Position closed: signal={} symbol={} exit={} pnl={}",
                             group.signalId(), group.symbol(), avgFillPrice, position.getRealizedPnl());
                     auditLogger.logPositionClosed("order-executor", position, pnl.doubleValue());
-                    tradeJournalService.createEntry(position);
+                    try {
+                        tradeJournalService.createEntry(position);
+                    } catch (Exception ex) {
+                        log.error("Failed to create trade journal entry for closed position {}", position.getId(), ex);
+                    }
                 });
 
         // Record win/loss metrics

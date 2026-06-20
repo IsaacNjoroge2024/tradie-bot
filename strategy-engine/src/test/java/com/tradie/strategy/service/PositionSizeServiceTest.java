@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.strategy.dto.AccountInfo;
 import com.tradie.strategy.dto.PositionSizeResult;
+import com.tradie.strategy.forex.ForexPipCalculator;
+import com.tradie.strategy.forex.ForexPositionSizer;
+import com.tradie.strategy.forex.dto.ForexPositionSize;
 import com.tradie.strategy.positioning.ATRPositionSizeCalculator;
 import com.tradie.strategy.positioning.FixedFractionalCalculator;
 import com.tradie.strategy.positioning.KellyCriterionCalculator;
@@ -42,6 +45,12 @@ class PositionSizeServiceTest {
     @Mock
     private CorrelationAdjuster correlationAdjuster;
 
+    @Mock
+    private ForexPipCalculator forexPipCalculator;
+
+    @Mock
+    private ForexPositionSizer forexPositionSizer;
+
     private PositionSizeService service;
 
     private static final AccountInfo DEFAULT_ACCOUNT = new AccountInfo(
@@ -52,9 +61,11 @@ class PositionSizeServiceTest {
     void setUp() {
         service = new PositionSizeService(
                 accountService, portfolioHeatService, fixedFractionalCalculator,
-                kellyCriterionCalculator, atrCalculator, correlationAdjuster, new ObjectMapper());
+                kellyCriterionCalculator, atrCalculator, correlationAdjuster,
+                new ObjectMapper(), forexPipCalculator, forexPositionSizer);
 
         ReflectionTestUtils.setField(service, "defaultSizingMethod", "FIXED_FRACTIONAL");
+        ReflectionTestUtils.setField(service, "riskPerTradePct", 2.0);
         ReflectionTestUtils.setField(service, "warningHeatPct", 4.0);
         ReflectionTestUtils.setField(service, "reduceHeatPct", 5.0);
 
@@ -225,5 +236,33 @@ class PositionSizeServiceTest {
 
         assertEquals(2.0, result.portfolioHeatBefore(), 0.001);
         assertEquals(4.0, result.portfolioHeatAfter(), 0.01); // 2% existing + 2% new risk
+    }
+
+    @Test
+    void calculatePositionSize_forexSignal_usesForexPositionSizer() {
+        TradeSignal forexSignal = new TradeSignal();
+        forexSignal.setSymbol("EURUSD");
+        forexSignal.setExchange("FOREX");
+        forexSignal.setStrategy("FVG");
+        forexSignal.setPrice(BigDecimal.valueOf(1.10));
+        forexSignal.setStopLoss(BigDecimal.valueOf(1.08));
+        forexSignal.setTakeProfit(BigDecimal.valueOf(1.14));
+        forexSignal.setAction(TradeSignal.SignalAction.BUY);
+
+        when(forexPipCalculator.calculatePips(eq("EURUSD"), anyDouble(), anyDouble()))
+                .thenReturn(20.0);
+        ForexPositionSize forexSize =
+                new ForexPositionSize(0.5, 50000.0, "MINI", 200.0, 5.0, 1100.0);
+        when(forexPositionSizer.calculate(
+                eq("EURUSD"), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(forexSize);
+
+        PositionSizeResult result = service.calculatePositionSize(forexSignal, BigDecimal.ONE);
+
+        assertTrue(result.valid());
+        assertEquals("FOREX", result.assetClass());
+        verify(forexPositionSizer).calculate(
+                eq("EURUSD"), anyDouble(), anyDouble(), anyDouble(), anyDouble());
+        assertEquals(0, BigDecimal.valueOf(50000).compareTo(result.quantity()));
     }
 }

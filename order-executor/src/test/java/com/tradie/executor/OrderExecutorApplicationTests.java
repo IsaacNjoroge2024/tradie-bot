@@ -1,6 +1,7 @@
 package com.tradie.executor;
 
 import com.tradie.common.repository.AuditLogRepository;
+import com.tradie.common.repository.CurrencyPairRepository;
 import com.tradie.common.repository.OHLCVCandleRepository;
 import com.tradie.common.repository.OrderRepository;
 import com.tradie.common.repository.PositionRepository;
@@ -50,6 +51,9 @@ class OrderExecutorApplicationTests {
 
     @MockBean
     TradeJournalRepository tradeJournalRepository;
+
+    @MockBean
+    CurrencyPairRepository currencyPairRepository;
 
     @Test
     void contextLoads() {

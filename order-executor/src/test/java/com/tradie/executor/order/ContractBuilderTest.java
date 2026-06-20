@@ -97,6 +97,39 @@ class ContractBuilderTest {
         assertThat(contract.exchange()).isEqualTo("SMART");
     }
 
+    @Test
+    void build_forex_sixCharSymbol_splitsCurrencies() {
+        OrderDTO order = buildOrderDTO("EURUSD", "IDEALPRO", "CASH");
+
+        Contract contract = contractBuilder.build(order);
+
+        assertThat(contract.symbol()).isEqualTo("EUR");
+        assertThat(contract.currency()).isEqualTo("USD");
+        assertThat(contract.secType().getApiString()).isEqualTo("CASH");
+        assertThat(contract.exchange()).isEqualTo("IDEALPRO");
+    }
+
+    @Test
+    void build_forex_slashSeparatedPair_splitsCurrencies() {
+        OrderDTO order = buildOrderDTO("EUR/USD", "IDEALPRO", "FOREX");
+
+        Contract contract = contractBuilder.build(order);
+
+        assertThat(contract.symbol()).isEqualTo("EUR");
+        assertThat(contract.currency()).isEqualTo("USD");
+    }
+
+    @Test
+    void build_forex_jpyPair_setsJpyQuote() {
+        OrderDTO order = buildOrderDTO("USDJPY", "IDEALPRO", "CASH");
+
+        Contract contract = contractBuilder.build(order);
+
+        assertThat(contract.symbol()).isEqualTo("USD");
+        assertThat(contract.currency()).isEqualTo("JPY");
+        assertThat(contract.exchange()).isEqualTo("IDEALPRO");
+    }
+
     // ─── Helper ───────────────────────────────────────────────────────────────
 
     private OrderDTO buildOrderDTO(String symbol, String exchange, String assetClass) {

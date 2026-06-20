@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.strategy.dto.AccountInfo;
 import com.tradie.strategy.dto.PositionSizeResult;
+import com.tradie.strategy.forex.CurrencyPairService;
+import com.tradie.strategy.forex.ForexPipCalculator;
+import com.tradie.strategy.forex.ForexPositionSizer;
+import com.tradie.strategy.forex.dto.ForexPositionSize;
 import com.tradie.strategy.positioning.ATRPositionSizeCalculator;
 import com.tradie.strategy.positioning.FixedFractionalCalculator;
 import com.tradie.strategy.positioning.KellyCriterionCalculator;
@@ -31,6 +35,9 @@ public class PositionSizeService {
     @Value("${tradie.position-sizing.default-method:FIXED_FRACTIONAL}")
     private String defaultSizingMethod;
 
+    @Value("${tradie.position-sizing.risk-per-trade-pct:2.0}")
+    private double riskPerTradePct;
+
     @Value("${tradie.portfolio.warning-heat-pct:4.0}")
     private double warningHeatPct;
 
@@ -44,6 +51,8 @@ public class PositionSizeService {
     private final ATRPositionSizeCalculator atrCalculator;
     private final CorrelationAdjuster correlationAdjuster;
     private final ObjectMapper objectMapper;
+    private final ForexPipCalculator forexPipCalculator;
+    private final ForexPositionSizer forexPositionSizer;
 
     public PositionSizeService(AccountService accountService,
                                 PortfolioHeatService portfolioHeatService,
@@ -51,7 +60,9 @@ public class PositionSizeService {
                                 KellyCriterionCalculator kellyCriterionCalculator,
                                 ATRPositionSizeCalculator atrCalculator,
                                 CorrelationAdjuster correlationAdjuster,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                ForexPipCalculator forexPipCalculator,
+                                ForexPositionSizer forexPositionSizer) {
         this.accountService = accountService;
         this.portfolioHeatService = portfolioHeatService;
         this.fixedFractionalCalculator = fixedFractionalCalculator;
@@ -59,6 +70,8 @@ public class PositionSizeService {
         this.atrCalculator = atrCalculator;
         this.correlationAdjuster = correlationAdjuster;
         this.objectMapper = objectMapper;
+        this.forexPipCalculator = forexPipCalculator;
+        this.forexPositionSizer = forexPositionSizer;
     }
 
     /**
@@ -138,6 +151,11 @@ public class PositionSizeService {
             return fallbackQuantity(entry, accountValue);
         }
 
+        // Forex uses pip-based sizing regardless of the configured default method
+        if ("FOREX".equals(detectAssetClass(signal))) {
+            return calculateForexUnits(signal, accountValue, adjustments);
+        }
+
         switch (method) {
             case METHOD_KELLY: {
                 Optional<BigDecimal> kellyQty = kellyCriterionCalculator
@@ -157,6 +175,26 @@ public class PositionSizeService {
             default:
                 return fixedFractionalCalculator.calculate(entry, stopLoss, accountValue);
         }
+    }
+
+    private BigDecimal calculateForexUnits(TradeSignal signal, BigDecimal accountValue,
+                                            List<String> adjustments) {
+        String pair = CurrencyPairService.normalizePair(signal.getSymbol());
+        double balance = accountValue.doubleValue();
+        double entryPrice = signal.getPrice().doubleValue();
+        double stopLossPrice = signal.getStopLoss().doubleValue();
+        double stopLossPips = forexPipCalculator.calculatePips(pair, entryPrice, stopLossPrice);
+
+        ForexPositionSize posSize = forexPositionSizer.calculate(
+                pair, balance, riskPerTradePct, entryPrice, stopLossPips);
+
+        adjustments.add(String.format(
+                "Forex pip-based sizing: %.2f lots (%,.0f units), stopLoss=%.1f pips, "
+                        + "pipValue=%.2f, marginRequired=%.2f",
+                posSize.lots(), posSize.units(), stopLossPips,
+                posSize.pipValue(), posSize.marginRequired()));
+
+        return BigDecimal.valueOf(posSize.units()).setScale(0, RoundingMode.FLOOR);
     }
 
     private BigDecimal applyHeatAdjustment(BigDecimal quantity, double heatBefore,

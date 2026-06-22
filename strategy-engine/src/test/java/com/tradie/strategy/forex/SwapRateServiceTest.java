@@ -102,6 +102,13 @@ class SwapRateServiceTest {
     }
 
     @Test
+    void calculateSwapCost_nullOpenedAt_throwsException() {
+        assertThatThrownBy(() -> swapRateService.calculateSwapCost("EURUSD", "BUY", 1.0, 1, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("openedAt must not be null");
+    }
+
+    @Test
     void calculateSwapCost_invalidSide_throwsException() {
         assertThatThrownBy(() -> swapRateService.calculateSwapCost("EURUSD", "HOLD", 1.0, 1, THURSDAY))
                 .isInstanceOf(IllegalArgumentException.class)

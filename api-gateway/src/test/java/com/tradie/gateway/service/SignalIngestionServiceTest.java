@@ -202,4 +202,38 @@ class SignalIngestionServiceTest {
         assertEquals("SMART", captor.getValue().getExchange());
         assertEquals("15m", captor.getValue().getTimeframe());
     }
+
+    @Test
+    void processIncomingSignal_decimalConfidence_storedAsIs() throws Exception {
+        // Webhook sends 0.8 (decimal fraction) — must NOT be divided by 100
+        TradingViewSignal decimalConfidenceSignal = new TradingViewSignal(
+                "EURUSD", "BUY", "FVG", 1.10, 1.08, 1.14,
+                "test-secret", "FOREX", "15m", 0.8);
+
+        UUID signalId = UUID.randomUUID();
+        ArgumentCaptor<TradeSignal> captor = ArgumentCaptor.forClass(TradeSignal.class);
+        when(signalRepository.save(captor.capture())).thenReturn(buildSavedSignal(signalId, "EURUSD"));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successfulSend);
+
+        signalIngestionService.processIncomingSignal(decimalConfidenceSignal);
+
+        assertEquals(0.8, captor.getValue().getConfidenceScore(), 0.001);
+    }
+
+    @Test
+    void processIncomingSignal_percentageConfidence_normalisedToDecimal() throws Exception {
+        // Webhook sends 85 (percentage) — must be divided by 100 to give 0.85
+        TradingViewSignal pctConfidenceSignal = new TradingViewSignal(
+                "EURUSD", "BUY", "FVG", 1.10, 1.08, 1.14,
+                "test-secret", "FOREX", "15m", 85.0);
+
+        UUID signalId = UUID.randomUUID();
+        ArgumentCaptor<TradeSignal> captor = ArgumentCaptor.forClass(TradeSignal.class);
+        when(signalRepository.save(captor.capture())).thenReturn(buildSavedSignal(signalId, "EURUSD"));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successfulSend);
+
+        signalIngestionService.processIncomingSignal(pctConfidenceSignal);
+
+        assertEquals(0.85, captor.getValue().getConfidenceScore(), 0.001);
+    }
 }

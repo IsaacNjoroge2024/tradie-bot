@@ -58,7 +58,11 @@ public class SignalIngestionService {
         signal.setStopLoss(tvSignal.stopLoss() != null ? BigDecimal.valueOf(tvSignal.stopLoss()) : null);
         signal.setTakeProfit(tvSignal.takeProfit() != null ? BigDecimal.valueOf(tvSignal.takeProfit()) : null);
         signal.setTimeframe(tvSignal.timeframe());
-        signal.setConfidenceScore(tvSignal.confidence() != null ? tvSignal.confidence() / 100.0 : null);
+        // Normalise to 0.0–1.0: accept both decimal fraction (0.8) and percentage (80)
+        if (tvSignal.confidence() != null) {
+            double raw = tvSignal.confidence();
+            signal.setConfidenceScore(raw > 1.0 ? raw / 100.0 : raw);
+        }
         signal.setRawPayload(objectMapper.writeValueAsString(tvSignal));
 
         TradeSignal saved = signalRepository.save(signal);

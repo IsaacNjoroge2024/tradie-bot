@@ -190,8 +190,14 @@ public class PositionSizeService {
         double stopLossPrice = signal.getStopLoss().doubleValue();
         double stopLossPips = forexPipCalculator.calculatePips(pair, entryPrice, stopLossPrice);
 
-        ForexPositionSize posSize = forexPositionSizer.calculate(
-                pair, balance, riskPerTradePct, entryPrice, stopLossPips);
+        ForexPositionSize posSize;
+        try {
+            posSize = forexPositionSizer.calculate(pair, balance, riskPerTradePct, entryPrice, stopLossPips);
+        } catch (IllegalArgumentException e) {
+            adjustments.add("Forex sizing skipped — unsupported pair: " + e.getMessage());
+            log.warn("Forex position sizing not supported for {}: {}", signal.getSymbol(), e.getMessage());
+            return BigDecimal.ZERO;
+        }
 
         adjustments.add(String.format(
                 "Forex pip-based sizing: %.2f lots (%,.0f units), stopLoss=%.1f pips, "

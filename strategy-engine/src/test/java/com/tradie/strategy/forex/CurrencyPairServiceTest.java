@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,6 +47,25 @@ class CurrencyPairServiceTest {
     @Test
     void normalizePair_lowercase_uppercased() {
         assertThat(CurrencyPairService.normalizePair("eur/usd")).isEqualTo("EURUSD");
+    }
+
+    @Test
+    void normalizePair_withWhitespace_stripped() {
+        assertThat(CurrencyPairService.normalizePair(" EUR / USD ")).isEqualTo("EURUSD");
+    }
+
+    @Test
+    void normalizePair_null_throwsException() {
+        assertThatThrownBy(() -> CurrencyPairService.normalizePair(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Currency pair symbol is required");
+    }
+
+    @Test
+    void normalizePair_blank_throwsException() {
+        assertThatThrownBy(() -> CurrencyPairService.normalizePair("   "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Currency pair symbol is required");
     }
 
     // ─── findPair ─────────────────────────────────────────────────────────────

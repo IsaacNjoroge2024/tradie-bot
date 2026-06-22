@@ -3,7 +3,7 @@
 -- pip_value_per_standard_lot is an approximate USD reference value;
 -- real-time values are computed dynamically by ForexPipCalculator.
 
-CREATE TABLE currency_pairs (
+CREATE TABLE IF NOT EXISTS currency_pairs (
     symbol                     VARCHAR(10)       PRIMARY KEY,
     base_currency              VARCHAR(5)        NOT NULL,
     quote_currency             VARCHAR(5)        NOT NULL,
@@ -23,7 +23,8 @@ INSERT INTO currency_pairs (symbol, base_currency, quote_currency, pip_position,
 ('USDCHF', 'USD', 'CHF', 4, 11.00, 0.01, 0.01, 0.02, 'MAJOR'),
 ('AUDUSD', 'AUD', 'USD', 4, 10.00, 0.01, 0.01, 0.02, 'MAJOR'),
 ('USDCAD', 'USD', 'CAD', 4,  7.35, 0.01, 0.01, 0.02, 'MAJOR'),
-('NZDUSD', 'NZD', 'USD', 4, 10.00, 0.01, 0.01, 0.02, 'MAJOR');
+('NZDUSD', 'NZD', 'USD', 4, 10.00, 0.01, 0.01, 0.02, 'MAJOR')
+ON CONFLICT (symbol) DO NOTHING;
 
 -- Minor pairs
 INSERT INTO currency_pairs (symbol, base_currency, quote_currency, pip_position, pip_value_per_standard_lot, min_lot_size, lot_step, margin_rate, category) VALUES
@@ -44,7 +45,8 @@ INSERT INTO currency_pairs (symbol, base_currency, quote_currency, pip_position,
 ('AUDNZD', 'AUD', 'NZD', 4, 10.00, 0.01, 0.01, 0.025, 'MINOR'),
 ('NZDJPY', 'NZD', 'JPY', 2,  6.67, 0.01, 0.01, 0.025, 'MINOR'),
 ('NZDCAD', 'NZD', 'CAD', 4,  7.35, 0.01, 0.01, 0.025, 'MINOR'),
-('NZDCHF', 'NZD', 'CHF', 4, 11.00, 0.01, 0.01, 0.025, 'MINOR');
+('NZDCHF', 'NZD', 'CHF', 4, 11.00, 0.01, 0.01, 0.025, 'MINOR')
+ON CONFLICT (symbol) DO NOTHING;
 
 -- Exotic pairs (USD-base pip value = 10 / typical_price; real-time values computed by ForexPipCalculator)
 INSERT INTO currency_pairs (symbol, base_currency, quote_currency, pip_position, pip_value_per_standard_lot, min_lot_size, lot_step, margin_rate, category) VALUES
@@ -54,4 +56,5 @@ INSERT INTO currency_pairs (symbol, base_currency, quote_currency, pip_position,
 ('USDHKD', 'USD', 'HKD', 4,  1.28, 0.01, 0.01, 0.02, 'EXOTIC'),
 ('USDNOK', 'USD', 'NOK', 4,  0.95, 0.01, 0.01, 0.03, 'EXOTIC'),
 ('USDSEK', 'USD', 'SEK', 4,  0.95, 0.01, 0.01, 0.03, 'EXOTIC'),
-('USDDKK', 'USD', 'DKK', 4,  1.43, 0.01, 0.01, 0.03, 'EXOTIC');
+('USDDKK', 'USD', 'DKK', 4,  1.43, 0.01, 0.01, 0.03, 'EXOTIC')
+ON CONFLICT (symbol) DO NOTHING;

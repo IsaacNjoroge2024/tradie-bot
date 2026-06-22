@@ -184,7 +184,14 @@ public class PositionSizeService {
 
     private BigDecimal calculateForexUnits(TradeSignal signal, BigDecimal accountValue,
                                             List<String> adjustments) {
-        String pair = CurrencyPairService.normalizePair(signal.getSymbol());
+        String pair;
+        try {
+            pair = CurrencyPairService.normalizePair(signal.getSymbol());
+        } catch (IllegalArgumentException e) {
+            adjustments.add("Forex sizing skipped — invalid pair symbol: " + signal.getSymbol());
+            log.warn("Forex position sizing skipped due to invalid symbol: {}", signal.getSymbol());
+            return BigDecimal.ZERO;
+        }
         double balance = accountValue.doubleValue();
         double entryPrice = signal.getPrice().doubleValue();
         double stopLossPrice = signal.getStopLoss().doubleValue();
@@ -258,10 +265,14 @@ public class PositionSizeService {
                 return "FUTURES";
             }
         }
-        if (symbol != null) {
-            String normalized = CurrencyPairService.normalizePair(symbol);
-            if (symbol.contains("/") || normalized.matches("^[A-Z]{6}$")) {
-                return "FOREX";
+        if (symbol != null && !symbol.isBlank()) {
+            try {
+                String normalized = CurrencyPairService.normalizePair(symbol);
+                if (symbol.contains("/") || normalized.matches("^[A-Z]{6}$")) {
+                    return "FOREX";
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Invalid symbol format; fall through to default asset class
             }
         }
         return "STK";

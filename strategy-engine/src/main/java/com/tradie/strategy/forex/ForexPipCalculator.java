@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>Direct pairs  (e.g. EUR/USD, GBP/USD): quote = USD → pip value = pipSize × units</li>
  *   <li>Indirect pairs (e.g. USD/JPY, USD/CHF): base = USD  → pip value = pipSize × units / price</li>
- *   <li>Cross pairs   (e.g. EUR/JPY, GBP/CHF): neither base nor quote is USD → convert via price</li>
+ *   <li>Cross pairs   (e.g. EUR/JPY, GBP/CHF): neither base nor quote is USD → requires a quote→USD conversion rate (not available here; throws {@link IllegalArgumentException})</li>
  * </ul>
  */
 @Component

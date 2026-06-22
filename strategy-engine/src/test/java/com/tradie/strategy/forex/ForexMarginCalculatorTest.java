@@ -68,7 +68,7 @@ class ForexMarginCalculatorTest {
                 .hasMessageContaining("Cross pair requires quote->USD conversion");
     }
 
-    // ─── hasEnoughMargin ───────��───────────────────────────��──────────────────
+    // ─── hasEnoughMargin ────────────────────────────────────────────
 
     @Test
     void hasEnoughMargin_sufficientWithBuffer_returnsTrue() {

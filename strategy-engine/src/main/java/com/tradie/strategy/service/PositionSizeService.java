@@ -93,8 +93,12 @@ public class PositionSizeService {
         String method = determineSizingMethod();
 
         // 3. Calculate base quantity
-        BigDecimal quantity = calculateByMethod(method, signal, account, adjustments);
-        BigDecimal riskAmount = fixedFractionalCalculator.calculateRiskAmount(account.accountValue());
+        BigDecimal quantity = calculateByMethod(method, signal, account, adjustments, assetClass);
+        BigDecimal riskAmount = "FOREX".equals(assetClass)
+                ? account.accountValue()
+                        .multiply(BigDecimal.valueOf(riskPerTradePct))
+                        .divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP)
+                : fixedFractionalCalculator.calculateRiskAmount(account.accountValue());
 
         // 4. Portfolio heat adjustment
         quantity = applyHeatAdjustment(quantity, heatBefore, adjustments);
@@ -112,7 +116,7 @@ public class PositionSizeService {
         // 7. Validate minimum before lot-size floor so true zero is preserved
         boolean valid = quantity.compareTo(BigDecimal.ZERO) > 0;
         if (valid) {
-            quantity = roundForAssetClass(signal, quantity);
+            quantity = roundForAssetClass(signal, quantity, assetClass);
             valid = quantity.compareTo(BigDecimal.ZERO) > 0;
         }
         if (!valid) {
@@ -140,7 +144,8 @@ public class PositionSizeService {
     }
 
     private BigDecimal calculateByMethod(String method, TradeSignal signal,
-                                          AccountInfo account, List<String> adjustments) {
+                                          AccountInfo account, List<String> adjustments,
+                                          String assetClass) {
         BigDecimal entry = signal.getPrice();
         BigDecimal stopLoss = signal.getStopLoss();
         BigDecimal accountValue = account.accountValue();
@@ -152,7 +157,7 @@ public class PositionSizeService {
         }
 
         // Forex uses pip-based sizing regardless of the configured default method
-        if ("FOREX".equals(detectAssetClass(signal))) {
+        if ("FOREX".equals(assetClass)) {
             return calculateForexUnits(signal, accountValue, adjustments);
         }
 
@@ -212,8 +217,7 @@ public class PositionSizeService {
         return quantity;
     }
 
-    private BigDecimal roundForAssetClass(TradeSignal signal, BigDecimal quantity) {
-        String assetClass = detectAssetClass(signal);
+    private BigDecimal roundForAssetClass(TradeSignal signal, BigDecimal quantity, String assetClass) {
         switch (assetClass) {
             case "FOREX":
                 // Round to nearest micro lot (1K units = 1 micro lot)
@@ -241,15 +245,18 @@ public class PositionSizeService {
             if (upper.contains("CRYPTO") || upper.contains("COINBASE") || upper.contains("BINANCE")) {
                 return "CRYPTO";
             }
-            if (upper.contains("FOREX") || upper.contains("FX")) {
+            if (upper.contains("FOREX") || upper.contains("FX") || upper.contains("IDEALPRO")) {
                 return "FOREX";
             }
             if (upper.contains("FUTURES") || upper.contains("CME") || upper.contains("GLOBEX")) {
                 return "FUTURES";
             }
         }
-        if (symbol != null && symbol.contains("/")) {
-            return "FOREX";
+        if (symbol != null) {
+            String normalized = CurrencyPairService.normalizePair(symbol);
+            if (symbol.contains("/") || normalized.matches("^[A-Z]{6}$")) {
+                return "FOREX";
+            }
         }
         return "STK";
     }

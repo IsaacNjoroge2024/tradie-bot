@@ -71,7 +71,7 @@ class PositionSizeServiceTest {
 
         when(accountService.getAccountInfo()).thenReturn(DEFAULT_ACCOUNT);
         when(portfolioHeatService.getCurrentHeatPct()).thenReturn(0.0);
-        when(fixedFractionalCalculator.calculateRiskAmount(any()))
+        lenient().when(fixedFractionalCalculator.calculateRiskAmount(any()))
                 .thenReturn(BigDecimal.valueOf(200));
         // Return quantity unchanged for correlation (pass-through)
         when(correlationAdjuster.adjust(anyString(), any(), any()))
@@ -249,12 +249,12 @@ class PositionSizeServiceTest {
         forexSignal.setTakeProfit(BigDecimal.valueOf(1.14));
         forexSignal.setAction(TradeSignal.SignalAction.BUY);
 
-        when(forexPipCalculator.calculatePips(eq("EURUSD"), anyDouble(), anyDouble()))
+        when(forexPipCalculator.calculatePips(eq("EURUSD"), eq(1.10), eq(1.08)))
                 .thenReturn(20.0);
         ForexPositionSize forexSize =
                 new ForexPositionSize(0.5, 50000.0, "MINI", 200.0, 5.0, 1100.0);
         when(forexPositionSizer.calculate(
-                eq("EURUSD"), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                eq("EURUSD"), eq(10000.0), eq(2.0), eq(1.10), eq(20.0)))
                 .thenReturn(forexSize);
 
         PositionSizeResult result = service.calculatePositionSize(forexSignal, BigDecimal.ONE);
@@ -262,7 +262,7 @@ class PositionSizeServiceTest {
         assertTrue(result.valid());
         assertEquals("FOREX", result.assetClass());
         verify(forexPositionSizer).calculate(
-                eq("EURUSD"), anyDouble(), anyDouble(), anyDouble(), anyDouble());
+                eq("EURUSD"), eq(10000.0), eq(2.0), eq(1.10), eq(20.0));
         assertEquals(0, BigDecimal.valueOf(50000).compareTo(result.quantity()));
     }
 }

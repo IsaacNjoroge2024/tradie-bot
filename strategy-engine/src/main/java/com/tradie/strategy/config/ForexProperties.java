@@ -16,13 +16,22 @@ public class ForexProperties {
     public void setDefaultLotType(String defaultLotType) { this.defaultLotType = defaultLotType; }
 
     public double getMinLotSize() { return minLotSize; }
-    public void setMinLotSize(double minLotSize) { this.minLotSize = minLotSize; }
+    public void setMinLotSize(double minLotSize) {
+        if (minLotSize <= 0) throw new IllegalArgumentException("minLotSize must be > 0");
+        this.minLotSize = minLotSize;
+    }
 
     public double getMaxLotSize() { return maxLotSize; }
-    public void setMaxLotSize(double maxLotSize) { this.maxLotSize = maxLotSize; }
+    public void setMaxLotSize(double maxLotSize) {
+        if (maxLotSize <= 0) throw new IllegalArgumentException("maxLotSize must be > 0");
+        this.maxLotSize = maxLotSize;
+    }
 
     public int getLeverage() { return leverage; }
-    public void setLeverage(int leverage) { this.leverage = leverage; }
+    public void setLeverage(int leverage) {
+        if (leverage <= 0) throw new IllegalArgumentException("leverage must be > 0");
+        this.leverage = leverage;
+    }
 
     public Sessions getSessions() { return sessions; }
     public void setSessions(Sessions sessions) { this.sessions = sessions; }

@@ -93,16 +93,14 @@ class ForexSessionServiceTest {
     // ─── isLowLiquidity ───────────────────────────────────────────────────────
 
     @Test
-    void isLowLiquidity_noActiveSessions_returnsTrue() {
-        // 20:00-22:00 UTC: NY closed at 22:00, Sydney opens at 22:00 → gap window
-        // Actually at 20:00 UTC: NY is still open (13:00-22:00) → not low liquidity
-        // Let me use a time when no sessions are active - hard to find with overlapping sessions
-        // Tokyo: 00:00-09:00, Sydney: 22:00-07:00, London: 08:00-17:00, NY: 13:00-22:00
-        // At 20:00 UTC: NY is active → has sessions
-        // The method just checks getActiveSessions().isEmpty()
-        // It's hard to have zero sessions in forex, but let's verify the logic
-        List<ForexSessionService.ForexSession> sessions = sessionService.getActiveSessions(atUtcHour(14));
-        assertThat(sessions).isNotEmpty();
+    void isLowLiquidity_duringLondonNyOverlap_returnsFalse() {
+        // 14:00 UTC: London + NY both active
         assertThat(sessionService.isLowLiquidity(atUtcHour(14))).isFalse();
+    }
+
+    @Test
+    void isLowLiquidity_tokyoAndSydneyOnly_returnsTrue() {
+        // 03:00 UTC: Tokyo + Sydney active, but neither London nor NY → low liquidity
+        assertThat(sessionService.isLowLiquidity(atUtcHour(3))).isTrue();
     }
 }

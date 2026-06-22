@@ -9,6 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -24,7 +25,7 @@ class ForexMarginCalculatorTest {
         calculator = new ForexMarginCalculator(currencyPairService);
     }
 
-    // ���── calculateMargin ───��──────────────────────────────────────────────────
+    // ─── calculateMargin ────────────────────────────────────────────
 
     @Test
     void calculateMargin_standardLot_returnsCorrectMargin() {
@@ -48,13 +49,23 @@ class ForexMarginCalculatorTest {
     }
 
     @Test
-    void calculateMargin_higherMarginRate_returnsHigherMargin() {
+    void calculateMargin_usdBasePair_notionalIsUnitsOnly() {
+        // USD/ZAR: base=USD → notional = 100,000 USD (price not applied) → margin = 5,000
         when(currencyPairService.getPairOrDefault("USDZAR")).thenReturn(buildPair("USDZAR", 0.05));
 
         double margin = calculator.calculateMargin("USDZAR", 1.0, 18.0);
 
-        // Notional = 100,000 × 18.0 = $1,800,000 → margin = $90,000
-        assertThat(margin).isCloseTo(90000.0, Offset.offset(0.01));
+        assertThat(margin).isCloseTo(5000.0, Offset.offset(0.01));
+    }
+
+    @Test
+    void calculateMargin_crossPair_throwsException() {
+        // EUR/GBP: neither base nor quote is USD → cross pair, throw
+        when(currencyPairService.getPairOrDefault("EURGBP")).thenReturn(buildPair("EURGBP", 0.025));
+
+        assertThatThrownBy(() -> calculator.calculateMargin("EURGBP", 1.0, 0.85))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Cross pair requires quote->USD conversion");
     }
 
     // ─── hasEnoughMargin ───────��───────────────────────────��──────────────────
@@ -82,12 +93,16 @@ class ForexMarginCalculatorTest {
         assertThat(calculator.hasEnoughMargin(0.0, 1000.0)).isTrue();
     }
 
-    // ─── Helper ────────��──────────────────────────────────────────────────────
+    // ─── Helper ───────────────────────────────────────────────────────────────
 
     private CurrencyPair buildPair(String symbol, double marginRate) {
         CurrencyPair pair = new CurrencyPair();
         pair.setSymbol(symbol);
         pair.setMarginRate(marginRate);
+        if (symbol.length() == 6) {
+            pair.setBaseCurrency(symbol.substring(0, 3));
+            pair.setQuoteCurrency(symbol.substring(3, 6));
+        }
         return pair;
     }
 }

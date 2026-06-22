@@ -130,6 +130,54 @@ class ContractBuilderTest {
         assertThat(contract.exchange()).isEqualTo("IDEALPRO");
     }
 
+    @Test
+    void build_forex_dotFormatPair_splitsCurrencies() {
+        OrderDTO order = buildOrderDTO("EUR.USD", "IDEALPRO", "CASH");
+
+        Contract contract = contractBuilder.build(order);
+
+        assertThat(contract.symbol()).isEqualTo("EUR");
+        assertThat(contract.currency()).isEqualTo("USD");
+        assertThat(contract.secType().getApiString()).isEqualTo("CASH");
+        assertThat(contract.exchange()).isEqualTo("IDEALPRO");
+    }
+
+    @Test
+    void build_forex_malformedSevenCharSymbol_throwsException() {
+        OrderDTO order = buildOrderDTO("EURUSDX", "IDEALPRO", "CASH");
+
+        assertThatThrownBy(() -> contractBuilder.build(order))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid forex symbol format");
+    }
+
+    @Test
+    void build_forex_slashWithFourCharQuote_throwsException() {
+        OrderDTO order = buildOrderDTO("EUR/USDD", "IDEALPRO", "CASH");
+
+        assertThatThrownBy(() -> contractBuilder.build(order))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid forex currencies");
+    }
+
+    @Test
+    void build_forex_nullSymbol_throwsException() {
+        OrderDTO order = buildOrderDTO(null, "IDEALPRO", "CASH");
+
+        assertThatThrownBy(() -> contractBuilder.build(order))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Forex symbol is required");
+    }
+
+    @Test
+    void build_forex_blankSymbol_throwsException() {
+        OrderDTO order = buildOrderDTO("   ", "IDEALPRO", "CASH");
+
+        assertThatThrownBy(() -> contractBuilder.build(order))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Forex symbol is required");
+    }
+
     // ─── Helper ───────────────────────────────────────────────────────────────
 
     private OrderDTO buildOrderDTO(String symbol, String exchange, String assetClass) {

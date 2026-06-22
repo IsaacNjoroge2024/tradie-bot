@@ -6,13 +6,19 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.Map;
 
 /**
  * Calculates swap (rollover) costs for forex positions held overnight.
  *
  * <p>Swap rates are approximate broker-typical values in points per standard lot.
- * Triple swap applies on Wednesday due to T+2 settlement (weekends are settled on Wednesday).
+ * Triple swap applies on the pair's {@code tripleSwapDay} (usually Wednesday) due to
+ * T+2 settlement — weekends are settled on Wednesday, tripling the overnight cost.
+ * The crossing count is computed from the actual open date rather than a fixed 7-day divisor,
+ * so short holds that cross the triple-swap day are accounted for correctly.
  */
 @Service
 public class SwapRateService {
@@ -48,31 +54,53 @@ public class SwapRateService {
     /**
      * Calculates the total swap cost for holding a position overnight.
      *
-     * @param pair   currency pair symbol
-     * @param side   "BUY" for long, "SELL" for short
-     * @param lots   position size in standard lots
-     * @param nights number of nights the position is held
+     * <p>Triple swap is applied accurately by counting how many times the pair's
+     * {@code tripleSwapDay} falls within the holding window starting at {@code openedAt}.
+     * Each such day adds 2 extra nightly charges (T+2 settlement for the weekend).
+     *
+     * @param pair     currency pair symbol
+     * @param side     "BUY" for long, "SELL" for short
+     * @param lots     position size in standard lots
+     * @param nights   number of nights the position is held
+     * @param openedAt UTC instant when the position was opened
      * @return total swap cost in points (negative = debit, positive = credit)
      */
-    public double calculateSwapCost(String pair, String side, double lots, int nights) {
+    public double calculateSwapCost(String pair, String side, double lots, int nights, Instant openedAt) {
+        if (lots < 0 || nights < 0) {
+            throw new IllegalArgumentException("lots and nights must be non-negative");
+        }
         SwapRate rate = getSwapRate(pair);
-        double swapPoints = "BUY".equalsIgnoreCase(side)
-                ? rate.longSwapPoints()
-                : rate.shortSwapPoints();
+        double swapPoints;
+        if ("BUY".equalsIgnoreCase(side)) {
+            swapPoints = rate.longSwapPoints();
+        } else if ("SELL".equalsIgnoreCase(side)) {
+            swapPoints = rate.shortSwapPoints();
+        } else {
+            throw new IllegalArgumentException("side must be BUY or SELL, got: " + side);
+        }
 
-        int effectiveNights = calculateEffectiveNights(nights);
+        int tripleSwapCount = countTripleSwapNights(openedAt, nights, rate.tripleSwapDay());
+        int effectiveNights = nights + tripleSwapCount * 2;
         double cost = swapPoints * lots * effectiveNights;
 
-        log.debug("Swap cost for {} {} {} lots over {} nights (effective {}): {} points",
-                side, lots, pair, nights, effectiveNights, cost);
+        log.debug("Swap cost for {} {} {} lots over {} nights (effective {}, {} triple-swap crossings): {} points",
+                side, lots, pair, nights, effectiveNights, tripleSwapCount, cost);
         return cost;
     }
 
     /**
-     * Adjusts nights for triple swap: every 7-night period that includes a Wednesday
-     * adds 2 extra nights (T+2 settlement covers the weekend).
+     * Counts how many times {@code tripleSwapDay} occurs within the holding window.
+     * The window covers nights {@code 0..nights-1}, each mapped to the UTC calendar day
+     * {@code openedAt + i days}.
      */
-    int calculateEffectiveNights(int nights) {
-        return nights + (nights / 7) * 2;
+    int countTripleSwapNights(Instant openedAt, int nights, DayOfWeek tripleSwapDay) {
+        LocalDate startDate = openedAt.atZone(ZoneOffset.UTC).toLocalDate();
+        int count = 0;
+        for (int i = 0; i < nights; i++) {
+            if (startDate.plusDays(i).getDayOfWeek() == tripleSwapDay) {
+                count++;
+            }
+        }
+        return count;
     }
 }

@@ -51,7 +51,7 @@ public class ForexPositionSizer {
         }
 
         lots = clampLots(lots);
-        lots = roundToLotStep(pair, lots);
+        lots = roundToLotStep(lots);
 
         double units = lots * STANDARD_LOT_UNITS;
         double positionPipValue = pipCalculator.getPipValue(pair, lots, entryPrice);
@@ -62,9 +62,9 @@ public class ForexPositionSizer {
     }
 
     /**
-     * Rounds lot size down to the pair's valid lot step increment (default 0.01 micro lots).
+     * Rounds lot size down to the nearest lot step increment (configured via {@code tradie.forex.min-lot-size}).
      */
-    public double roundToLotStep(String pair, double lots) {
+    public double roundToLotStep(double lots) {
         double step = forexProperties.getMinLotSize();
         return Math.floor(lots / step) * step;
     }

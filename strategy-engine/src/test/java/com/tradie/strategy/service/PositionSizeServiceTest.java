@@ -239,6 +239,29 @@ class PositionSizeServiceTest {
     }
 
     @Test
+    void calculatePositionSize_crossPairForex_fallsToZeroAndInvalid() {
+        TradeSignal crossPairSignal = new TradeSignal();
+        crossPairSignal.setSymbol("EURGBP");
+        crossPairSignal.setExchange("FOREX");
+        crossPairSignal.setStrategy("FVG");
+        crossPairSignal.setPrice(BigDecimal.valueOf(0.86));
+        crossPairSignal.setStopLoss(BigDecimal.valueOf(0.84));
+        crossPairSignal.setTakeProfit(BigDecimal.valueOf(0.90));
+        crossPairSignal.setAction(TradeSignal.SignalAction.BUY);
+
+        when(forexPipCalculator.calculatePips(eq("EURGBP"), eq(0.86), eq(0.84)))
+                .thenReturn(200.0);
+        when(forexPositionSizer.calculate(eq("EURGBP"), eq(10000.0), eq(2.0), eq(0.86), eq(200.0)))
+                .thenThrow(new IllegalArgumentException(
+                        "Cross-pair pip value requires a quote-to-USD conversion rate: EURGBP"));
+
+        PositionSizeResult result = service.calculatePositionSize(crossPairSignal, BigDecimal.ONE);
+
+        assertFalse(result.valid());
+        assertTrue(result.adjustments().stream().anyMatch(a -> a.contains("unsupported pair")));
+    }
+
+    @Test
     void calculatePositionSize_forexSignal_usesForexPositionSizer() {
         TradeSignal forexSignal = new TradeSignal();
         forexSignal.setSymbol("EURUSD");

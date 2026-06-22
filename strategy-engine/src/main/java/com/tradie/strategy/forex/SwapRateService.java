@@ -66,6 +66,9 @@ public class SwapRateService {
      * @return total swap cost in points (negative = debit, positive = credit)
      */
     public double calculateSwapCost(String pair, String side, double lots, int nights, Instant openedAt) {
+        if (openedAt == null) {
+            throw new IllegalArgumentException("openedAt must not be null");
+        }
         if (lots < 0 || nights < 0) {
             throw new IllegalArgumentException("lots and nights must be non-negative");
         }

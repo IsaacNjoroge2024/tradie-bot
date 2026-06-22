@@ -1,6 +1,5 @@
 package com.tradie.strategy.forex;
 
-import com.tradie.strategy.config.ForexProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +16,7 @@ class ForexSessionServiceTest {
 
     @BeforeEach
     void setUp() {
-        sessionService = new ForexSessionService(new ForexProperties());
+        sessionService = new ForexSessionService();
     }
 
     private Instant atUtcHour(int hour) {

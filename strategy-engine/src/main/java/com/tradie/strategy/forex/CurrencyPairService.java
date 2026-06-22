@@ -46,10 +46,17 @@ public class CurrencyPairService {
 
     /**
      * Normalizes a pair symbol to the 6-character uppercase format without separators.
-     * Examples: "EUR/USD" → "EURUSD", "eur.usd" → "EURUSD"
+     * Examples: "EUR/USD" → "EURUSD", "eur.usd" → "EURUSD", " eur / usd " → "EURUSD"
      */
     public static String normalizePair(String symbol) {
-        return symbol.replace("/", "").replace(".", "").toUpperCase();
+        if (symbol == null || symbol.isBlank()) {
+            throw new IllegalArgumentException("Currency pair symbol is required");
+        }
+        return symbol.trim()
+                .replaceAll("\\s+", "")
+                .replace("/", "")
+                .replace(".", "")
+                .toUpperCase();
     }
 
     private CurrencyPair buildDefault(String normalized) {

@@ -1,6 +1,5 @@
 package com.tradie.strategy.forex;
 
-import com.tradie.strategy.config.ForexProperties;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -36,12 +35,6 @@ public class ForexSessionService {
     private static final int NY_CLOSE      = 22;
     private static final int OVERLAP_OPEN  = 13;
     private static final int OVERLAP_CLOSE = 17;
-
-    private final ForexProperties forexProperties;
-
-    public ForexSessionService(ForexProperties forexProperties) {
-        this.forexProperties = forexProperties;
-    }
 
     /**
      * Returns all active trading sessions for the given UTC instant.

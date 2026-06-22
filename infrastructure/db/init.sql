@@ -213,7 +213,7 @@ CREATE TABLE system_config (
 -- ===========================================
 -- Forex Reference Data (Ticket 15)
 -- ===========================================
-CREATE TABLE currency_pairs (
+CREATE TABLE IF NOT EXISTS currency_pairs (
     symbol                     VARCHAR(10)       PRIMARY KEY,
     base_currency              VARCHAR(5)        NOT NULL,
     quote_currency             VARCHAR(5)        NOT NULL,

@@ -221,6 +221,23 @@ class SignalIngestionServiceTest {
     }
 
     @Test
+    void processIncomingSignal_confidenceExactlyOne_storedAsIs() throws Exception {
+        // 1.0 is the exact boundary: 1.0 > 1.0 is false → stored as 1.0, NOT divided to 0.01
+        TradingViewSignal boundarySignal = new TradingViewSignal(
+                "EURUSD", "BUY", "FVG", 1.10, 1.08, 1.14,
+                "test-secret", "FOREX", "15m", 1.0);
+
+        UUID signalId = UUID.randomUUID();
+        ArgumentCaptor<TradeSignal> captor = ArgumentCaptor.forClass(TradeSignal.class);
+        when(signalRepository.save(captor.capture())).thenReturn(buildSavedSignal(signalId, "EURUSD"));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(successfulSend);
+
+        signalIngestionService.processIncomingSignal(boundarySignal);
+
+        assertEquals(1.0, captor.getValue().getConfidenceScore(), 0.001);
+    }
+
+    @Test
     void processIncomingSignal_percentageConfidence_normalisedToDecimal() throws Exception {
         // Webhook sends 85 (percentage) — must be divided by 100 to give 0.85
         TradingViewSignal pctConfidenceSignal = new TradingViewSignal(

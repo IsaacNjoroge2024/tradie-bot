@@ -47,16 +47,23 @@ public class CurrencyPairService {
     /**
      * Normalizes a pair symbol to the 6-character uppercase format without separators.
      * Examples: "EUR/USD" → "EURUSD", "eur.usd" → "EURUSD", " eur / usd " → "EURUSD"
+     * Accepts 3-char base-only symbols (e.g. "EUR") or full 6-char pairs (e.g. "EURUSD").
+     *
+     * @throws IllegalArgumentException if the symbol is null, blank, or not 3 or 6 alphabetic characters
      */
     public static String normalizePair(String symbol) {
         if (symbol == null || symbol.isBlank()) {
             throw new IllegalArgumentException("Currency pair symbol is required");
         }
-        return symbol.trim()
+        String normalized = symbol.trim()
                 .replaceAll("\\s+", "")
                 .replace("/", "")
                 .replace(".", "")
                 .toUpperCase();
+        if (!normalized.matches("^[A-Z]{3}([A-Z]{3})?$")) {
+            throw new IllegalArgumentException("Invalid currency pair symbol format: " + symbol);
+        }
+        return normalized;
     }
 
     private CurrencyPair buildDefault(String normalized) {

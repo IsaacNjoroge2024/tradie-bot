@@ -32,6 +32,9 @@ public class ForexPipCalculator {
      * @return pip value in USD
      */
     public double getPipValue(String pair, double lotSize, double currentPrice) {
+        if (currentPrice <= 0) {
+            throw new IllegalArgumentException("currentPrice must be > 0, got: " + currentPrice);
+        }
         String normalized = CurrencyPairService.normalizePair(pair);
         double pipSize = getPipSize(normalized);
         double lotUnits = lotSize * STANDARD_LOT_UNITS;
@@ -44,8 +47,9 @@ public class ForexPipCalculator {
             // Indirect pairs: divide by current price to convert quote currency to USD
             return (pipSize * lotUnits) / currentPrice;
         } else {
-            // Cross pairs: use current price as proxy to convert to USD
-            return convertToUsd(pipSize * lotUnits, currentPrice);
+            // Cross pairs require a separate quote->USD conversion rate not available here
+            throw new IllegalArgumentException(
+                    "Cross-pair pip value requires a quote-to-USD conversion rate: " + normalized);
         }
     }
 
@@ -70,11 +74,5 @@ public class ForexPipCalculator {
 
     private String extractQuoteCurrency(String normalizedPair) {
         return normalizedPair.length() >= 6 ? normalizedPair.substring(3, 6) : "";
-    }
-
-    // For cross pairs, current price is the exchange rate base→quote.
-    // Dividing by price converts quote currency units to an approximate USD value.
-    private double convertToUsd(double valueInQuoteCurrency, double currentPrice) {
-        return valueInQuoteCurrency / currentPrice;
     }
 }

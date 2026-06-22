@@ -22,6 +22,12 @@ public class ForexMarginCalculator {
     /**
      * Calculates the USD margin required to open a forex position.
      *
+     * <ul>
+     *   <li>USD-base pairs (e.g. USD/JPY): notional = lots × 100,000 (already in USD)</li>
+     *   <li>USD-quote pairs (e.g. EUR/USD): notional = lots × 100,000 × currentPrice</li>
+     *   <li>Cross pairs (e.g. EUR/GBP): throws — a separate quote→USD rate is required</li>
+     * </ul>
+     *
      * @param pair         currency pair symbol
      * @param lots         position size in standard lots
      * @param currentPrice current market price
@@ -29,8 +35,19 @@ public class ForexMarginCalculator {
      */
     public double calculateMargin(String pair, double lots, double currentPrice) {
         CurrencyPair currencyPair = currencyPairService.getPairOrDefault(pair);
-        double notionalValue = lots * STANDARD_LOT_UNITS * currentPrice;
-        return notionalValue * currencyPair.getMarginRate();
+        double units = lots * STANDARD_LOT_UNITS;
+        double notionalUsd;
+
+        if ("USD".equals(currencyPair.getBaseCurrency())) {
+            notionalUsd = units;
+        } else if ("USD".equals(currencyPair.getQuoteCurrency())) {
+            notionalUsd = units * currentPrice;
+        } else {
+            throw new IllegalArgumentException(
+                    "Cross pair requires quote->USD conversion before margin calculation: " + pair);
+        }
+
+        return notionalUsd * currencyPair.getMarginRate();
     }
 
     /**

@@ -53,7 +53,7 @@ class ForexPositionSizerTest {
     }
 
     @Test
-    void calculate_smallRisk_returnsMicroOrMiniLot() {
+    void calculate_smallRisk_returnsMiniLot() {
         // $1,000 account, 2% risk = $20, 20 pips, $10 pipValue → 0.1 lots (MINI)
         when(pipCalculator.getPipValue(anyString(), anyDouble(), anyDouble())).thenReturn(10.0);
         when(marginCalculator.calculateMargin(anyString(), anyDouble(), anyDouble()))
@@ -61,9 +61,9 @@ class ForexPositionSizerTest {
 
         ForexPositionSize result = sizer.calculate("EURUSD", 1000.0, 2.0, 1.1, 20.0);
 
-        assertThat(result.lots()).isGreaterThanOrEqualTo(forexProperties.getMinLotSize());
-        assertThat(result.lots()).isLessThanOrEqualTo(forexProperties.getMaxLotSize());
-        assertThat(result.units()).isGreaterThanOrEqualTo(1000.0);
+        assertThat(result.lots()).isCloseTo(0.10, Offset.offset(0.001));
+        assertThat(result.units()).isCloseTo(10_000.0, Offset.offset(1.0));
+        assertThat(result.lotType()).isEqualTo("MINI");
     }
 
     @Test
@@ -125,13 +125,13 @@ class ForexPositionSizerTest {
     @Test
     void roundToLotStep_floorsToStep() {
         // 0.0173 lots → floor to 0.01
-        double rounded = sizer.roundToLotStep("EURUSD", 0.0173);
+        double rounded = sizer.roundToLotStep(0.0173);
         assertThat(rounded).isCloseTo(0.01, Offset.offset(0.0001));
     }
 
     @Test
     void roundToLotStep_exactStep_unchanged() {
-        double rounded = sizer.roundToLotStep("EURUSD", 0.50);
+        double rounded = sizer.roundToLotStep(0.50);
         assertThat(rounded).isCloseTo(0.50, Offset.offset(0.0001));
     }
 }

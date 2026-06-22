@@ -7,12 +7,12 @@ CREATE TABLE currency_pairs (
     symbol                     VARCHAR(10)       PRIMARY KEY,
     base_currency              VARCHAR(5)        NOT NULL,
     quote_currency             VARCHAR(5)        NOT NULL,
-    pip_position               INT               NOT NULL,
-    pip_value_per_standard_lot DOUBLE PRECISION  NOT NULL,
-    min_lot_size               DOUBLE PRECISION  NOT NULL DEFAULT 0.01,
-    lot_step                   DOUBLE PRECISION  NOT NULL DEFAULT 0.01,
-    margin_rate                DOUBLE PRECISION  NOT NULL DEFAULT 0.02,
-    category                   VARCHAR(20)       NOT NULL
+    pip_position               INT               NOT NULL CHECK (pip_position > 0),
+    pip_value_per_standard_lot DOUBLE PRECISION  NOT NULL CHECK (pip_value_per_standard_lot > 0),
+    min_lot_size               DOUBLE PRECISION  NOT NULL DEFAULT 0.01 CHECK (min_lot_size > 0),
+    lot_step                   DOUBLE PRECISION  NOT NULL DEFAULT 0.01 CHECK (lot_step > 0),
+    margin_rate                DOUBLE PRECISION  NOT NULL DEFAULT 0.02 CHECK (margin_rate > 0 AND margin_rate <= 1),
+    category                   VARCHAR(20)       NOT NULL CHECK (category IN ('MAJOR', 'MINOR', 'EXOTIC'))
 );
 
 -- Major pairs
@@ -46,12 +46,12 @@ INSERT INTO currency_pairs (symbol, base_currency, quote_currency, pip_position,
 ('NZDCAD', 'NZD', 'CAD', 4,  7.35, 0.01, 0.01, 0.025, 'MINOR'),
 ('NZDCHF', 'NZD', 'CHF', 4, 11.00, 0.01, 0.01, 0.025, 'MINOR');
 
--- Exotic pairs
+-- Exotic pairs (USD-base pip value = 10 / typical_price; real-time values computed by ForexPipCalculator)
 INSERT INTO currency_pairs (symbol, base_currency, quote_currency, pip_position, pip_value_per_standard_lot, min_lot_size, lot_step, margin_rate, category) VALUES
-('USDZAR', 'USD', 'ZAR', 4,  5.00, 0.01, 0.01, 0.05, 'EXOTIC'),
-('USDMXN', 'USD', 'MXN', 4,  5.00, 0.01, 0.01, 0.05, 'EXOTIC'),
-('USDSGD', 'USD', 'SGD', 4,  7.50, 0.01, 0.01, 0.03, 'EXOTIC'),
-('USDHKD', 'USD', 'HKD', 4, 12.80, 0.01, 0.01, 0.02, 'EXOTIC'),
-('USDNOK', 'USD', 'NOK', 4,  9.50, 0.01, 0.01, 0.03, 'EXOTIC'),
-('USDSEK', 'USD', 'SEK', 4,  9.50, 0.01, 0.01, 0.03, 'EXOTIC'),
-('USDDKK', 'USD', 'DKK', 4, 14.30, 0.01, 0.01, 0.03, 'EXOTIC');
+('USDZAR', 'USD', 'ZAR', 4,  0.54, 0.01, 0.01, 0.05, 'EXOTIC'),
+('USDMXN', 'USD', 'MXN', 4,  0.59, 0.01, 0.01, 0.05, 'EXOTIC'),
+('USDSGD', 'USD', 'SGD', 4,  7.35, 0.01, 0.01, 0.03, 'EXOTIC'),
+('USDHKD', 'USD', 'HKD', 4,  1.28, 0.01, 0.01, 0.02, 'EXOTIC'),
+('USDNOK', 'USD', 'NOK', 4,  0.95, 0.01, 0.01, 0.03, 'EXOTIC'),
+('USDSEK', 'USD', 'SEK', 4,  0.95, 0.01, 0.01, 0.03, 'EXOTIC'),
+('USDDKK', 'USD', 'DKK', 4,  1.43, 0.01, 0.01, 0.03, 'EXOTIC');

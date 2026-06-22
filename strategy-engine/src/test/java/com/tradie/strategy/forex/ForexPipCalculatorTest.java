@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -90,6 +91,31 @@ class ForexPipCalculatorTest {
         double standardLot = calculator.getPipValue("EURUSD", 1.0, 1.1);
         double microLot    = calculator.getPipValue("EURUSD", 0.01, 1.1);
         assertThat(microLot).isCloseTo(standardLot * 0.01, Offset.offset(0.0001));
+    }
+
+    @Test
+    void getPipValue_indirectNonJpyPair_calculatesCorrectly() {
+        // USD/CHF at 0.91: pip=0.0001, 1 lot=100K USD → 10 / 0.91 ≈ $10.99
+        double pipValue = calculator.getPipValue("USDCHF", 1.0, 0.91);
+        assertThat(pipValue).isCloseTo(10.99, Offset.offset(0.01));
+    }
+
+    @Test
+    void getPipValue_crossPair_throwsException() {
+        // EURJPY: base=EUR, quote=JPY — neither is USD → cross pair, throw
+        assertThatThrownBy(() -> calculator.getPipValue("EURJPY", 1.0, 164.0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Cross-pair pip value requires a quote-to-USD conversion rate");
+    }
+
+    @Test
+    void getPipValue_nonPositivePrice_throwsException() {
+        assertThatThrownBy(() -> calculator.getPipValue("EURUSD", 1.0, 0.0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("currentPrice must be > 0");
+        assertThatThrownBy(() -> calculator.getPipValue("USDJPY", 1.0, -1.0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("currentPrice must be > 0");
     }
 
     // ─── calculatePips ────────────────────────────────────────────────────────

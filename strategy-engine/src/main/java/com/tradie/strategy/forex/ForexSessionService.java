@@ -67,10 +67,12 @@ public class ForexSessionService {
     }
 
     /**
-     * Returns true when no major session is active (market gap risk period).
+     * Returns true when neither London nor New York is active.
+     * These two sessions provide the majority of forex liquidity.
      */
     public boolean isLowLiquidity(Instant time) {
-        return getActiveSessions(time).isEmpty();
+        List<ForexSession> sessions = getActiveSessions(time);
+        return sessions.stream().noneMatch(s -> s == ForexSession.LONDON || s == ForexSession.NEW_YORK);
     }
 
     // Handles sessions that wrap midnight (e.g., Sydney 22:00-07:00)

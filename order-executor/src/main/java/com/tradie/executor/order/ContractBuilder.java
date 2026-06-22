@@ -60,16 +60,31 @@ public class ContractBuilder {
     /**
      * Parses a forex pair symbol into [baseCurrency, quoteCurrency].
      * Handles formats: "EURUSD", "EUR/USD", "EUR.USD", "EUR" (fallback USD quote).
+     * Throws {@link IllegalArgumentException} for null, blank, or malformed symbols.
      */
     private String[] parseForexPair(String symbol) {
+        if (symbol == null || symbol.isBlank()) {
+            throw new IllegalArgumentException("Forex symbol is required");
+        }
         if (symbol.contains("/")) {
             String[] parts = symbol.split("/");
-            return new String[]{parts[0].trim().toUpperCase(), parts[1].trim().toUpperCase()};
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("Invalid forex symbol format: " + symbol);
+            }
+            String base = parts[0].trim().toUpperCase();
+            String quote = parts[1].trim().toUpperCase();
+            if (base.length() != 3 || quote.length() != 3) {
+                throw new IllegalArgumentException("Invalid forex currencies: " + symbol);
+            }
+            return new String[]{base, quote};
         }
         String normalized = symbol.replace(".", "").toUpperCase();
-        if (normalized.length() >= 6) {
+        if (normalized.length() == 6) {
             return new String[]{normalized.substring(0, 3), normalized.substring(3, 6)};
         }
-        return new String[]{normalized, "USD"};
+        if (normalized.length() == 3) {
+            return new String[]{normalized, "USD"};
+        }
+        throw new IllegalArgumentException("Invalid forex symbol format: " + symbol);
     }
 }

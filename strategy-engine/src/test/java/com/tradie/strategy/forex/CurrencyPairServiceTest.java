@@ -68,6 +68,13 @@ class CurrencyPairServiceTest {
                 .hasMessageContaining("Currency pair symbol is required");
     }
 
+    @Test
+    void normalizePair_malformedSymbol_throwsException() {
+        assertThatThrownBy(() -> CurrencyPairService.normalizePair("EURUSDX"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid currency pair symbol format");
+    }
+
     // ─── findPair ─────────────────────────────────────────────────────────────
 
     @Test

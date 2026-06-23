@@ -4,6 +4,8 @@ import com.tradie.common.entity.Order;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.strategy.client.NewsShieldClient;
 import com.tradie.strategy.dto.*;
+import com.tradie.strategy.futures.FuturesContractService;
+import com.tradie.strategy.futures.dto.FuturesSpec;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -29,6 +31,7 @@ public class SignalValidationService {
     private final RiskRuleService riskRuleService;
     private final PositionSizeService positionSizeService;
     private final SignalConfirmationService confirmationService;
+    private final FuturesContractService futuresContractService;
 
     private final Counter receivedCounter;
     private final Counter validatedCounter;
@@ -44,12 +47,14 @@ public class SignalValidationService {
             RiskRuleService riskRuleService,
             PositionSizeService positionSizeService,
             SignalConfirmationService confirmationService,
+            FuturesContractService futuresContractService,
             MeterRegistry meterRegistry) {
         this.newsShieldClient = newsShieldClient;
         this.killZoneService = killZoneService;
         this.riskRuleService = riskRuleService;
         this.positionSizeService = positionSizeService;
         this.confirmationService = confirmationService;
+        this.futuresContractService = futuresContractService;
         this.meterRegistry = meterRegistry;
 
         this.receivedCounter  = Counter.builder("tradie.signals.received").register(meterRegistry);
@@ -151,6 +156,8 @@ public class SignalValidationService {
                 ? signal.getCreatedAt().plusSeconds(signalExpirySeconds)
                 : Instant.now().plusSeconds(signalExpirySeconds);
 
+        String contractMonth = resolveContractMonth(signal.getSymbol(), sizing.assetClass());
+
         OrderDTO order = new OrderDTO(
                 signal.getId(),
                 signal.getSymbol(),
@@ -170,7 +177,8 @@ public class SignalValidationService {
                 sizing.portfolioHeatAfter(),
                 expectedReward,
                 riskRewardRatio,
-                sizing.sizingMethod()
+                sizing.sizingMethod(),
+                contractMonth
         );
 
         validatedCounter.increment();
@@ -178,6 +186,13 @@ public class SignalValidationService {
                 signal.getId(), signal.getAction(), signal.getSymbol(),
                 sizing.quantity(), signal.getPrice(), sizing.riskAmount(), riskRewardRatio);
         return new ValidationResult(true, null, order, warnings);
+    }
+
+    private String resolveContractMonth(String symbol, String assetClass) {
+        if (!"FUTURES".equals(assetClass)) return null;
+        return futuresContractService.getFrontMonthContract(symbol)
+                .map(FuturesSpec::contractMonth)
+                .orElse(null);
     }
 
     private ValidationResult reject(TradeSignal signal, String reason) {

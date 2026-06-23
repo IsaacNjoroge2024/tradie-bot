@@ -178,9 +178,79 @@ class ContractBuilderTest {
                 .hasMessageContaining("Forex symbol is required");
     }
 
+    // ─── Futures ──────────────────────────────────────────────────────────────
+
+    @Test
+    void build_futures_withContractMonth_setsLastTradeDateAndLocalSymbol() {
+        OrderDTO order = buildOrderDTO("ES", "CME", "FUT", "202506");
+
+        Contract contract = contractBuilder.build(order);
+
+        assertThat(contract.symbol()).isEqualTo("ES");
+        assertThat(contract.secType().getApiString()).isEqualTo("FUT");
+        assertThat(contract.exchange()).isEqualTo("CME");
+        assertThat(contract.lastTradeDateOrContractMonth()).isEqualTo("202506");
+        assertThat(contract.localSymbol()).isEqualTo("ESM5");
+    }
+
+    @Test
+    void build_futures_withoutContractMonth_doesNotSetLastTradeDate() {
+        OrderDTO order = buildOrderDTO("ES", "CME", "FUT", null);
+
+        Contract contract = contractBuilder.build(order);
+
+        assertThat(contract.symbol()).isEqualTo("ES");
+        assertThat(contract.secType().getApiString()).isEqualTo("FUT");
+        assertThat(contract.lastTradeDateOrContractMonth()).isNullOrEmpty();
+    }
+
+    @Test
+    void build_futures_nonEmini_doesNotSetLocalSymbol() {
+        OrderDTO order = buildOrderDTO("CL", "NYMEX", "FUT", "202507");
+
+        Contract contract = contractBuilder.build(order);
+
+        assertThat(contract.symbol()).isEqualTo("CL");
+        assertThat(contract.lastTradeDateOrContractMonth()).isEqualTo("202507");
+        assertThat(contract.localSymbol()).isNullOrEmpty();
+    }
+
+    @Test
+    void buildFuturesContract_nqWithContractMonth_setsLocalSymbol() {
+        Contract contract = contractBuilder.buildFuturesContract("NQ", "CME", "202506");
+
+        assertThat(contract.symbol()).isEqualTo("NQ");
+        assertThat(contract.secType().getApiString()).isEqualTo("FUT");
+        assertThat(contract.exchange()).isEqualTo("CME");
+        assertThat(contract.lastTradeDateOrContractMonth()).isEqualTo("202506");
+        assertThat(contract.localSymbol()).isEqualTo("NQM5");
+    }
+
+    @Test
+    void buildFuturesContract_nullExchange_usesDefaultExchange() {
+        Contract contract = contractBuilder.buildFuturesContract("GC", null, "202508");
+
+        assertThat(contract.exchange()).isEqualTo("COMEX");
+    }
+
+    @Test
+    void build_futuresAlias_handledCorrectly() {
+        OrderDTO order = buildOrderDTO("ES", "CME", "FUTURES", "202506");
+
+        Contract contract = contractBuilder.build(order);
+
+        assertThat(contract.secType().getApiString()).isEqualTo("FUT");
+        assertThat(contract.localSymbol()).isEqualTo("ESM5");
+    }
+
     // ─── Helper ───────────────────────────────────────────────────────────────
 
     private OrderDTO buildOrderDTO(String symbol, String exchange, String assetClass) {
+        return buildOrderDTO(symbol, exchange, assetClass, null);
+    }
+
+    private OrderDTO buildOrderDTO(String symbol, String exchange, String assetClass,
+                                    String contractMonth) {
         return new OrderDTO(
                 UUID.randomUUID(), symbol, exchange, assetClass,
                 Order.OrderSide.BUY, Order.OrderType.LIMIT,
@@ -188,7 +258,7 @@ class ContractBuilderTest {
                 BigDecimal.valueOf(140.00), BigDecimal.valueOf(165.00),
                 "FVG", Instant.now().plusSeconds(300),
                 BigDecimal.valueOf(300), 2.0, 4.0, 6.0,
-                BigDecimal.valueOf(600), 2.0, "FIXED_FRACTIONAL"
+                BigDecimal.valueOf(600), 2.0, "FIXED_FRACTIONAL", contractMonth
         );
     }
 }

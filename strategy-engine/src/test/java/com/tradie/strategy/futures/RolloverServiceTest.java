@@ -4,6 +4,7 @@ import com.tradie.common.entity.FuturesContract;
 import com.tradie.common.repository.FuturesContractRepository;
 import com.tradie.strategy.config.FuturesProperties;
 import com.tradie.strategy.futures.dto.RolloverAlert;
+import com.tradie.strategy.service.OrderPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,13 +17,18 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class RolloverServiceTest {
 
     @Mock
     private FuturesContractRepository repository;
+
+    @Mock
+    private OrderPublisher orderPublisher;
 
     private FuturesProperties futuresProperties;
     private RolloverService service;
@@ -31,7 +37,7 @@ class RolloverServiceTest {
     void setUp() {
         futuresProperties = new FuturesProperties();
         futuresProperties.setDefaultRolloverDays(8);
-        service = new RolloverService(repository, futuresProperties);
+        service = new RolloverService(repository, futuresProperties, orderPublisher);
     }
 
     // ─── checkForUpcomingRollovers ────────────────────────────────────────────
@@ -139,6 +145,34 @@ class RolloverServiceTest {
         when(repository.findById("ESM5")).thenReturn(Optional.of(contract));
 
         assertThat(service.shouldRoll("ESM5")).isFalse();
+    }
+
+    // ─── publishRolloverAlerts ────────────────────────────────────────────────
+
+    @Test
+    void publishRolloverAlerts_contractDueToRoll_publishesAlert() {
+        FuturesContract current = buildContract("ESM5", "ES", LocalDate.now().plusDays(12));
+        FuturesContract next    = buildContract("ESU5", "ES", LocalDate.now().plusDays(105));
+        when(repository.findByActiveTrue()).thenReturn(List.of(current));
+        when(repository.findBySymbolAndActiveTrue("ES")).thenReturn(List.of(current, next));
+
+        service.publishRolloverAlerts();
+
+        verify(orderPublisher).publishSystemAlert(
+                eq("RolloverService"),
+                eq("ROLLOVER_ALERT"),
+                contains("ESM5"));
+    }
+
+    @Test
+    void publishRolloverAlerts_noUpcomingRollovers_noPublish() {
+        when(repository.findByActiveTrue()).thenReturn(List.of(
+                buildContract("ESM5", "ES", LocalDate.now().plusDays(60))
+        ));
+
+        service.publishRolloverAlerts();
+
+        verifyNoInteractions(orderPublisher);
     }
 
     // ─── Helper ───────────────────────────────────────────────────────────────

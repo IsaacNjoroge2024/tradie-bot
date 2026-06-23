@@ -57,11 +57,13 @@ class FuturesPositionSizerTest {
 
     @Test
     void calculate_minimumOneContract_whenRiskTooSmall() {
-        // $1,000 account, 2% risk = $20
-        // ticks=40 → riskPerContract=500 → floor(20/500)=0 → clamp to 1
+        // $20,000 account, 0.1% risk = $20
+        // ticks = (5000 - 4990) / 0.25 = 40 → riskPerContract = 40 × 12.50 = $500
+        // floor(20 / 500) = 0 → clamped to minimum 1
+        // margin check: $12,000 × 1 = $12,000 ≤ $20,000 × 0.80 = $16,000 → passes
         when(contractService.getFrontMonthContract("ES")).thenReturn(Optional.of(ES_SPEC));
 
-        FuturesPositionSize result = sizer.calculate("ES", 1000.0, 2.0, 5000.0, 4990.0);
+        FuturesPositionSize result = sizer.calculate("ES", 20000.0, 0.1, 5000.0, 4990.0);
 
         assertThat(result.contracts()).isEqualTo(1);
     }

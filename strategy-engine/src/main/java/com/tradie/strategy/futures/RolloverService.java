@@ -4,8 +4,10 @@ import com.tradie.common.entity.FuturesContract;
 import com.tradie.common.repository.FuturesContractRepository;
 import com.tradie.strategy.config.FuturesProperties;
 import com.tradie.strategy.futures.dto.RolloverAlert;
+import com.tradie.strategy.service.OrderPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -27,11 +29,14 @@ public class RolloverService {
 
     private final FuturesContractRepository repository;
     private final FuturesProperties futuresProperties;
+    private final OrderPublisher orderPublisher;
 
     public RolloverService(FuturesContractRepository repository,
-                            FuturesProperties futuresProperties) {
+                            FuturesProperties futuresProperties,
+                            OrderPublisher orderPublisher) {
         this.repository = repository;
         this.futuresProperties = futuresProperties;
+        this.orderPublisher = orderPublisher;
     }
 
     /**
@@ -83,6 +88,39 @@ public class RolloverService {
                     return !LocalDate.now().isBefore(rollDate);
                 })
                 .orElse(false);
+    }
+
+    /**
+     * Runs daily at 08:00 UTC and publishes a rollover alert to the {@code tradie.alerts}
+     * Kafka topic for every contract within the configured rollover window.
+     *
+     * <p>The alert-service consumes this topic and formats the message for Telegram delivery:
+     * <pre>
+     * 📅 ROLLOVER ALERT
+     * Symbol:        ES
+     * Current:       ESM5
+     * Roll to:       ESU5
+     * Days Until Roll: 4
+     * Action Required: Roll open positions before expiration
+     * </pre>
+     */
+    @Scheduled(cron = "${tradie.futures.rollover-check-cron:0 0 8 * * *}", zone = "UTC")
+    public void publishRolloverAlerts() {
+        List<RolloverAlert> alerts = checkForUpcomingRollovers(futuresProperties.getDefaultRolloverDays() * 2);
+        if (alerts.isEmpty()) {
+            log.debug("Rollover check: no upcoming rollovers within notification window");
+            return;
+        }
+        for (RolloverAlert alert : alerts) {
+            String message = String.format(
+                    "ROLLOVER ALERT | Symbol: %s | Current: %s | Roll to: %s | Days Until Roll: %d | "
+                            + "Action Required: Roll open positions before expiration",
+                    alert.symbol(), alert.currentContract(), alert.nextContract(),
+                    alert.daysRemaining());
+            orderPublisher.publishSystemAlert("RolloverService", "ROLLOVER_ALERT", message);
+            log.info("Rollover alert published: {} → {} in {} day(s)",
+                    alert.currentContract(), alert.nextContract(), alert.daysRemaining());
+        }
     }
 
     private String findNextContractSymbol(FuturesContract current) {

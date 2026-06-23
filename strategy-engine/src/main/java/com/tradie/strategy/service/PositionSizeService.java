@@ -9,6 +9,9 @@ import com.tradie.strategy.forex.CurrencyPairService;
 import com.tradie.strategy.forex.ForexPipCalculator;
 import com.tradie.strategy.forex.ForexPositionSizer;
 import com.tradie.strategy.forex.dto.ForexPositionSize;
+import com.tradie.strategy.futures.FuturesPositionSizer;
+import com.tradie.strategy.futures.InsufficientMarginException;
+import com.tradie.strategy.futures.dto.FuturesPositionSize;
 import com.tradie.strategy.positioning.ATRPositionSizeCalculator;
 import com.tradie.strategy.positioning.FixedFractionalCalculator;
 import com.tradie.strategy.positioning.KellyCriterionCalculator;
@@ -53,6 +56,7 @@ public class PositionSizeService {
     private final ObjectMapper objectMapper;
     private final ForexPipCalculator forexPipCalculator;
     private final ForexPositionSizer forexPositionSizer;
+    private final FuturesPositionSizer futuresPositionSizer;
 
     public PositionSizeService(AccountService accountService,
                                 PortfolioHeatService portfolioHeatService,
@@ -62,7 +66,8 @@ public class PositionSizeService {
                                 CorrelationAdjuster correlationAdjuster,
                                 ObjectMapper objectMapper,
                                 ForexPipCalculator forexPipCalculator,
-                                ForexPositionSizer forexPositionSizer) {
+                                ForexPositionSizer forexPositionSizer,
+                                FuturesPositionSizer futuresPositionSizer) {
         this.accountService = accountService;
         this.portfolioHeatService = portfolioHeatService;
         this.fixedFractionalCalculator = fixedFractionalCalculator;
@@ -72,6 +77,7 @@ public class PositionSizeService {
         this.objectMapper = objectMapper;
         this.forexPipCalculator = forexPipCalculator;
         this.forexPositionSizer = forexPositionSizer;
+        this.futuresPositionSizer = futuresPositionSizer;
     }
 
     /**
@@ -94,7 +100,7 @@ public class PositionSizeService {
 
         // 3. Calculate base quantity
         BigDecimal quantity = calculateByMethod(method, signal, account, adjustments, assetClass);
-        BigDecimal riskAmount = "FOREX".equals(assetClass)
+        BigDecimal riskAmount = ("FOREX".equals(assetClass) || "FUTURES".equals(assetClass))
                 ? account.accountValue()
                         .multiply(BigDecimal.valueOf(riskPerTradePct))
                         .divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP)
@@ -161,6 +167,11 @@ public class PositionSizeService {
             return calculateForexUnits(signal, accountValue, adjustments);
         }
 
+        // Futures uses tick-value sizing regardless of the configured default method
+        if ("FUTURES".equals(assetClass)) {
+            return calculateFuturesContracts(signal, accountValue, adjustments);
+        }
+
         switch (method) {
             case METHOD_KELLY: {
                 Optional<BigDecimal> kellyQty = kellyCriterionCalculator
@@ -215,6 +226,34 @@ public class PositionSizeService {
         return BigDecimal.valueOf(posSize.units()).setScale(0, RoundingMode.FLOOR);
     }
 
+    private BigDecimal calculateFuturesContracts(TradeSignal signal, BigDecimal accountValue,
+                                                   List<String> adjustments) {
+        String symbol = signal.getSymbol();
+        if (symbol == null || symbol.isBlank()) {
+            adjustments.add("Futures sizing skipped — blank symbol");
+            return BigDecimal.ZERO;
+        }
+        double balance = accountValue.doubleValue();
+        double entryPrice = signal.getPrice().doubleValue();
+        double stopLossPrice = signal.getStopLoss().doubleValue();
+
+        FuturesPositionSize posSize;
+        try {
+            posSize = futuresPositionSizer.calculate(symbol, balance, riskPerTradePct,
+                    entryPrice, stopLossPrice);
+        } catch (InsufficientMarginException e) {
+            adjustments.add("Futures margin validation failed: " + e.getMessage());
+            log.warn("Insufficient margin for futures position {}: {}", symbol, e.getMessage());
+            return BigDecimal.ZERO;
+        }
+
+        adjustments.add(String.format(
+                "Futures tick-based sizing: %d contract(s), notional=%.2f, ticksToStop=%.1f, marginRequired=%.2f",
+                posSize.contracts(), posSize.notionalValue(), posSize.ticksToStop(), posSize.marginRequired()));
+
+        return BigDecimal.valueOf(posSize.contracts());
+    }
+
     private BigDecimal applyHeatAdjustment(BigDecimal quantity, double heatBefore,
                                             List<String> adjustments) {
         if (heatBefore >= warningHeatPct && heatBefore < reduceHeatPct) {
@@ -261,7 +300,8 @@ public class PositionSizeService {
             if (upper.contains("FOREX") || upper.contains("FX") || upper.contains("IDEALPRO")) {
                 return "FOREX";
             }
-            if (upper.contains("FUTURES") || upper.contains("CME") || upper.contains("GLOBEX")) {
+            if (upper.contains("FUTURES") || upper.contains("CME") || upper.contains("GLOBEX")
+                    || upper.contains("NYMEX") || upper.contains("COMEX")) {
                 return "FUTURES";
             }
         }

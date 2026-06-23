@@ -10,12 +10,22 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>STK    – stocks routed via SMART exchange</li>
  *   <li>CASH / FOREX – forex pairs routed via IDEALPRO; symbol parsed into base/quote currency</li>
- *   <li>FUT    – futures routed via the exchange specified in the order</li>
+ *   <li>FUT    – futures with contract month and local symbol resolved automatically</li>
  *   <li>CRYPTO – crypto via Paxos on IBKR</li>
  * </ul>
  */
 @Component
 public class ContractBuilder {
+
+    private static final java.util.Map<Integer, Character> MONTH_CODES = java.util.Map.ofEntries(
+            java.util.Map.entry(1,  'F'), java.util.Map.entry(2,  'G'), java.util.Map.entry(3,  'H'),
+            java.util.Map.entry(4,  'J'), java.util.Map.entry(5,  'K'), java.util.Map.entry(6,  'M'),
+            java.util.Map.entry(7,  'N'), java.util.Map.entry(8,  'Q'), java.util.Map.entry(9,  'U'),
+            java.util.Map.entry(10, 'V'), java.util.Map.entry(11, 'X'), java.util.Map.entry(12, 'Z')
+    );
+
+    private static final java.util.Set<String> EMINI_SYMBOLS =
+            java.util.Set.of("ES", "NQ", "MES", "MNQ");
 
     /**
      * Builds an IBKR Contract from the validated {@link OrderDTO}.
@@ -42,9 +52,9 @@ public class ContractBuilder {
                 contract.secType("CASH");
                 contract.exchange("IDEALPRO");
             }
-            case "FUT" -> {
-                contract.secType("FUT");
-                contract.exchange(order.exchange());
+            case "FUT", "FUTURES" -> {
+                String contractMonth = order.contractMonth();
+                return buildFuturesContract(order.symbol(), order.exchange(), contractMonth);
             }
             case "CRYPTO" -> {
                 contract.secType("CRYPTO");
@@ -55,6 +65,65 @@ public class ContractBuilder {
         }
 
         return contract;
+    }
+
+    /**
+     * Builds an IBKR futures Contract with contract month and local symbol populated.
+     *
+     * @param symbol        root futures symbol (e.g., "ES")
+     * @param exchange      exchange override; if null, the built-in default is used
+     * @param contractMonth contract month in YYYYMM format (e.g., "202506"); may be null
+     * @return configured IBKR futures Contract
+     */
+    public Contract buildFuturesContract(String symbol, String exchange, String contractMonth) {
+        Contract contract = new Contract();
+        contract.symbol(symbol);
+        contract.secType("FUT");
+        contract.currency("USD");
+        contract.exchange(exchange != null && !exchange.isBlank() ? exchange : resolveExchange(symbol));
+
+        if (contractMonth != null && !contractMonth.isBlank()) {
+            contract.lastTradeDateOrContractMonth(contractMonth);
+            // For E-mini contracts, also set the localSymbol (e.g., "ESH5")
+            if (EMINI_SYMBOLS.contains(symbol.toUpperCase())) {
+                String suffix = toLocalSymbolSuffix(contractMonth);
+                if (suffix != null) {
+                    contract.localSymbol(symbol.toUpperCase() + suffix);
+                }
+            }
+        }
+
+        return contract;
+    }
+
+    /**
+     * Returns the default exchange for known futures root symbols.
+     */
+    private String resolveExchange(String symbol) {
+        if (symbol == null) return "CME";
+        return switch (symbol.toUpperCase()) {
+            case "CL", "NG", "RB", "HO" -> "NYMEX";
+            case "GC", "SI", "HG", "PL" -> "COMEX";
+            default -> "CME";
+        };
+    }
+
+    /**
+     * Converts a YYYYMM contract month string to the two-character local-symbol suffix
+     * (month code + last year digit). E.g., "202506" → "M5".
+     * Returns null if the input is malformed.
+     */
+    private String toLocalSymbolSuffix(String contractMonth) {
+        if (contractMonth == null || contractMonth.length() != 6) return null;
+        try {
+            int year  = Integer.parseInt(contractMonth.substring(0, 4));
+            int month = Integer.parseInt(contractMonth.substring(4, 6));
+            if (month < 1 || month > 12) return null;
+            char code = MONTH_CODES.get(month);
+            return "" + code + (year % 10);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

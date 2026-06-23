@@ -7,6 +7,9 @@ import com.tradie.strategy.dto.PositionSizeResult;
 import com.tradie.strategy.forex.ForexPipCalculator;
 import com.tradie.strategy.forex.ForexPositionSizer;
 import com.tradie.strategy.forex.dto.ForexPositionSize;
+import com.tradie.strategy.futures.FuturesPositionSizer;
+import com.tradie.strategy.futures.InsufficientMarginException;
+import com.tradie.strategy.futures.dto.FuturesPositionSize;
 import com.tradie.strategy.positioning.ATRPositionSizeCalculator;
 import com.tradie.strategy.positioning.FixedFractionalCalculator;
 import com.tradie.strategy.positioning.KellyCriterionCalculator;
@@ -51,6 +54,9 @@ class PositionSizeServiceTest {
     @Mock
     private ForexPositionSizer forexPositionSizer;
 
+    @Mock
+    private FuturesPositionSizer futuresPositionSizer;
+
     private PositionSizeService service;
 
     private static final AccountInfo DEFAULT_ACCOUNT = new AccountInfo(
@@ -62,7 +68,7 @@ class PositionSizeServiceTest {
         service = new PositionSizeService(
                 accountService, portfolioHeatService, fixedFractionalCalculator,
                 kellyCriterionCalculator, atrCalculator, correlationAdjuster,
-                new ObjectMapper(), forexPipCalculator, forexPositionSizer);
+                new ObjectMapper(), forexPipCalculator, forexPositionSizer, futuresPositionSizer);
 
         ReflectionTestUtils.setField(service, "defaultSizingMethod", "FIXED_FRACTIONAL");
         ReflectionTestUtils.setField(service, "riskPerTradePct", 2.0);
@@ -236,6 +242,50 @@ class PositionSizeServiceTest {
 
         assertEquals(2.0, result.portfolioHeatBefore(), 0.001);
         assertEquals(4.0, result.portfolioHeatAfter(), 0.01); // 2% existing + 2% new risk
+    }
+
+    @Test
+    void calculatePositionSize_futuresSignal_usesFuturesPositionSizer() {
+        TradeSignal futuresSignal = new TradeSignal();
+        futuresSignal.setSymbol("ES");
+        futuresSignal.setExchange("CME");
+        futuresSignal.setStrategy("FVG");
+        futuresSignal.setPrice(BigDecimal.valueOf(5000.00));
+        futuresSignal.setStopLoss(BigDecimal.valueOf(4990.00));
+        futuresSignal.setTakeProfit(BigDecimal.valueOf(5020.00));
+        futuresSignal.setAction(TradeSignal.SignalAction.BUY);
+
+        FuturesPositionSize futuresSize = new FuturesPositionSize(2, 500000.0, 200.0, 40.0, 24000.0);
+        when(futuresPositionSizer.calculate(eq("ES"), eq(10000.0), eq(2.0),
+                eq(5000.0), eq(4990.0)))
+                .thenReturn(futuresSize);
+
+        PositionSizeResult result = service.calculatePositionSize(futuresSignal, BigDecimal.ONE);
+
+        assertTrue(result.valid());
+        assertEquals("FUTURES", result.assetClass());
+        assertEquals(0, BigDecimal.valueOf(2).compareTo(result.quantity()));
+        verify(futuresPositionSizer).calculate(eq("ES"), eq(10000.0), eq(2.0), eq(5000.0), eq(4990.0));
+    }
+
+    @Test
+    void calculatePositionSize_futuresInsufficientMargin_returnsInvalid() {
+        TradeSignal futuresSignal = new TradeSignal();
+        futuresSignal.setSymbol("ES");
+        futuresSignal.setExchange("CME");
+        futuresSignal.setStrategy("FVG");
+        futuresSignal.setPrice(BigDecimal.valueOf(5000.00));
+        futuresSignal.setStopLoss(BigDecimal.valueOf(4990.00));
+        futuresSignal.setTakeProfit(BigDecimal.valueOf(5020.00));
+        futuresSignal.setAction(TradeSignal.SignalAction.BUY);
+
+        when(futuresPositionSizer.calculate(anyString(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenThrow(new InsufficientMarginException("Required margin exceeds buffer"));
+
+        PositionSizeResult result = service.calculatePositionSize(futuresSignal, BigDecimal.ONE);
+
+        assertFalse(result.valid());
+        assertTrue(result.adjustments().stream().anyMatch(a -> a.contains("margin validation failed")));
     }
 
     @Test

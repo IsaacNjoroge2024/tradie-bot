@@ -109,7 +109,7 @@ class BracketOrderBuilderTest {
                 BigDecimal.valueOf(140.00), BigDecimal.valueOf(165.00),
                 "FVG", Instant.now().plusSeconds(300),
                 BigDecimal.valueOf(300), 2.0, 4.0, 6.0,
-                BigDecimal.valueOf(600), 2.0, "FIXED_FRACTIONAL"
+                BigDecimal.valueOf(600), 2.0, "FIXED_FRACTIONAL", null
         );
     }
 
@@ -122,7 +122,7 @@ class BracketOrderBuilderTest {
                 BigDecimal.valueOf(160.00), BigDecimal.valueOf(135.00),
                 "FVG", Instant.now().plusSeconds(300),
                 BigDecimal.valueOf(300), 2.0, 4.0, 6.0,
-                BigDecimal.valueOf(600), 2.0, "FIXED_FRACTIONAL"
+                BigDecimal.valueOf(600), 2.0, "FIXED_FRACTIONAL", null
         );
     }
 }

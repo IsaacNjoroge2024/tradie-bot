@@ -7,6 +7,7 @@ import com.tradie.strategy.dto.MarketStatusResponse;
 import com.tradie.strategy.dto.PositionSizeResult;
 import com.tradie.strategy.dto.RuleResult;
 import com.tradie.strategy.dto.ValidationResult;
+import com.tradie.strategy.futures.FuturesContractService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,9 @@ class SignalValidationServiceTest {
     @Mock
     private SignalConfirmationService confirmationService;
 
+    @Mock
+    private FuturesContractService futuresContractService;
+
     private SignalValidationService service;
 
     private static final ConfirmationResult NO_OP_CONFIRMATION =
@@ -51,7 +55,8 @@ class SignalValidationServiceTest {
     void setUp() {
         service = new SignalValidationService(
                 newsShieldClient, killZoneService, riskRuleService,
-                positionSizeService, confirmationService, new SimpleMeterRegistry());
+                positionSizeService, confirmationService,
+                futuresContractService, new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "signalExpirySeconds", 300);
         lenient().when(confirmationService.confirm(any())).thenReturn(NO_OP_CONFIRMATION);
     }

@@ -25,5 +25,6 @@ public record OrderDTO(
         double portfolioHeatAfter,
         BigDecimal expectedReward,
         double riskRewardRatio,
-        String sizingMethod
+        String sizingMethod,
+        String contractMonth   // YYYYMM format for futures (e.g., "202506"); null for other asset classes
 ) {}

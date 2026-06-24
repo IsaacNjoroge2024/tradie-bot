@@ -123,7 +123,33 @@ class ContinuousContractServiceTest {
 
         assertThatThrownBy(() -> service.computeAdjustmentFactors("ES", new double[]{0.0}))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("must be positive");
+                .hasMessageContaining("must be a finite positive number");
+    }
+
+    @Test
+    void computeAdjustmentFactors_nanRatio_throwsException() {
+        when(repository.findBySymbolAndActiveTrue("ES"))
+                .thenReturn(List.of(
+                        buildContract("ESH5", LocalDate.of(2025, 3, 21)),
+                        buildContract("ESM5", LocalDate.of(2025, 6, 20))
+                ));
+
+        assertThatThrownBy(() -> service.computeAdjustmentFactors("ES", new double[]{Double.NaN}))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be a finite positive number");
+    }
+
+    @Test
+    void computeAdjustmentFactors_infiniteRatio_throwsException() {
+        when(repository.findBySymbolAndActiveTrue("ES"))
+                .thenReturn(List.of(
+                        buildContract("ESH5", LocalDate.of(2025, 3, 21)),
+                        buildContract("ESM5", LocalDate.of(2025, 6, 20))
+                ));
+
+        assertThatThrownBy(() -> service.computeAdjustmentFactors("ES", new double[]{Double.POSITIVE_INFINITY}))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be a finite positive number");
     }
 
     @Test

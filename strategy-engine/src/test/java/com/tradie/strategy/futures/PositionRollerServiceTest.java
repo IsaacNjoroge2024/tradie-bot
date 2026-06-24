@@ -90,25 +90,26 @@ class PositionRollerServiceTest {
 
     @Test
     void findPositionsDueToRoll_returnsFuturesPositionsPastRollDate() {
-        Position futuresPos = buildPosition("ESM5", "FUTURES");
+        // Position.symbol holds root symbol "ES", not full symbol "ESM5"
+        Position futuresPos = buildPosition("ES", "FUTURES");
         Position stockPos   = buildPosition("AAPL", "STK");
-        // shouldRoll is only called for FUTURES positions; STK is filtered out first
+        // shouldRollByRootSymbol is only called for FUTURES; STK is filtered out first
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN))
                 .thenReturn(List.of(futuresPos, stockPos));
-        when(rolloverService.shouldRoll("ESM5")).thenReturn(true);
+        when(rolloverService.shouldRollByRootSymbol("ES")).thenReturn(true);
 
         List<Position> result = service.findPositionsDueToRoll();
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getSymbol()).isEqualTo("ESM5");
+        assertThat(result.get(0).getSymbol()).isEqualTo("ES");
     }
 
     @Test
     void findPositionsDueToRoll_noPositionsDue_returnsEmpty() {
-        Position futuresPos = buildPosition("ESM5", "FUTURES");
+        Position futuresPos = buildPosition("ES", "FUTURES");
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN))
                 .thenReturn(List.of(futuresPos));
-        when(rolloverService.shouldRoll("ESM5")).thenReturn(false);
+        when(rolloverService.shouldRollByRootSymbol("ES")).thenReturn(false);
 
         assertThat(service.findPositionsDueToRoll()).isEmpty();
     }

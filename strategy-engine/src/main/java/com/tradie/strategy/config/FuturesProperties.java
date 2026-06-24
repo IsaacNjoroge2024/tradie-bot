@@ -12,6 +12,9 @@ public class FuturesProperties {
 
     public int getDefaultRolloverDays() { return defaultRolloverDays; }
     public void setDefaultRolloverDays(int defaultRolloverDays) {
+        if (defaultRolloverDays < 0) {
+            throw new IllegalArgumentException("defaultRolloverDays must be >= 0");
+        }
         this.defaultRolloverDays = defaultRolloverDays;
     }
 
@@ -22,8 +25,8 @@ public class FuturesProperties {
 
     public double getMarginBufferPct() { return marginBufferPct; }
     public void setMarginBufferPct(double marginBufferPct) {
-        if (marginBufferPct < 0 || marginBufferPct > 100) {
-            throw new IllegalArgumentException("marginBufferPct must be between 0 and 100");
+        if (!Double.isFinite(marginBufferPct) || marginBufferPct < 0 || marginBufferPct > 100) {
+            throw new IllegalArgumentException("marginBufferPct must be finite and between 0 and 100");
         }
         this.marginBufferPct = marginBufferPct;
     }

@@ -158,9 +158,9 @@ class FuturesPositionSizerTest {
     }
 
     @Test
-    void getBuiltInSpec_unknownSymbol_returnsDefaultEsLikeSpec() {
-        FuturesSpec spec = sizer.getBuiltInSpec("UNKNOWN");
-        assertThat(spec.multiplier()).isEqualTo(50.0);
-        assertThat(spec.exchange()).isEqualTo("CME");
+    void getBuiltInSpec_unknownSymbol_throwsIllegalArgumentException() {
+        assertThatThrownBy(() -> sizer.getBuiltInSpec("UNKNOWN"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("UNKNOWN");
     }
 }

@@ -31,13 +31,14 @@ public class FuturesContractService {
     }
 
     /**
-     * Returns the front-month contract spec for a root symbol (e.g., "ES").
-     * Falls back to a hard-coded default if no DB row is marked as front month.
+     * Returns the active front-month contract spec for a root symbol (e.g., "ES").
+     * Returns empty if no active front-month row exists; callers fall back to built-in specs.
      */
     public Optional<FuturesSpec> getFrontMonthContract(String symbol) {
-        Optional<FuturesSpec> db = repository.findBySymbolAndFrontMonthTrue(symbol).map(this::toSpec);
+        Optional<FuturesSpec> db = repository.findBySymbolAndActiveTrueAndFrontMonthTrue(symbol)
+                .map(this::toSpec);
         if (db.isEmpty()) {
-            log.warn("No front-month contract found in DB for symbol: {} — using built-in default", symbol);
+            log.warn("No active front-month contract found in DB for symbol: {}", symbol);
         }
         return db;
     }
@@ -60,12 +61,17 @@ public class FuturesContractService {
                     LocalDate exp = c.getExpirationDate();
                     if (exp == null) return false;
                     LocalDate today = LocalDate.now();
-                    return !today.isAfter(exp) && today.plusDays(daysThreshold).isAfter(exp);
+                    return !today.isAfter(exp) && !today.plusDays(daysThreshold).isBefore(exp);
                 })
                 .orElse(false);
     }
 
     private FuturesSpec toSpec(FuturesContract c) {
+        double initMargin = c.getInitialMargin() != null ? c.getInitialMargin() : 0.0;
+        double maintMargin = c.getMaintenanceMargin() != null ? c.getMaintenanceMargin() : 0.0;
+        if (initMargin == 0.0 || maintMargin == 0.0) {
+            log.warn("Futures contract {} has missing margin data — spec will fail validation", c.getFullSymbol());
+        }
         return new FuturesSpec(
                 c.getSymbol(),
                 c.getFullSymbol(),
@@ -75,8 +81,8 @@ public class FuturesContractService {
                 c.getTickSize(),
                 c.getTickValue(),
                 c.getExpirationDate(),
-                c.getInitialMargin(),
-                c.getMaintenanceMargin()
+                initMargin,
+                maintMargin
         );
     }
 }

@@ -11,7 +11,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,8 +24,36 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+/**
+ * Fixed clock: Monday 2026-06-22 UTC.
+ *
+ * Business-day rollover dates (8 BDs before expiration):
+ *  expiry 2026-07-03 (Fri)  → rollDate 2026-06-23 (Tue) → daysRemaining 1
+ *  expiry 2026-07-07 (Mon)  → rollDate 2026-06-25 (Wed) → daysRemaining 3
+ *  expiry 2026-06-27 (Sat)  → rollDate 2026-06-17 (past)→ shouldRoll = true
+ *  expiry 2026-07-22 (Wed)  → rollDate 2026-07-10 (future) → shouldRoll = false
+ *  expiry 2026-09-30 (Wed)  → rollDate far future → no alert
+ */
 @ExtendWith(MockitoExtension.class)
 class RolloverServiceTest {
+
+    // Fixed "today" = Monday 2026-06-22 00:00:00 UTC
+    private static final Clock FIXED_CLOCK = Clock.fixed(
+            Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC);
+
+    private static final LocalDate TODAY = LocalDate.of(2026, 6, 22);
+
+    // Expiry dates chosen so business-day roll dates are predictable
+    /** expiry 2026-07-07 (Mon) → rollDate 2026-06-25 (Wed) → daysRemaining 3 */
+    private static final LocalDate EXPIRY_ROLL_IN_3 = LocalDate.of(2026, 7, 7);
+    /** expiry 2026-07-03 (Fri) → rollDate 2026-06-23 (Tue) → daysRemaining 1 */
+    private static final LocalDate EXPIRY_ROLL_IN_1 = LocalDate.of(2026, 7, 3);
+    /** expiry 2026-09-30 — rollDate far in the future */
+    private static final LocalDate EXPIRY_FAR = LocalDate.of(2026, 9, 30);
+    /** expiry 2026-06-27 (Sat) → rollDate 2026-06-17 → already past */
+    private static final LocalDate EXPIRY_PAST_ROLL = LocalDate.of(2026, 6, 27);
+    /** expiry 2026-07-22 (Wed) → rollDate 2026-07-10 → not yet */
+    private static final LocalDate EXPIRY_FUTURE_ROLL = LocalDate.of(2026, 7, 22);
 
     @Mock
     private FuturesContractRepository repository;
@@ -37,17 +68,15 @@ class RolloverServiceTest {
     void setUp() {
         futuresProperties = new FuturesProperties();
         futuresProperties.setDefaultRolloverDays(8);
-        service = new RolloverService(repository, futuresProperties, orderPublisher);
+        service = new RolloverService(repository, futuresProperties, orderPublisher, FIXED_CLOCK);
     }
 
     // ─── checkForUpcomingRollovers ────────────────────────────────────────────
 
     @Test
     void checkForUpcomingRollovers_contractDueToRoll_returnsAlert() {
-        // Expiration is 5 days away → rollDate = expiration - 8 = 3 days ago → daysToRoll = -3
-        // So let's set expiration 12 days away → rollDate = 12 - 8 = 4 days from now → within 14
-        FuturesContract current = buildContract("ESM5", "ES", LocalDate.now().plusDays(12));
-        FuturesContract next    = buildContract("ESU5", "ES", LocalDate.now().plusDays(105));
+        FuturesContract current = buildContract("ESM5", "ES", EXPIRY_ROLL_IN_3);
+        FuturesContract next    = buildContract("ESU5", "ES", EXPIRY_FAR);
         when(repository.findByActiveTrue()).thenReturn(List.of(current));
         when(repository.findBySymbolAndActiveTrue("ES")).thenReturn(List.of(current, next));
 
@@ -58,12 +87,12 @@ class RolloverServiceTest {
         assertThat(alert.symbol()).isEqualTo("ES");
         assertThat(alert.currentContract()).isEqualTo("ESM5");
         assertThat(alert.nextContract()).isEqualTo("ESU5");
-        assertThat(alert.daysRemaining()).isEqualTo(4); // rollDate is 4 days from now
+        assertThat(alert.daysRemaining()).isEqualTo(3); // rollDate 2026-06-25 is 3 days from today
     }
 
     @Test
     void checkForUpcomingRollovers_contractFarAway_noAlert() {
-        FuturesContract contract = buildContract("ESM5", "ES", LocalDate.now().plusDays(60));
+        FuturesContract contract = buildContract("ESM5", "ES", EXPIRY_FAR);
         when(repository.findByActiveTrue()).thenReturn(List.of(contract));
 
         List<RolloverAlert> alerts = service.checkForUpcomingRollovers(14);
@@ -86,7 +115,7 @@ class RolloverServiceTest {
 
     @Test
     void checkForUpcomingRollovers_noNextContract_alertShowsUnknown() {
-        FuturesContract current = buildContract("ESM5", "ES", LocalDate.now().plusDays(12));
+        FuturesContract current = buildContract("ESM5", "ES", EXPIRY_ROLL_IN_3);
         when(repository.findByActiveTrue()).thenReturn(List.of(current));
         when(repository.findBySymbolAndActiveTrue("ES")).thenReturn(List.of(current));
 
@@ -98,24 +127,25 @@ class RolloverServiceTest {
 
     @Test
     void checkForUpcomingRollovers_sortedByDaysRemaining() {
-        FuturesContract cl = buildContract("CLN5", "CL", LocalDate.now().plusDays(9));  // roll in 1 day
-        FuturesContract es = buildContract("ESM5", "ES", LocalDate.now().plusDays(12)); // roll in 4 days
+        // CL rolls in 1 day (rollDate June 23), ES rolls in 3 days (rollDate June 25)
+        FuturesContract cl = buildContract("CLN5", "CL", EXPIRY_ROLL_IN_1);
+        FuturesContract es = buildContract("ESM5", "ES", EXPIRY_ROLL_IN_3);
         when(repository.findByActiveTrue()).thenReturn(List.of(es, cl));
         when(repository.findBySymbolAndActiveTrue(anyString())).thenReturn(List.of());
 
         List<RolloverAlert> alerts = service.checkForUpcomingRollovers(14);
 
         assertThat(alerts).hasSize(2);
-        assertThat(alerts.get(0).currentContract()).isEqualTo("CLN5");
-        assertThat(alerts.get(1).currentContract()).isEqualTo("ESM5");
+        assertThat(alerts.get(0).currentContract()).isEqualTo("CLN5"); // 1 day
+        assertThat(alerts.get(1).currentContract()).isEqualTo("ESM5"); // 3 days
     }
 
     // ─── shouldRoll ───────────────────────────────────────────────────────────
 
     @Test
     void shouldRoll_pastRollDate_returnsTrue() {
-        // Expiration 5 days away → rollDate = today - 3 → already past
-        FuturesContract contract = buildContract("ESM5", "ES", LocalDate.now().plusDays(5));
+        // expiry 2026-06-27 (Sat) → 8 BDs back → rollDate 2026-06-17 (past today 2026-06-22)
+        FuturesContract contract = buildContract("ESM5", "ES", EXPIRY_PAST_ROLL);
         when(repository.findById("ESM5")).thenReturn(Optional.of(contract));
 
         assertThat(service.shouldRoll("ESM5")).isTrue();
@@ -123,8 +153,8 @@ class RolloverServiceTest {
 
     @Test
     void shouldRoll_beforeRollDate_returnsFalse() {
-        // Expiration 30 days away → rollDate = today + 22 → not yet
-        FuturesContract contract = buildContract("ESM5", "ES", LocalDate.now().plusDays(30));
+        // expiry 2026-07-22 (Wed) → 8 BDs back → rollDate 2026-07-10 (future from today 2026-06-22)
+        FuturesContract contract = buildContract("ESM5", "ES", EXPIRY_FUTURE_ROLL);
         when(repository.findById("ESM5")).thenReturn(Optional.of(contract));
 
         assertThat(service.shouldRoll("ESM5")).isFalse();
@@ -147,12 +177,30 @@ class RolloverServiceTest {
         assertThat(service.shouldRoll("ESM5")).isFalse();
     }
 
+    // ─── shouldRollByRootSymbol ───────────────────────────────────────────────
+
+    @Test
+    void shouldRollByRootSymbol_frontMonthPastRollDate_returnsTrue() {
+        FuturesContract contract = buildContract("ESM5", "ES", EXPIRY_PAST_ROLL);
+        when(repository.findBySymbolAndActiveTrueAndFrontMonthTrue("ES")).thenReturn(Optional.of(contract));
+        when(repository.findById("ESM5")).thenReturn(Optional.of(contract));
+
+        assertThat(service.shouldRollByRootSymbol("ES")).isTrue();
+    }
+
+    @Test
+    void shouldRollByRootSymbol_noFrontMonthInDb_returnsFalse() {
+        when(repository.findBySymbolAndActiveTrueAndFrontMonthTrue("ES")).thenReturn(Optional.empty());
+
+        assertThat(service.shouldRollByRootSymbol("ES")).isFalse();
+    }
+
     // ─── publishRolloverAlerts ────────────────────────────────────────────────
 
     @Test
     void publishRolloverAlerts_contractDueToRoll_publishesAlert() {
-        FuturesContract current = buildContract("ESM5", "ES", LocalDate.now().plusDays(12));
-        FuturesContract next    = buildContract("ESU5", "ES", LocalDate.now().plusDays(105));
+        FuturesContract current = buildContract("ESM5", "ES", EXPIRY_ROLL_IN_3);
+        FuturesContract next    = buildContract("ESU5", "ES", EXPIRY_FAR);
         when(repository.findByActiveTrue()).thenReturn(List.of(current));
         when(repository.findBySymbolAndActiveTrue("ES")).thenReturn(List.of(current, next));
 
@@ -167,7 +215,7 @@ class RolloverServiceTest {
     @Test
     void publishRolloverAlerts_noUpcomingRollovers_noPublish() {
         when(repository.findByActiveTrue()).thenReturn(List.of(
-                buildContract("ESM5", "ES", LocalDate.now().plusDays(60))
+                buildContract("ESM5", "ES", EXPIRY_FAR)
         ));
 
         service.publishRolloverAlerts();

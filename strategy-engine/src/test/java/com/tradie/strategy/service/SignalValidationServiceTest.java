@@ -16,9 +16,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.tradie.strategy.futures.dto.FuturesSpec;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -89,6 +92,30 @@ class SignalValidationServiceTest {
                 .thenReturn(List.of(RuleResult.pass()));
         when(positionSizeService.calculatePositionSize(any(), any()))
                 .thenReturn(validSizing(BigDecimal.valueOf(10)));
+    }
+
+    @Test
+    void validate_futures_resolvesAndSetsContractMonth() {
+        TradeSignal signal = freshSignal();
+        signal.setSymbol("ES");
+        FuturesSpec spec = new FuturesSpec("ES", "ESM5", "202506", "CME", 50.0, 0.25, 12.50, null, 12000.0, 10800.0);
+        when(newsShieldClient.getMarketStatus("ES"))
+                .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
+        when(killZoneService.validate(any()))
+                .thenReturn(new KillZoneService.KillZoneResult(true, null, null));
+        when(riskRuleService.validateAll(any()))
+                .thenReturn(List.of(RuleResult.pass()));
+        when(positionSizeService.calculatePositionSize(any(), any()))
+                .thenReturn(new PositionSizeResult(
+                        BigDecimal.TEN, BigDecimal.valueOf(200), 2.0,
+                        "FIXED_FRACTIONAL", "FUTURES", List.of(), true, 0.0, 2.0));
+        when(futuresContractService.getFrontMonthContract("ES")).thenReturn(Optional.of(spec));
+
+        ValidationResult result = service.validate(signal);
+
+        assertTrue(result.approved());
+        assertEquals("202506", result.order().contractMonth());
+        verify(futuresContractService).getFrontMonthContract("ES");
     }
 
     @Test

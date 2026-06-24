@@ -1,6 +1,7 @@
 package com.tradie.strategy;
 
 import com.tradie.common.repository.AuditLogRepository;
+import com.tradie.common.repository.CryptoAssetRepository;
 import com.tradie.common.repository.CurrencyPairRepository;
 import com.tradie.common.repository.FuturesContractRepository;
 import com.tradie.common.repository.OHLCVCandleRepository;
@@ -54,6 +55,9 @@ class StrategyEngineApplicationTests {
 
     @MockBean
     FuturesContractRepository futuresContractRepository;
+
+    @MockBean
+    CryptoAssetRepository cryptoAssetRepository;
 
     @Test
     void contextLoads() {

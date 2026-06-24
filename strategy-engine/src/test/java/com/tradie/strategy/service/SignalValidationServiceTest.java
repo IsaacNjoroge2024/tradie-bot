@@ -7,6 +7,8 @@ import com.tradie.strategy.dto.MarketStatusResponse;
 import com.tradie.strategy.dto.PositionSizeResult;
 import com.tradie.strategy.dto.RuleResult;
 import com.tradie.strategy.dto.ValidationResult;
+import com.tradie.strategy.crypto.CryptoMarketHours;
+import com.tradie.strategy.crypto.CryptoRiskValidator;
 import com.tradie.strategy.futures.FuturesContractService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +51,12 @@ class SignalValidationServiceTest {
     @Mock
     private FuturesContractService futuresContractService;
 
+    @Mock
+    private CryptoRiskValidator cryptoRiskValidator;
+
+    @Mock
+    private CryptoMarketHours cryptoMarketHours;
+
     private SignalValidationService service;
 
     private static final ConfirmationResult NO_OP_CONFIRMATION =
@@ -59,9 +67,11 @@ class SignalValidationServiceTest {
         service = new SignalValidationService(
                 newsShieldClient, killZoneService, riskRuleService,
                 positionSizeService, confirmationService,
-                futuresContractService, new SimpleMeterRegistry());
+                futuresContractService, cryptoRiskValidator, cryptoMarketHours,
+                new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "signalExpirySeconds", 300);
         lenient().when(confirmationService.confirm(any())).thenReturn(NO_OP_CONFIRMATION);
+        lenient().when(cryptoMarketHours.shouldTrade(any())).thenReturn(true);
     }
 
     private TradeSignal freshSignal() {
@@ -305,5 +315,95 @@ class SignalValidationServiceTest {
 
         assertFalse(result.approved());
         assertTrue(result.rejectionReason().contains("Position size invalid"));
+    }
+
+    // ─── Crypto-specific tests ────────────────────────────────────────────────
+
+    @Test
+    void validate_cryptoSignal_skipsKillZoneAndUsesCryptoMarketHours() {
+        TradeSignal signal = freshSignal();
+        signal.setSymbol("BTC");
+        signal.setExchange("PAXOS");
+        when(newsShieldClient.getMarketStatus("BTC"))
+                .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
+        when(cryptoMarketHours.shouldTrade(any())).thenReturn(true);
+        when(riskRuleService.validateAll(any())).thenReturn(List.of(RuleResult.pass()));
+        when(cryptoRiskValidator.validate(any()))
+                .thenReturn(new CryptoRiskValidator.CryptoValidationResult(true, null));
+        when(positionSizeService.calculatePositionSize(any(), any()))
+                .thenReturn(validSizing(BigDecimal.valueOf(0.0023)));
+
+        ValidationResult result = service.validate(signal);
+
+        assertTrue(result.approved());
+        verify(killZoneService, never()).validate(any());
+        verify(cryptoMarketHours).shouldTrade(any());
+        verify(cryptoRiskValidator).validate(signal);
+    }
+
+    @Test
+    void validate_cryptoSignalLowVolumeHours_rejected() {
+        TradeSignal signal = freshSignal();
+        signal.setSymbol("BTC");
+        signal.setExchange("PAXOS");
+        when(newsShieldClient.getMarketStatus("BTC"))
+                .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
+        when(cryptoMarketHours.shouldTrade(any())).thenReturn(false);
+
+        ValidationResult result = service.validate(signal);
+
+        assertFalse(result.approved());
+        assertTrue(result.rejectionReason().contains("low-volume hours"));
+        verify(cryptoRiskValidator, never()).validate(any());
+    }
+
+    @Test
+    void validate_cryptoRiskValidationFails_rejected() {
+        TradeSignal signal = freshSignal();
+        signal.setSymbol("ETH");
+        signal.setExchange("PAXOS");
+        when(newsShieldClient.getMarketStatus("ETH"))
+                .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
+        when(riskRuleService.validateAll(any())).thenReturn(List.of(RuleResult.pass()));
+        when(cryptoRiskValidator.validate(any()))
+                .thenReturn(new CryptoRiskValidator.CryptoValidationResult(false,
+                        "Crypto stop loss too tight: 1.50% (min 3.0%)"));
+
+        ValidationResult result = service.validate(signal);
+
+        assertFalse(result.approved());
+        assertTrue(result.rejectionReason().contains("too tight"));
+        verify(positionSizeService, never()).calculatePositionSize(any(), any());
+    }
+
+    @Test
+    void validate_cryptoSignalBySymbol_noExchangeSet_detectedAsCrypto() {
+        TradeSignal signal = freshSignal();
+        signal.setSymbol("BTC");
+        signal.setExchange(null);
+        when(newsShieldClient.getMarketStatus("BTC"))
+                .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
+        when(cryptoMarketHours.shouldTrade(any())).thenReturn(true);
+        when(riskRuleService.validateAll(any())).thenReturn(List.of(RuleResult.pass()));
+        when(cryptoRiskValidator.validate(any()))
+                .thenReturn(new CryptoRiskValidator.CryptoValidationResult(true, null));
+        when(positionSizeService.calculatePositionSize(any(), any()))
+                .thenReturn(validSizing(BigDecimal.valueOf(0.001)));
+
+        ValidationResult result = service.validate(signal);
+
+        assertTrue(result.approved());
+        verify(killZoneService, never()).validate(any());
+    }
+
+    @Test
+    void validate_nonCryptoSignal_usesKillZoneNotCryptoMarketHours() {
+        stubAllPass();
+        ValidationResult result = service.validate(freshSignal());
+
+        assertTrue(result.approved());
+        verify(killZoneService).validate(any());
+        verify(cryptoMarketHours, never()).shouldTrade(any());
+        verify(cryptoRiskValidator, never()).validate(any());
     }
 }

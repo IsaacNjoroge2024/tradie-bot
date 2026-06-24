@@ -9,6 +9,8 @@ import com.tradie.strategy.forex.CurrencyPairService;
 import com.tradie.strategy.forex.ForexPipCalculator;
 import com.tradie.strategy.forex.ForexPositionSizer;
 import com.tradie.strategy.forex.dto.ForexPositionSize;
+import com.tradie.strategy.crypto.CryptoPositionSizer;
+import com.tradie.strategy.crypto.dto.CryptoPositionSize;
 import com.tradie.strategy.futures.FuturesPositionSizer;
 import com.tradie.strategy.futures.InsufficientMarginException;
 import com.tradie.strategy.futures.dto.FuturesPositionSize;
@@ -57,6 +59,7 @@ public class PositionSizeService {
     private final ForexPipCalculator forexPipCalculator;
     private final ForexPositionSizer forexPositionSizer;
     private final FuturesPositionSizer futuresPositionSizer;
+    private final CryptoPositionSizer cryptoPositionSizer;
 
     public PositionSizeService(AccountService accountService,
                                 PortfolioHeatService portfolioHeatService,
@@ -67,7 +70,8 @@ public class PositionSizeService {
                                 ObjectMapper objectMapper,
                                 ForexPipCalculator forexPipCalculator,
                                 ForexPositionSizer forexPositionSizer,
-                                FuturesPositionSizer futuresPositionSizer) {
+                                FuturesPositionSizer futuresPositionSizer,
+                                CryptoPositionSizer cryptoPositionSizer) {
         this.accountService = accountService;
         this.portfolioHeatService = portfolioHeatService;
         this.fixedFractionalCalculator = fixedFractionalCalculator;
@@ -78,6 +82,7 @@ public class PositionSizeService {
         this.forexPipCalculator = forexPipCalculator;
         this.forexPositionSizer = forexPositionSizer;
         this.futuresPositionSizer = futuresPositionSizer;
+        this.cryptoPositionSizer = cryptoPositionSizer;
     }
 
     /**
@@ -100,11 +105,22 @@ public class PositionSizeService {
 
         // 3. Calculate base quantity
         BigDecimal quantity = calculateByMethod(method, signal, account, adjustments, assetClass);
-        BigDecimal riskAmount = ("FOREX".equals(assetClass) || "FUTURES".equals(assetClass))
-                ? account.accountValue()
-                        .multiply(BigDecimal.valueOf(riskPerTradePct))
-                        .divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP)
-                : fixedFractionalCalculator.calculateRiskAmount(account.accountValue());
+
+        // Risk amount: for asset classes with custom sizers, use account × riskPerTradePct / 100.
+        // For CRYPTO specifically, compute actual dollar risk as quantity × |entry - stop| so that
+        // portfolio heat reflects the volatility-adjusted (lower) risk, not the full riskPerTradePct.
+        BigDecimal riskAmount;
+        if ("FOREX".equals(assetClass) || "FUTURES".equals(assetClass)) {
+            riskAmount = account.accountValue()
+                    .multiply(BigDecimal.valueOf(riskPerTradePct))
+                    .divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP);
+        } else if ("CRYPTO".equals(assetClass) && signal.getPrice() != null
+                && signal.getStopLoss() != null && quantity.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal priceRisk = signal.getPrice().subtract(signal.getStopLoss()).abs();
+            riskAmount = quantity.multiply(priceRisk).setScale(8, RoundingMode.HALF_UP);
+        } else {
+            riskAmount = fixedFractionalCalculator.calculateRiskAmount(account.accountValue());
+        }
 
         // 4. Portfolio heat adjustment
         quantity = applyHeatAdjustment(quantity, heatBefore, adjustments);
@@ -171,6 +187,11 @@ public class PositionSizeService {
         // Futures uses tick-value sizing regardless of the configured default method
         if ("FUTURES".equals(assetClass)) {
             return calculateFuturesContracts(signal, accountValue, adjustments);
+        }
+
+        // Crypto uses volatility-adjusted sizing regardless of the configured default method
+        if ("CRYPTO".equals(assetClass)) {
+            return calculateCryptoQuantity(signal, accountValue, adjustments);
         }
 
         switch (method) {
@@ -259,6 +280,34 @@ public class PositionSizeService {
         return BigDecimal.valueOf(posSize.contracts());
     }
 
+    private BigDecimal calculateCryptoQuantity(TradeSignal signal, BigDecimal accountValue,
+                                                List<String> adjustments) {
+        String symbol = signal.getSymbol();
+        if (symbol == null || symbol.isBlank()) {
+            adjustments.add("Crypto sizing skipped — blank symbol");
+            return BigDecimal.ZERO;
+        }
+        double balance = accountValue.doubleValue();
+        double entryPrice = signal.getPrice().doubleValue();
+        double stopLossPrice = signal.getStopLoss().doubleValue();
+
+        CryptoPositionSize posSize;
+        try {
+            posSize = cryptoPositionSizer.calculate(symbol, balance, riskPerTradePct,
+                    entryPrice, stopLossPrice);
+        } catch (IllegalArgumentException e) {
+            adjustments.add("Crypto sizing skipped — " + e.getMessage());
+            log.warn("Crypto sizing rejected for {}: {}", symbol, e.getMessage());
+            return BigDecimal.ZERO;
+        }
+
+        adjustments.add(String.format(
+                "Crypto volatility-adjusted sizing: qty=%.8f, notional=%.2f, adjustedRisk=%.2f%%",
+                posSize.quantity(), posSize.notionalValue(), posSize.adjustedRiskPct()));
+
+        return BigDecimal.valueOf(posSize.quantity()).setScale(8, RoundingMode.HALF_UP);
+    }
+
     private BigDecimal applyHeatAdjustment(BigDecimal quantity, double heatBefore,
                                             List<String> adjustments) {
         if (heatBefore >= warningHeatPct && heatBefore < reduceHeatPct) {
@@ -299,7 +348,8 @@ public class PositionSizeService {
         String symbol = signal.getSymbol();
         if (exchange != null) {
             String upper = exchange.toUpperCase();
-            if (upper.contains("CRYPTO") || upper.contains("COINBASE") || upper.contains("BINANCE")) {
+            if (upper.contains("CRYPTO") || upper.contains("COINBASE") || upper.contains("BINANCE")
+                    || upper.equals("PAXOS")) {
                 return "CRYPTO";
             }
             if (upper.contains("FOREX") || upper.contains("FX") || upper.contains("IDEALPRO")) {
@@ -311,6 +361,10 @@ public class PositionSizeService {
             }
         }
         if (symbol != null && !symbol.isBlank()) {
+            String sym = symbol.toUpperCase();
+            if (sym.equals("BTC") || sym.equals("ETH") || sym.equals("LTC") || sym.equals("BCH")) {
+                return "CRYPTO";
+            }
             try {
                 String normalized = CurrencyPairService.normalizePair(symbol);
                 if (symbol.contains("/") || normalized.matches("^[A-Z]{6}$")) {

@@ -7,6 +7,8 @@ import com.tradie.strategy.dto.PositionSizeResult;
 import com.tradie.strategy.forex.ForexPipCalculator;
 import com.tradie.strategy.forex.ForexPositionSizer;
 import com.tradie.strategy.forex.dto.ForexPositionSize;
+import com.tradie.strategy.crypto.CryptoPositionSizer;
+import com.tradie.strategy.crypto.dto.CryptoPositionSize;
 import com.tradie.strategy.futures.FuturesPositionSizer;
 import com.tradie.strategy.futures.InsufficientMarginException;
 import com.tradie.strategy.futures.dto.FuturesPositionSize;
@@ -57,6 +59,9 @@ class PositionSizeServiceTest {
     @Mock
     private FuturesPositionSizer futuresPositionSizer;
 
+    @Mock
+    private CryptoPositionSizer cryptoPositionSizer;
+
     private PositionSizeService service;
 
     private static final AccountInfo DEFAULT_ACCOUNT = new AccountInfo(
@@ -68,7 +73,8 @@ class PositionSizeServiceTest {
         service = new PositionSizeService(
                 accountService, portfolioHeatService, fixedFractionalCalculator,
                 kellyCriterionCalculator, atrCalculator, correlationAdjuster,
-                new ObjectMapper(), forexPipCalculator, forexPositionSizer, futuresPositionSizer);
+                new ObjectMapper(), forexPipCalculator, forexPositionSizer, futuresPositionSizer,
+                cryptoPositionSizer);
 
         ReflectionTestUtils.setField(service, "defaultSizingMethod", "FIXED_FRACTIONAL");
         ReflectionTestUtils.setField(service, "riskPerTradePct", 2.0);
@@ -196,17 +202,56 @@ class PositionSizeServiceTest {
     }
 
     @Test
-    void calculatePositionSize_cryptoExchange_allowsFractionalQuantity() {
+    void calculatePositionSize_cryptoExchange_usesCryptoPositionSizerAndReturnsFractional() {
         TradeSignal signal = buildSignal();
-        signal.setExchange("CRYPTO");
+        signal.setExchange("PAXOS");
         signal.setSymbol("BTC");
-        when(fixedFractionalCalculator.calculate(any(), any(), any()))
-                .thenReturn(BigDecimal.valueOf(0.00123456));
+        signal.setPrice(BigDecimal.valueOf(42500.00));
+        signal.setStopLoss(BigDecimal.valueOf(40375.00));
+        signal.setTakeProfit(BigDecimal.valueOf(46750.00));
+
+        CryptoPositionSize cryptoSize = new CryptoPositionSize(0.00093, 39.53, 67.0, 0.67, "BTC");
+        when(cryptoPositionSizer.calculate(eq("BTC"), eq(10000.0), eq(2.0), eq(42500.0), eq(40375.0)))
+                .thenReturn(cryptoSize);
 
         PositionSizeResult result = service.calculatePositionSize(signal, BigDecimal.ONE);
 
         assertTrue(result.valid());
+        assertEquals("CRYPTO", result.assetClass());
         assertTrue(result.quantity().compareTo(BigDecimal.ZERO) > 0);
+        verify(cryptoPositionSizer).calculate(eq("BTC"), eq(10000.0), eq(2.0), eq(42500.0), eq(40375.0));
+        verify(fixedFractionalCalculator, never()).calculate(any(), any(), any());
+    }
+
+    @Test
+    void calculatePositionSize_cryptoSymbolWithPaxosExchange_detectsAsCrypto() {
+        TradeSignal signal = buildSignal();
+        signal.setExchange("PAXOS");
+        signal.setSymbol("ETH");
+
+        CryptoPositionSize cryptoSize = new CryptoPositionSize(0.05, 100.0, 57.14, 0.57, "ETH");
+        when(cryptoPositionSizer.calculate(eq("ETH"), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(cryptoSize);
+
+        PositionSizeResult result = service.calculatePositionSize(signal, BigDecimal.ONE);
+
+        assertEquals("CRYPTO", result.assetClass());
+        verify(cryptoPositionSizer).calculate(eq("ETH"), anyDouble(), anyDouble(), anyDouble(), anyDouble());
+    }
+
+    @Test
+    void calculatePositionSize_cryptoSizingFails_returnsInvalid() {
+        TradeSignal signal = buildSignal();
+        signal.setExchange("PAXOS");
+        signal.setSymbol("XRP");
+
+        when(cryptoPositionSizer.calculate(anyString(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenThrow(new IllegalArgumentException("Unsupported crypto symbol: XRP"));
+
+        PositionSizeResult result = service.calculatePositionSize(signal, BigDecimal.ONE);
+
+        assertFalse(result.valid());
+        assertTrue(result.adjustments().stream().anyMatch(a -> a.contains("Crypto sizing skipped")));
     }
 
     @Test

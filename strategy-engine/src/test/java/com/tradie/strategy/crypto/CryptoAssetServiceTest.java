@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,7 +36,7 @@ class CryptoAssetServiceTest {
     @Test
     void getAssetSpec_foundInDb_returnsSpec() {
         when(repository.findBySymbolAndAvailableOnIbkrTrue("BTC"))
-                .thenReturn(Optional.of(buildEntity("BTC", "Bitcoin", 0.0001, 0.0001, 2, 3.0)));
+                .thenReturn(Optional.of(buildEntity("BTC", "Bitcoin", "0.0001", "0.0001", 2, 3.0)));
 
         Optional<CryptoAssetSpec> result = service.getAssetSpec("BTC");
 
@@ -57,7 +58,7 @@ class CryptoAssetServiceTest {
     @Test
     void getAssetSpec_lowercaseSymbol_normalizesToUppercase() {
         when(repository.findBySymbolAndAvailableOnIbkrTrue("BTC"))
-                .thenReturn(Optional.of(buildEntity("BTC", "Bitcoin", 0.0001, 0.0001, 2, 3.0)));
+                .thenReturn(Optional.of(buildEntity("BTC", "Bitcoin", "0.0001", "0.0001", 2, 3.0)));
 
         Optional<CryptoAssetSpec> result = service.getAssetSpec("btc");
 
@@ -68,8 +69,8 @@ class CryptoAssetServiceTest {
 
     @Test
     void getAssetSpecOrDefault_foundInDb_returnsDbSpec() {
-        CryptoAsset entity = buildEntity("ETH", "Ethereum", 0.001, 0.001, 2, 3.5);
-        when(repository.findBySymbolAndAvailableOnIbkrTrue("ETH")).thenReturn(Optional.of(entity));
+        CryptoAsset entity = buildEntity("ETH", "Ethereum", "0.001", "0.001", 2, 3.5);
+        when(repository.findById("ETH")).thenReturn(Optional.of(entity));
 
         CryptoAssetSpec result = service.getAssetSpecOrDefault("ETH");
 
@@ -79,22 +80,39 @@ class CryptoAssetServiceTest {
 
     @Test
     void getAssetSpecOrDefault_notInDb_usesBuiltInFallback() {
-        when(repository.findBySymbolAndAvailableOnIbkrTrue(anyString())).thenReturn(Optional.empty());
+        when(repository.findById("BTC")).thenReturn(Optional.empty());
 
         CryptoAssetSpec result = service.getAssetSpecOrDefault("BTC");
 
         assertThat(result.symbol()).isEqualTo("BTC");
-        assertThat(result.minOrderSize()).isEqualTo(0.0001);
+        assertThat(result.minOrderSize()).isEqualByComparingTo(BigDecimal.valueOf(0.0001));
         assertThat(result.volatilityMultiplier()).isEqualTo(3.0);
     }
 
     @Test
+    void getAssetSpecOrDefault_disabledInDb_throwsIllegalArgumentException() {
+        CryptoAsset disabled = buildEntity("BTC", "Bitcoin", "0.0001", "0.0001", 2, 3.0);
+        disabled.setAvailableOnIbkr(false);
+        when(repository.findById("BTC")).thenReturn(Optional.of(disabled));
+
+        assertThatThrownBy(() -> service.getAssetSpecOrDefault("BTC"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("disabled");
+    }
+
+    @Test
     void getAssetSpecOrDefault_unknownSymbolNotInDb_throwsIllegalArgumentException() {
-        when(repository.findBySymbolAndAvailableOnIbkrTrue(anyString())).thenReturn(Optional.empty());
+        when(repository.findById("DOGE")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.getAssetSpecOrDefault("DOGE"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("DOGE");
+    }
+
+    @Test
+    void getAssetSpecOrDefault_nullSymbol_throwsNullPointerException() {
+        assertThatThrownBy(() -> service.getAssetSpecOrDefault(null))
+                .isInstanceOf(NullPointerException.class);
     }
 
     // ─── getAvailableAssets ───────────────────────────────────────────────────
@@ -102,8 +120,8 @@ class CryptoAssetServiceTest {
     @Test
     void getAvailableAssets_returnsMappedSpecs() {
         when(repository.findByAvailableOnIbkrTrue()).thenReturn(List.of(
-                buildEntity("BTC", "Bitcoin", 0.0001, 0.0001, 2, 3.0),
-                buildEntity("ETH", "Ethereum", 0.001, 0.001, 2, 3.5)
+                buildEntity("BTC", "Bitcoin", "0.0001", "0.0001", 2, 3.0),
+                buildEntity("ETH", "Ethereum", "0.001",  "0.001",  2, 3.5)
         ));
 
         List<CryptoAssetSpec> result = service.getAvailableAssets();
@@ -119,8 +137,8 @@ class CryptoAssetServiceTest {
     void getBuiltInSpec_btc_returnsCorrectSpec() {
         CryptoAssetSpec spec = service.getBuiltInSpec("BTC");
         assertThat(spec.symbol()).isEqualTo("BTC");
-        assertThat(spec.minOrderSize()).isEqualTo(0.0001);
-        assertThat(spec.sizeIncrement()).isEqualTo(0.0001);
+        assertThat(spec.minOrderSize()).isEqualByComparingTo(BigDecimal.valueOf(0.0001));
+        assertThat(spec.sizeIncrement()).isEqualByComparingTo(BigDecimal.valueOf(0.0001));
         assertThat(spec.volatilityMultiplier()).isEqualTo(3.0);
         assertThat(spec.availableOnIbkr()).isTrue();
     }
@@ -129,14 +147,14 @@ class CryptoAssetServiceTest {
     void getBuiltInSpec_eth_returnsCorrectSpec() {
         CryptoAssetSpec spec = service.getBuiltInSpec("ETH");
         assertThat(spec.volatilityMultiplier()).isEqualTo(3.5);
-        assertThat(spec.minOrderSize()).isEqualTo(0.001);
+        assertThat(spec.minOrderSize()).isEqualByComparingTo(BigDecimal.valueOf(0.001));
     }
 
     @Test
     void getBuiltInSpec_ltc_returnsCorrectSpec() {
         CryptoAssetSpec spec = service.getBuiltInSpec("LTC");
         assertThat(spec.volatilityMultiplier()).isEqualTo(4.0);
-        assertThat(spec.minOrderSize()).isEqualTo(0.01);
+        assertThat(spec.minOrderSize()).isEqualByComparingTo(BigDecimal.valueOf(0.01));
     }
 
     @Test
@@ -159,16 +177,22 @@ class CryptoAssetServiceTest {
                 .hasMessageContaining("SHIB");
     }
 
+    @Test
+    void getBuiltInSpec_nullSymbol_throwsNullPointerException() {
+        assertThatThrownBy(() -> service.getBuiltInSpec(null))
+                .isInstanceOf(NullPointerException.class);
+    }
+
     // ─── Helper ───────────────────────────────────────────────────────────────
 
-    private CryptoAsset buildEntity(String symbol, String name, double minOrderSize,
-                                     double sizeIncrement, int pricePrecision,
+    private CryptoAsset buildEntity(String symbol, String name, String minOrderSize,
+                                     String sizeIncrement, int pricePrecision,
                                      double volatilityMultiplier) {
         CryptoAsset asset = new CryptoAsset();
         asset.setSymbol(symbol);
         asset.setName(name);
-        asset.setMinOrderSize(minOrderSize);
-        asset.setSizeIncrement(sizeIncrement);
+        asset.setMinOrderSize(new BigDecimal(minOrderSize));
+        asset.setSizeIncrement(new BigDecimal(sizeIncrement));
         asset.setPricePrecision(pricePrecision);
         asset.setVolatilityMultiplier(volatilityMultiplier);
         asset.setAvailableOnIbkr(true);

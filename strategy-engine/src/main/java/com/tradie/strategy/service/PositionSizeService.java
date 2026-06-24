@@ -106,18 +106,15 @@ public class PositionSizeService {
         // 3. Calculate base quantity
         BigDecimal quantity = calculateByMethod(method, signal, account, adjustments, assetClass);
 
-        // Risk amount: for asset classes with custom sizers, use account × riskPerTradePct / 100.
-        // For CRYPTO specifically, compute actual dollar risk as quantity × |entry - stop| so that
-        // portfolio heat reflects the volatility-adjusted (lower) risk, not the full riskPerTradePct.
+        // For non-CRYPTO, compute risk amount before adjustments.
+        // CRYPTO risk is recomputed after all quantity adjustments so it reflects the final scaled quantity.
         BigDecimal riskAmount;
         if ("FOREX".equals(assetClass) || "FUTURES".equals(assetClass)) {
             riskAmount = account.accountValue()
                     .multiply(BigDecimal.valueOf(riskPerTradePct))
                     .divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP);
-        } else if ("CRYPTO".equals(assetClass) && signal.getPrice() != null
-                && signal.getStopLoss() != null && quantity.compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal priceRisk = signal.getPrice().subtract(signal.getStopLoss()).abs();
-            riskAmount = quantity.multiply(priceRisk).setScale(8, RoundingMode.HALF_UP);
+        } else if ("CRYPTO".equals(assetClass)) {
+            riskAmount = BigDecimal.ZERO; // recomputed after adjustments below
         } else {
             riskAmount = fixedFractionalCalculator.calculateRiskAmount(account.accountValue());
         }
@@ -133,6 +130,14 @@ public class PositionSizeService {
                 && sizeAdjustmentFactor.compareTo(BigDecimal.ONE) != 0) {
             quantity = quantity.multiply(sizeAdjustmentFactor).setScale(8, RoundingMode.HALF_UP);
             adjustments.add("Risk rule size adjustment: factor " + sizeAdjustmentFactor);
+        }
+
+        // For CRYPTO, compute actual dollar risk from the final adjusted quantity so that
+        // portfolio heat reflects the volatility-reduced size after all scaling has been applied.
+        if ("CRYPTO".equals(assetClass) && signal.getPrice() != null
+                && signal.getStopLoss() != null && quantity.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal priceRisk = signal.getPrice().subtract(signal.getStopLoss()).abs();
+            riskAmount = quantity.multiply(priceRisk).setScale(8, RoundingMode.HALF_UP);
         }
 
         // 7. Validate minimum before lot-size floor so true zero is preserved

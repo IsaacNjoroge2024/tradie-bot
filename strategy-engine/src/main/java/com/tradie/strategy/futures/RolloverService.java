@@ -10,6 +10,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -30,13 +32,16 @@ public class RolloverService {
     private final FuturesContractRepository repository;
     private final FuturesProperties futuresProperties;
     private final OrderPublisher orderPublisher;
+    private final Clock clock;
 
     public RolloverService(FuturesContractRepository repository,
                             FuturesProperties futuresProperties,
-                            OrderPublisher orderPublisher) {
+                            OrderPublisher orderPublisher,
+                            Clock clock) {
         this.repository = repository;
         this.futuresProperties = futuresProperties;
         this.orderPublisher = orderPublisher;
+        this.clock = clock;
     }
 
     /**
@@ -48,12 +53,12 @@ public class RolloverService {
     public List<RolloverAlert> checkForUpcomingRollovers(int daysAhead) {
         List<FuturesContract> actives = repository.findByActiveTrue();
         List<RolloverAlert> alerts = new ArrayList<>();
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(clock);
 
         for (FuturesContract contract : actives) {
             if (contract.getExpirationDate() == null) continue;
-            LocalDate rollDate = contract.getExpirationDate()
-                    .minusDays(futuresProperties.getDefaultRolloverDays());
+            LocalDate rollDate = minusBusinessDays(contract.getExpirationDate(),
+                    futuresProperties.getDefaultRolloverDays());
             long daysToRoll = ChronoUnit.DAYS.between(today, rollDate);
 
             if (daysToRoll >= 0 && daysToRoll <= daysAhead) {
@@ -83,10 +88,23 @@ public class RolloverService {
         return repository.findById(fullSymbol)
                 .map(contract -> {
                     if (contract.getExpirationDate() == null) return false;
-                    LocalDate rollDate = contract.getExpirationDate()
-                            .minusDays(futuresProperties.getDefaultRolloverDays());
-                    return !LocalDate.now().isBefore(rollDate);
+                    LocalDate rollDate = minusBusinessDays(contract.getExpirationDate(),
+                            futuresProperties.getDefaultRolloverDays());
+                    return !LocalDate.now(clock).isBefore(rollDate);
                 })
+                .orElse(false);
+    }
+
+    /**
+     * Returns true if the front-month contract for the given root symbol has reached or passed
+     * its rollover date. Use this when the caller has a root symbol (e.g., "ES") rather than a
+     * full contract symbol (e.g., "ESM5").
+     *
+     * @param rootSymbol root futures symbol (e.g., "ES")
+     */
+    public boolean shouldRollByRootSymbol(String rootSymbol) {
+        return repository.findBySymbolAndActiveTrueAndFrontMonthTrue(rootSymbol)
+                .map(c -> shouldRoll(c.getFullSymbol()))
                 .orElse(false);
     }
 
@@ -121,6 +139,19 @@ public class RolloverService {
             log.info("Rollover alert published: {} → {} in {} day(s)",
                     alert.currentContract(), alert.nextContract(), alert.daysRemaining());
         }
+    }
+
+    private LocalDate minusBusinessDays(LocalDate date, int businessDays) {
+        LocalDate d = date;
+        int remaining = businessDays;
+        while (remaining > 0) {
+            d = d.minusDays(1);
+            DayOfWeek dow = d.getDayOfWeek();
+            if (dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY) {
+                remaining--;
+            }
+        }
+        return d;
     }
 
     private String findNextContractSymbol(FuturesContract current) {

@@ -58,7 +58,7 @@ class FuturesContractServiceTest {
 
     @Test
     void getFrontMonthContract_found_returnsSpec() {
-        when(repository.findBySymbolAndFrontMonthTrue("ES"))
+        when(repository.findBySymbolAndActiveTrueAndFrontMonthTrue("ES"))
                 .thenReturn(Optional.of(buildContract("ESM5", "ES", "202506")));
 
         Optional<FuturesSpec> result = service.getFrontMonthContract("ES");
@@ -69,7 +69,7 @@ class FuturesContractServiceTest {
 
     @Test
     void getFrontMonthContract_notFound_returnsEmpty() {
-        when(repository.findBySymbolAndFrontMonthTrue("UNKNOWN")).thenReturn(Optional.empty());
+        when(repository.findBySymbolAndActiveTrueAndFrontMonthTrue("UNKNOWN")).thenReturn(Optional.empty());
 
         assertThat(service.getFrontMonthContract("UNKNOWN")).isEmpty();
     }
@@ -130,6 +130,15 @@ class FuturesContractServiceTest {
         when(repository.findById("UNKNOWN")).thenReturn(Optional.empty());
 
         assertThat(service.isNearExpiration("UNKNOWN", 8)).isFalse();
+    }
+
+    @Test
+    void isNearExpiration_expiresExactlyAtThreshold_returnsTrue() {
+        FuturesContract contract = buildContract("ESM5", "ES", "202506");
+        contract.setExpirationDate(LocalDate.now().plusDays(8));
+        when(repository.findById("ESM5")).thenReturn(Optional.of(contract));
+
+        assertThat(service.isNearExpiration("ESM5", 8)).isTrue();
     }
 
     @Test

@@ -43,9 +43,10 @@ public class FuturesPositionSizer {
                                           double stopLossPrice) {
         FuturesSpec spec = contractService.getFrontMonthContract(symbol)
                 .orElseGet(() -> {
-                    log.warn("No front-month contract found for {}, using built-in spec", symbol);
+                    log.warn("No front-month contract found for {}, trying built-in spec", symbol);
                     return getBuiltInSpec(symbol);
                 });
+        validateSpec(spec, symbol);
 
         double riskAmount = accountBalance * (riskPercentage / 100.0);
         double priceDistance = Math.abs(entryPrice - stopLossPrice);
@@ -89,7 +90,16 @@ public class FuturesPositionSizer {
             case "MNQ" -> new FuturesSpec("MNQ", "MNQ", null, "CME",     2.0, 0.25,  0.50, null,  1800.0,  1620.0);
             case "CL"  -> new FuturesSpec("CL",  "CL",  null, "NYMEX", 1000.0, 0.01, 10.00, null,  8000.0,  7200.0);
             case "GC"  -> new FuturesSpec("GC",  "GC",  null, "COMEX",  100.0, 0.10, 10.00, null, 10000.0,  9000.0);
-            default    -> new FuturesSpec(symbol, symbol, null, "CME",   50.0, 0.25, 12.50, null, 12000.0, 10800.0);
+            default    -> throw new IllegalArgumentException("Unsupported futures symbol: " + symbol);
         };
+    }
+
+    private void validateSpec(FuturesSpec spec, String symbol) {
+        if (!Double.isFinite(spec.multiplier()) || spec.multiplier() <= 0
+                || !Double.isFinite(spec.tickSize()) || spec.tickSize() <= 0
+                || !Double.isFinite(spec.tickValue()) || spec.tickValue() <= 0
+                || !Double.isFinite(spec.initialMargin()) || spec.initialMargin() <= 0) {
+            throw new IllegalStateException("Invalid futures spec for symbol: " + symbol);
+        }
     }
 }

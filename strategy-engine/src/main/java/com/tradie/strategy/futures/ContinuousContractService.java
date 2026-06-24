@@ -76,9 +76,9 @@ public class ContinuousContractService {
         // rolloverRatios[i] = new_contract_price / old_contract_price at rollover i.
         double cumulativeRatio = 1.0;
         for (int i = n - 2; i >= 0; i--) {
-            if (rolloverRatios[i] <= 0) {
+            if (!Double.isFinite(rolloverRatios[i]) || rolloverRatios[i] <= 0) {
                 throw new IllegalArgumentException(
-                        "Rollover ratio at index " + i + " must be positive, got: " + rolloverRatios[i]);
+                        "Rollover ratio at index " + i + " must be a finite positive number, got: " + rolloverRatios[i]);
             }
             cumulativeRatio *= rolloverRatios[i];
             factors[i] = cumulativeRatio;

@@ -127,9 +127,10 @@ public class PositionSizeService {
         }
         if (!valid) {
             adjustments.add("Position size fell to zero after all adjustments");
+            riskAmount = BigDecimal.ZERO;
         }
 
-        double riskPct = account.accountValue().compareTo(BigDecimal.ZERO) > 0
+        double riskPct = valid && account.accountValue().compareTo(BigDecimal.ZERO) > 0
                 ? riskAmount.divide(account.accountValue(), 4, RoundingMode.HALF_UP)
                             .multiply(BigDecimal.valueOf(100)).doubleValue()
                 : 0.0;
@@ -244,6 +245,10 @@ public class PositionSizeService {
         } catch (InsufficientMarginException e) {
             adjustments.add("Futures margin validation failed: " + e.getMessage());
             log.warn("Insufficient margin for futures position {}: {}", symbol, e.getMessage());
+            return BigDecimal.ZERO;
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            adjustments.add("Futures sizing rejected — " + e.getMessage());
+            log.warn("Futures sizing rejected for {}: {}", symbol, e.getMessage());
             return BigDecimal.ZERO;
         }
 

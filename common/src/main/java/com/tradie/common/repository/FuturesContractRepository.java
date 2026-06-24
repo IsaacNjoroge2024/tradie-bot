@@ -10,7 +10,7 @@ public interface FuturesContractRepository extends JpaRepository<FuturesContract
 
     List<FuturesContract> findBySymbolAndActiveTrue(String symbol);
 
-    Optional<FuturesContract> findBySymbolAndFrontMonthTrue(String symbol);
+    Optional<FuturesContract> findBySymbolAndActiveTrueAndFrontMonthTrue(String symbol);
 
     List<FuturesContract> findByActiveTrue();
 }

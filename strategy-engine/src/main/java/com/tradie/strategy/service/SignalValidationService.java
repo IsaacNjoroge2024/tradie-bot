@@ -189,7 +189,9 @@ public class SignalValidationService {
     }
 
     private String resolveContractMonth(String symbol, String assetClass) {
-        if (!"FUTURES".equals(assetClass)) return null;
+        if (assetClass == null) return null;
+        String normalized = assetClass.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!"FUTURES".equals(normalized) && !"FUT".equals(normalized)) return null;
         return futuresContractService.getFrontMonthContract(symbol)
                 .map(FuturesSpec::contractMonth)
                 .orElse(null);

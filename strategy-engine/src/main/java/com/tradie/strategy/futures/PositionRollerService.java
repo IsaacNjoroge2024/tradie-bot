@@ -103,9 +103,10 @@ public class PositionRollerService {
      * @return list of open futures positions eligible for rollover
      */
     public List<Position> findPositionsDueToRoll() {
+        // Position.symbol holds root symbols (e.g., "ES"), so resolve via root-symbol lookup
         return positionRepository.findByStatus(Position.PositionStatus.OPEN).stream()
                 .filter(p -> "FUTURES".equalsIgnoreCase(p.getAssetClass()))
-                .filter(p -> rolloverService.shouldRoll(p.getSymbol()))
+                .filter(p -> rolloverService.shouldRollByRootSymbol(p.getSymbol()))
                 .toList();
     }
 }

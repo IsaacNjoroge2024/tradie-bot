@@ -43,10 +43,10 @@ public class FuturesContract {
     private LocalDate expirationDate;
 
     @Column(name = "initial_margin")
-    private double initialMargin;
+    private Double initialMargin;
 
     @Column(name = "maintenance_margin")
-    private double maintenanceMargin;
+    private Double maintenanceMargin;
 
     @Column(name = "is_active")
     private boolean active = true;
@@ -86,11 +86,11 @@ public class FuturesContract {
     public LocalDate getExpirationDate() { return expirationDate; }
     public void setExpirationDate(LocalDate expirationDate) { this.expirationDate = expirationDate; }
 
-    public double getInitialMargin() { return initialMargin; }
-    public void setInitialMargin(double initialMargin) { this.initialMargin = initialMargin; }
+    public Double getInitialMargin() { return initialMargin; }
+    public void setInitialMargin(Double initialMargin) { this.initialMargin = initialMargin; }
 
-    public double getMaintenanceMargin() { return maintenanceMargin; }
-    public void setMaintenanceMargin(double maintenanceMargin) { this.maintenanceMargin = maintenanceMargin; }
+    public Double getMaintenanceMargin() { return maintenanceMargin; }
+    public void setMaintenanceMargin(Double maintenanceMargin) { this.maintenanceMargin = maintenanceMargin; }
 
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }

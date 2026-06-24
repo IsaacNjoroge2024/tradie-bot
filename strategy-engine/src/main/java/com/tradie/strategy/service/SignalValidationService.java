@@ -4,6 +4,8 @@ import com.tradie.common.entity.Order;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.strategy.client.NewsShieldClient;
 import com.tradie.strategy.dto.*;
+import com.tradie.strategy.crypto.CryptoMarketHours;
+import com.tradie.strategy.crypto.CryptoRiskValidator;
 import com.tradie.strategy.futures.FuturesContractService;
 import com.tradie.strategy.futures.dto.FuturesSpec;
 import io.micrometer.core.instrument.Counter;
@@ -20,6 +22,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class SignalValidationService {
@@ -32,6 +35,10 @@ public class SignalValidationService {
     private final PositionSizeService positionSizeService;
     private final SignalConfirmationService confirmationService;
     private final FuturesContractService futuresContractService;
+    private final CryptoRiskValidator cryptoRiskValidator;
+    private final CryptoMarketHours cryptoMarketHours;
+
+    private static final Set<String> CRYPTO_SYMBOLS = Set.of("BTC", "ETH", "LTC", "BCH");
 
     private final Counter receivedCounter;
     private final Counter validatedCounter;
@@ -48,6 +55,8 @@ public class SignalValidationService {
             PositionSizeService positionSizeService,
             SignalConfirmationService confirmationService,
             FuturesContractService futuresContractService,
+            CryptoRiskValidator cryptoRiskValidator,
+            CryptoMarketHours cryptoMarketHours,
             MeterRegistry meterRegistry) {
         this.newsShieldClient = newsShieldClient;
         this.killZoneService = killZoneService;
@@ -55,6 +64,8 @@ public class SignalValidationService {
         this.positionSizeService = positionSizeService;
         this.confirmationService = confirmationService;
         this.futuresContractService = futuresContractService;
+        this.cryptoRiskValidator = cryptoRiskValidator;
+        this.cryptoMarketHours = cryptoMarketHours;
         this.meterRegistry = meterRegistry;
 
         this.receivedCounter  = Counter.builder("tradie.signals.received").register(meterRegistry);
@@ -87,13 +98,19 @@ public class SignalValidationService {
             warnings.add("News Shield unavailable - proceeding with caution");
         }
 
-        // Step 3: Kill zone timing
-        KillZoneService.KillZoneResult kz = killZoneService.validate(signal);
-        if (!kz.allowed()) {
-            return reject(signal, kz.reason());
-        }
-        if (kz.warning() != null) {
-            warnings.add(kz.warning());
+        // Step 3: Kill zone timing — skipped for crypto (24/7 market); low-volume check applied instead
+        if (isCryptoSignal(signal)) {
+            if (!cryptoMarketHours.shouldTrade(Instant.now())) {
+                return reject(signal, "Crypto: low-volume hours, skipping trade");
+            }
+        } else {
+            KillZoneService.KillZoneResult kz = killZoneService.validate(signal);
+            if (!kz.allowed()) {
+                return reject(signal, kz.reason());
+            }
+            if (kz.warning() != null) {
+                warnings.add(kz.warning());
+            }
         }
 
         // Step 4: Risk rules
@@ -106,6 +123,14 @@ public class SignalValidationService {
             if (rr.sizeAdjustmentFactor().isPresent()) {
                 sizeAdjustment = sizeAdjustment.multiply(rr.sizeAdjustmentFactor().get());
                 warnings.add("Position size reduced by factor " + rr.sizeAdjustmentFactor().get());
+            }
+        }
+
+        // Step 4.5: Crypto-specific risk validation
+        if (isCryptoSignal(signal)) {
+            CryptoRiskValidator.CryptoValidationResult cryptoResult = cryptoRiskValidator.validate(signal);
+            if (!cryptoResult.allowed()) {
+                return reject(signal, cryptoResult.reason());
             }
         }
 
@@ -195,6 +220,16 @@ public class SignalValidationService {
         return futuresContractService.getFrontMonthContract(symbol)
                 .map(FuturesSpec::contractMonth)
                 .orElse(null);
+    }
+
+    private boolean isCryptoSignal(TradeSignal signal) {
+        String exchange = signal.getExchange();
+        if (exchange != null) {
+            String upper = exchange.toUpperCase();
+            if (upper.contains("CRYPTO") || upper.equals("PAXOS")) return true;
+        }
+        String symbol = signal.getSymbol();
+        return symbol != null && CRYPTO_SYMBOLS.contains(symbol.toUpperCase());
     }
 
     private ValidationResult reject(TradeSignal signal, String reason) {

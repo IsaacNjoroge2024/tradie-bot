@@ -307,6 +307,26 @@ VALUES
     ('GCQ6',  'GC',  '202608', 'COMEX',  100.0, 0.10, 10.00, '2026-07-29', 10000.0,  9000.0, TRUE, TRUE)
 ON CONFLICT (full_symbol) DO NOTHING;
 
+-- ===========================================
+-- Crypto Assets Reference Data (Ticket 17)
+-- ===========================================
+CREATE TABLE IF NOT EXISTS crypto_assets (
+    symbol                VARCHAR(10)       PRIMARY KEY,
+    name                  VARCHAR(50),
+    min_order_size        DOUBLE PRECISION  NOT NULL,
+    size_increment        DOUBLE PRECISION  NOT NULL,
+    price_precision       INT               NOT NULL,
+    volatility_multiplier DOUBLE PRECISION  NOT NULL DEFAULT 3.0,
+    available_on_ibkr     BOOLEAN           NOT NULL DEFAULT TRUE
+);
+
+INSERT INTO crypto_assets (symbol, name, min_order_size, size_increment, price_precision, volatility_multiplier, available_on_ibkr) VALUES
+('BTC', 'Bitcoin',      0.0001, 0.0001, 2, 3.0, TRUE),
+('ETH', 'Ethereum',     0.001,  0.001,  2, 3.5, TRUE),
+('LTC', 'Litecoin',     0.01,   0.01,   2, 4.0, TRUE),
+('BCH', 'Bitcoin Cash', 0.001,  0.001,  2, 4.0, TRUE)
+ON CONFLICT (symbol) DO NOTHING;
+
 INSERT INTO system_config (key, value, description) VALUES
 ('risk_management', '{
     "max_risk_per_trade_pct": 2.0,

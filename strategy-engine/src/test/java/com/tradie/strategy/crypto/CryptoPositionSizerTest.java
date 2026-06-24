@@ -8,10 +8,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.data.Offset.offset;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -22,11 +23,13 @@ class CryptoPositionSizerTest {
 
     private CryptoPositionSizer sizer;
 
-    private static final CryptoAssetSpec BTC_SPEC =
-            new CryptoAssetSpec("BTC", "Bitcoin", 0.0001, 0.0001, 2, 3.0, true);
+    private static final CryptoAssetSpec BTC_SPEC = new CryptoAssetSpec(
+            "BTC", "Bitcoin",
+            BigDecimal.valueOf(0.0001), BigDecimal.valueOf(0.0001), 2, 3.0, true);
 
-    private static final CryptoAssetSpec ETH_SPEC =
-            new CryptoAssetSpec("ETH", "Ethereum", 0.001, 0.001, 2, 3.5, true);
+    private static final CryptoAssetSpec ETH_SPEC = new CryptoAssetSpec(
+            "ETH", "Ethereum",
+            BigDecimal.valueOf(0.001), BigDecimal.valueOf(0.001), 2, 3.5, true);
 
     @BeforeEach
     void setUp() {
@@ -73,7 +76,7 @@ class CryptoPositionSizerTest {
         // entry == stop → priceRisk = 0 → falls back to minOrderSize
         CryptoPositionSize result = sizer.calculate("BTC", 10000.0, 2.0, 42500.0, 42500.0);
 
-        assertThat(result.quantity()).isEqualTo(BTC_SPEC.minOrderSize());
+        assertThat(result.quantity()).isEqualTo(BTC_SPEC.minOrderSize().doubleValue());
     }
 
     @Test
@@ -86,12 +89,13 @@ class CryptoPositionSizerTest {
 
         CryptoPositionSize result = sizer.calculate("BTC", 100.0, 2.0, 42500.0, 10000.0);
 
-        assertThat(result.quantity()).isEqualTo(BTC_SPEC.minOrderSize());
+        assertThat(result.quantity()).isEqualTo(BTC_SPEC.minOrderSize().doubleValue());
     }
 
     @Test
     void calculate_notAvailableOnIbkr_throwsIllegalArgumentException() {
-        CryptoAssetSpec unavailable = new CryptoAssetSpec("XYZ", "Unknown", 0.01, 0.01, 2, 3.0, false);
+        CryptoAssetSpec unavailable = new CryptoAssetSpec(
+                "XYZ", "Unknown", BigDecimal.valueOf(0.01), BigDecimal.valueOf(0.01), 2, 3.0, false);
         when(assetService.getAssetSpecOrDefault("XYZ")).thenReturn(unavailable);
 
         assertThatThrownBy(() -> sizer.calculate("XYZ", 10000.0, 2.0, 1000.0, 950.0))
@@ -100,10 +104,19 @@ class CryptoPositionSizerTest {
     }
 
     @Test
+    void calculate_zeroVolatilityMultiplier_throwsIllegalArgumentException() {
+        CryptoAssetSpec badSpec = new CryptoAssetSpec(
+                "BTC", "Bitcoin", BigDecimal.valueOf(0.0001), BigDecimal.valueOf(0.0001), 2, 0.0, true);
+        when(assetService.getAssetSpecOrDefault("BTC")).thenReturn(badSpec);
+
+        assertThatThrownBy(() -> sizer.calculate("BTC", 10000.0, 2.0, 42500.0, 40375.0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("volatilityMultiplier");
+    }
+
+    @Test
     void calculate_largeAccount_scalesPositionCorrectly() {
-        // $100,000 account, 2% risk, BTC volMult=3 → riskAmount=$666.67
-        // entry=42500, stop=40375 → priceRisk=2125
-        // qty = 666.67 / 2125 ≈ 0.3137
+        // $100,000 account should give exactly 10× the qty of $10,000 account
         when(assetService.getAssetSpecOrDefault("BTC")).thenReturn(BTC_SPEC);
 
         CryptoPositionSize small = sizer.calculate("BTC", 10000.0, 2.0, 42500.0, 40375.0);
@@ -116,39 +129,49 @@ class CryptoPositionSizerTest {
 
     @Test
     void roundToIncrement_btcPrecision_roundsDownCorrectly() {
-        assertThat(sizer.roundToIncrement(0.03137, 0.0001)).isCloseTo(0.0313, offset(1e-9));
+        assertThat(sizer.roundToIncrement(0.03137, BigDecimal.valueOf(0.0001)))
+                .isCloseTo(0.0313, offset(1e-9));
     }
 
     @Test
     void roundToIncrement_ethPrecision_roundsDownCorrectly() {
-        assertThat(sizer.roundToIncrement(0.5714, 0.001)).isCloseTo(0.571, offset(1e-9));
+        assertThat(sizer.roundToIncrement(0.5714, BigDecimal.valueOf(0.001)))
+                .isCloseTo(0.571, offset(1e-9));
     }
 
     @Test
     void roundToIncrement_exactMultiple_returnsUnchanged() {
-        assertThat(sizer.roundToIncrement(0.0500, 0.001)).isCloseTo(0.050, offset(1e-9));
+        assertThat(sizer.roundToIncrement(0.0500, BigDecimal.valueOf(0.001)))
+                .isCloseTo(0.050, offset(1e-9));
     }
 
     @Test
     void roundToIncrement_zeroIncrement_returnsQuantityUnchanged() {
-        assertThat(sizer.roundToIncrement(0.123, 0.0)).isEqualTo(0.123);
+        assertThat(sizer.roundToIncrement(0.123, BigDecimal.ZERO)).isEqualTo(0.123);
+    }
+
+    @Test
+    void roundToIncrement_nullIncrement_returnsQuantityUnchanged() {
+        assertThat(sizer.roundToIncrement(0.123, null)).isEqualTo(0.123);
     }
 
     // ─── formatQuantity ───────────────────────────────────────────────────────
 
     @Test
-    void formatQuantity_btc_formatsToTwoDecimals() {
+    void formatQuantity_btc_formatsToFourDecimalPlaces() {
+        // BTC sizeIncrement=0.0001 → 4 decimal places, not 2 (pricePrecision)
         when(assetService.getAssetSpecOrDefault("BTC")).thenReturn(BTC_SPEC);
 
         String formatted = sizer.formatQuantity("BTC", 0.0312);
-        assertThat(formatted).isEqualTo("0.03");
+        assertThat(formatted).isEqualTo("0.0312");
     }
 
     @Test
-    void formatQuantity_eth_formatsToTwoDecimals() {
+    void formatQuantity_eth_formatsToThreeDecimalPlaces() {
+        // ETH sizeIncrement=0.001 → 3 decimal places
         when(assetService.getAssetSpecOrDefault("ETH")).thenReturn(ETH_SPEC);
 
         String formatted = sizer.formatQuantity("ETH", 0.5714);
-        assertThat(formatted).isEqualTo("0.57");
+        assertThat(formatted).isEqualTo("0.571");
     }
 }

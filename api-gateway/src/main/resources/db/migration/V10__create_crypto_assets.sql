@@ -4,13 +4,13 @@
 -- and is used to proportionally reduce position size.
 
 CREATE TABLE IF NOT EXISTS crypto_assets (
-    symbol               VARCHAR(10)       PRIMARY KEY,
-    name                 VARCHAR(50),
-    min_order_size       DOUBLE PRECISION  NOT NULL,
-    size_increment       DOUBLE PRECISION  NOT NULL,
-    price_precision      INT               NOT NULL,
+    symbol                VARCHAR(10)      PRIMARY KEY,
+    name                  VARCHAR(50),
+    min_order_size        NUMERIC(20, 8)   NOT NULL,
+    size_increment        NUMERIC(20, 8)   NOT NULL,
+    price_precision       INT              NOT NULL,
     volatility_multiplier DOUBLE PRECISION NOT NULL DEFAULT 3.0,
-    available_on_ibkr    BOOLEAN           NOT NULL DEFAULT TRUE
+    available_on_ibkr     BOOLEAN          NOT NULL DEFAULT TRUE
 );
 
 INSERT INTO crypto_assets (symbol, name, min_order_size, size_increment, price_precision, volatility_multiplier, available_on_ibkr) VALUES

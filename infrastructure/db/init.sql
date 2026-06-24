@@ -311,13 +311,13 @@ ON CONFLICT (full_symbol) DO NOTHING;
 -- Crypto Assets Reference Data (Ticket 17)
 -- ===========================================
 CREATE TABLE IF NOT EXISTS crypto_assets (
-    symbol                VARCHAR(10)       PRIMARY KEY,
+    symbol                VARCHAR(10)      PRIMARY KEY,
     name                  VARCHAR(50),
-    min_order_size        DOUBLE PRECISION  NOT NULL,
-    size_increment        DOUBLE PRECISION  NOT NULL,
-    price_precision       INT               NOT NULL,
-    volatility_multiplier DOUBLE PRECISION  NOT NULL DEFAULT 3.0,
-    available_on_ibkr     BOOLEAN           NOT NULL DEFAULT TRUE
+    min_order_size        NUMERIC(20, 8)   NOT NULL,
+    size_increment        NUMERIC(20, 8)   NOT NULL,
+    price_precision       INT              NOT NULL,
+    volatility_multiplier DOUBLE PRECISION NOT NULL DEFAULT 3.0,
+    available_on_ibkr     BOOLEAN          NOT NULL DEFAULT TRUE
 );
 
 INSERT INTO crypto_assets (symbol, name, min_order_size, size_increment, price_precision, volatility_multiplier, available_on_ibkr) VALUES

@@ -6,12 +6,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 /**
  * Calculates crypto position sizes with volatility adjustment.
  *
  * <p>Formula: adjustedRiskPct = riskPct / volatilityMultiplier
  * quantity = (accountBalance × adjustedRiskPct / 100) / |entry - stop|
- * quantity is rounded down to the asset's size increment and floored at minOrderSize.
+ * quantity is rounded down to the asset's size increment (using BigDecimal arithmetic
+ * to avoid floating-point precision loss) and floored at minOrderSize.
  */
 @Component
 public class CryptoPositionSizer {
@@ -33,7 +37,8 @@ public class CryptoPositionSizer {
      * @param entryPrice     entry price in USD
      * @param stopLossPrice  stop-loss price in USD
      * @return calculated position size details
-     * @throws IllegalArgumentException if the symbol is not supported on IBKR
+     * @throws IllegalArgumentException if the symbol is not supported on IBKR or has an invalid
+     *                                  volatility multiplier
      */
     public CryptoPositionSize calculate(String symbol, double accountBalance,
                                          double riskPct, double entryPrice, double stopLossPrice) {
@@ -44,6 +49,11 @@ public class CryptoPositionSizer {
         }
 
         double volMultiplier = spec.volatilityMultiplier();
+        if (volMultiplier <= 0) {
+            throw new IllegalArgumentException(
+                    "Invalid volatilityMultiplier for " + symbol + ": " + volMultiplier);
+        }
+
         double adjustedRiskPct = riskPct / volMultiplier;
         double riskAmount = accountBalance * (adjustedRiskPct / 100.0);
 
@@ -51,13 +61,13 @@ public class CryptoPositionSizer {
 
         double quantity;
         if (priceRisk <= 0) {
-            quantity = spec.minOrderSize();
+            quantity = spec.minOrderSize().doubleValue();
         } else {
             quantity = riskAmount / priceRisk;
         }
 
         quantity = roundToIncrement(quantity, spec.sizeIncrement());
-        quantity = Math.max(quantity, spec.minOrderSize());
+        quantity = Math.max(quantity, spec.minOrderSize().doubleValue());
 
         double notionalValue = quantity * entryPrice;
 
@@ -68,18 +78,24 @@ public class CryptoPositionSizer {
     }
 
     /**
-     * Rounds a quantity down to the nearest valid size increment.
+     * Rounds a quantity down to the nearest valid size increment using BigDecimal arithmetic
+     * to avoid floating-point precision loss (e.g., Math.floor(qty / 0.0001) * 0.0001 can
+     * produce trailing binary noise).
      */
-    public double roundToIncrement(double quantity, double increment) {
-        if (increment <= 0) return quantity;
-        return Math.floor(quantity / increment) * increment;
+    public double roundToIncrement(double quantity, BigDecimal increment) {
+        if (increment == null || increment.compareTo(BigDecimal.ZERO) <= 0) return quantity;
+        BigDecimal qty = BigDecimal.valueOf(quantity);
+        BigDecimal quotient = qty.divide(increment, 0, RoundingMode.FLOOR);
+        return quotient.multiply(increment).doubleValue();
     }
 
     /**
-     * Formats a quantity to the precision appropriate for the given symbol.
+     * Formats a quantity to the number of decimal places implied by the asset's size increment.
+     * For example, a sizeIncrement of 0.0001 implies 4 decimal places.
      */
     public String formatQuantity(String symbol, double quantity) {
         CryptoAssetSpec spec = assetService.getAssetSpecOrDefault(symbol);
-        return String.format("%." + spec.pricePrecision() + "f", quantity);
+        int scale = Math.max(spec.sizeIncrement().stripTrailingZeros().scale(), 0);
+        return String.format("%." + scale + "f", quantity);
     }
 }

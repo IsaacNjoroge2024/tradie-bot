@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "crypto_assets")
 public class CryptoAsset {
@@ -16,11 +18,11 @@ public class CryptoAsset {
     @Column(name = "name", length = 50)
     private String name;
 
-    @Column(name = "min_order_size", nullable = false)
-    private double minOrderSize;
+    @Column(name = "min_order_size", nullable = false, precision = 20, scale = 8)
+    private BigDecimal minOrderSize;
 
-    @Column(name = "size_increment", nullable = false)
-    private double sizeIncrement;
+    @Column(name = "size_increment", nullable = false, precision = 20, scale = 8)
+    private BigDecimal sizeIncrement;
 
     @Column(name = "price_precision", nullable = false)
     private int pricePrecision;
@@ -39,11 +41,11 @@ public class CryptoAsset {
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
-    public double getMinOrderSize() { return minOrderSize; }
-    public void setMinOrderSize(double minOrderSize) { this.minOrderSize = minOrderSize; }
+    public BigDecimal getMinOrderSize() { return minOrderSize; }
+    public void setMinOrderSize(BigDecimal minOrderSize) { this.minOrderSize = minOrderSize; }
 
-    public double getSizeIncrement() { return sizeIncrement; }
-    public void setSizeIncrement(double sizeIncrement) { this.sizeIncrement = sizeIncrement; }
+    public BigDecimal getSizeIncrement() { return sizeIncrement; }
+    public void setSizeIncrement(BigDecimal sizeIncrement) { this.sizeIncrement = sizeIncrement; }
 
     public int getPricePrecision() { return pricePrecision; }
     public void setPricePrecision(int pricePrecision) { this.pricePrecision = pricePrecision; }

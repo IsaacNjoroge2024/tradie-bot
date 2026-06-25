@@ -7,8 +7,10 @@ import com.tradie.strategy.dto.MarketStatusResponse;
 import com.tradie.strategy.dto.PositionSizeResult;
 import com.tradie.strategy.dto.RuleResult;
 import com.tradie.strategy.dto.ValidationResult;
+import com.tradie.strategy.crypto.CryptoAssetService;
 import com.tradie.strategy.crypto.CryptoMarketHours;
 import com.tradie.strategy.crypto.CryptoRiskValidator;
+import com.tradie.strategy.crypto.dto.CryptoAssetSpec;
 import com.tradie.strategy.futures.FuturesContractService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,6 +59,9 @@ class SignalValidationServiceTest {
     @Mock
     private CryptoMarketHours cryptoMarketHours;
 
+    @Mock
+    private CryptoAssetService cryptoAssetService;
+
     private SignalValidationService service;
 
     private static final ConfirmationResult NO_OP_CONFIRMATION =
@@ -68,7 +73,7 @@ class SignalValidationServiceTest {
                 newsShieldClient, killZoneService, riskRuleService,
                 positionSizeService, confirmationService,
                 futuresContractService, cryptoRiskValidator, cryptoMarketHours,
-                new SimpleMeterRegistry());
+                cryptoAssetService, new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "signalExpirySeconds", 300);
         lenient().when(confirmationService.confirm(any())).thenReturn(NO_OP_CONFIRMATION);
         lenient().when(cryptoMarketHours.shouldTrade(any())).thenReturn(true);
@@ -381,6 +386,9 @@ class SignalValidationServiceTest {
         TradeSignal signal = freshSignal();
         signal.setSymbol("BTC");
         signal.setExchange(null);
+        when(cryptoAssetService.getAssetSpec("BTC")).thenReturn(Optional.of(
+                new CryptoAssetSpec("BTC", "Bitcoin",
+                        BigDecimal.valueOf(0.0001), BigDecimal.valueOf(0.0001), 2, 3.0, true)));
         when(newsShieldClient.getMarketStatus("BTC"))
                 .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
         when(cryptoMarketHours.shouldTrade(any())).thenReturn(true);

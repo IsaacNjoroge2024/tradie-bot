@@ -4,6 +4,7 @@ import com.tradie.common.entity.Order;
 import com.tradie.common.entity.TradeSignal;
 import com.tradie.strategy.client.NewsShieldClient;
 import com.tradie.strategy.dto.*;
+import com.tradie.strategy.crypto.CryptoAssetService;
 import com.tradie.strategy.crypto.CryptoMarketHours;
 import com.tradie.strategy.crypto.CryptoRiskValidator;
 import com.tradie.strategy.futures.FuturesContractService;
@@ -21,8 +22,8 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
-import java.util.Set;
 
 @Service
 public class SignalValidationService {
@@ -37,8 +38,7 @@ public class SignalValidationService {
     private final FuturesContractService futuresContractService;
     private final CryptoRiskValidator cryptoRiskValidator;
     private final CryptoMarketHours cryptoMarketHours;
-
-    private static final Set<String> CRYPTO_SYMBOLS = Set.of("BTC", "ETH", "LTC", "BCH");
+    private final CryptoAssetService cryptoAssetService;
 
     private final Counter receivedCounter;
     private final Counter validatedCounter;
@@ -57,6 +57,7 @@ public class SignalValidationService {
             FuturesContractService futuresContractService,
             CryptoRiskValidator cryptoRiskValidator,
             CryptoMarketHours cryptoMarketHours,
+            CryptoAssetService cryptoAssetService,
             MeterRegistry meterRegistry) {
         this.newsShieldClient = newsShieldClient;
         this.killZoneService = killZoneService;
@@ -66,6 +67,7 @@ public class SignalValidationService {
         this.futuresContractService = futuresContractService;
         this.cryptoRiskValidator = cryptoRiskValidator;
         this.cryptoMarketHours = cryptoMarketHours;
+        this.cryptoAssetService = cryptoAssetService;
         this.meterRegistry = meterRegistry;
 
         this.receivedCounter  = Counter.builder("tradie.signals.received").register(meterRegistry);
@@ -225,11 +227,11 @@ public class SignalValidationService {
     private boolean isCryptoSignal(TradeSignal signal) {
         String exchange = signal.getExchange();
         if (exchange != null) {
-            String upper = exchange.toUpperCase();
+            String upper = exchange.toUpperCase(Locale.ROOT);
             if (upper.contains("CRYPTO") || upper.equals("PAXOS")) return true;
         }
         String symbol = signal.getSymbol();
-        return symbol != null && CRYPTO_SYMBOLS.contains(symbol.toUpperCase());
+        return symbol != null && cryptoAssetService.getAssetSpec(symbol).isPresent();
     }
 
     private ValidationResult reject(TradeSignal signal, String reason) {

@@ -158,7 +158,7 @@ class CryptoRiskValidatorTest {
 
     @Test
     void validate_underExposureLimit_passes() {
-        // p1 risk = 0.1 × 2125 = $212.50 = 2.125%; pendingBTC ≈ 0.667% → total ≈ 2.79% < 15%
+        // p1 risk = 0.1 × 2125 = $212.50 = 2.125%; pendingETH ≈ 0.571% → total ≈ 2.70% < 15%
         Position p1 = buildCryptoPosition("BTC", 42500, 40375, 0.1);
         when(positionRepository.findByStatus(Position.PositionStatus.OPEN))
                 .thenReturn(List.of(p1));

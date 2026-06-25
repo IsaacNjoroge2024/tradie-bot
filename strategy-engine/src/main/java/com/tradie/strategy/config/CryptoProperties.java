@@ -31,20 +31,22 @@ public class CryptoProperties {
 
         public double getMaxPositionPct() { return maxPositionPct; }
         public void setMaxPositionPct(double maxPositionPct) {
-            if (maxPositionPct <= 0) throw new IllegalArgumentException("maxPositionPct must be > 0");
+            if (maxPositionPct <= 0 || maxPositionPct > 100)
+                throw new IllegalArgumentException("maxPositionPct must be between 0 and 100");
             this.maxPositionPct = maxPositionPct;
         }
 
         public double getMaxTotalExposurePct() { return maxTotalExposurePct; }
         public void setMaxTotalExposurePct(double maxTotalExposurePct) {
-            if (maxTotalExposurePct <= 0)
-                throw new IllegalArgumentException("maxTotalExposurePct must be > 0");
+            if (maxTotalExposurePct <= 0 || maxTotalExposurePct > 100)
+                throw new IllegalArgumentException("maxTotalExposurePct must be between 0 and 100");
             this.maxTotalExposurePct = maxTotalExposurePct;
         }
 
         public double getMinStopLossPct() { return minStopLossPct; }
         public void setMinStopLossPct(double minStopLossPct) {
-            if (minStopLossPct < 0) throw new IllegalArgumentException("minStopLossPct must be >= 0");
+            if (minStopLossPct < 0 || minStopLossPct > 100)
+                throw new IllegalArgumentException("minStopLossPct must be between 0 and 100");
             this.minStopLossPct = minStopLossPct;
         }
     }

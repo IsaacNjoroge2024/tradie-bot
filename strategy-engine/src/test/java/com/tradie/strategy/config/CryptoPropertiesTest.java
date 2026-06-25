@@ -51,6 +51,13 @@ class CryptoPropertiesTest {
     }
 
     @Test
+    void setMaxTotalExposurePct_negative_throws() {
+        assertThatThrownBy(() -> risk.setMaxTotalExposurePct(-1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxTotalExposurePct");
+    }
+
+    @Test
     void setMaxTotalExposurePct_over100_throws() {
         assertThatThrownBy(() -> risk.setMaxTotalExposurePct(150))
                 .isInstanceOf(IllegalArgumentException.class)

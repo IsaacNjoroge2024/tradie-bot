@@ -82,6 +82,7 @@ public class SignalValidationService {
     private ValidationResult doValidate(TradeSignal signal) {
         receivedCounter.increment();
         List<String> warnings = new ArrayList<>();
+        boolean isCrypto = isCryptoSignal(signal);
 
         // Step 1: Expiry check
         if (isExpired(signal)) {
@@ -101,7 +102,7 @@ public class SignalValidationService {
         }
 
         // Step 3: Kill zone timing — skipped for crypto (24/7 market); low-volume check applied instead
-        if (isCryptoSignal(signal)) {
+        if (isCrypto) {
             if (!cryptoMarketHours.shouldTrade(Instant.now())) {
                 return reject(signal, "Crypto: low-volume hours, skipping trade");
             }
@@ -129,7 +130,7 @@ public class SignalValidationService {
         }
 
         // Step 4.5: Crypto-specific risk validation
-        if (isCryptoSignal(signal)) {
+        if (isCrypto) {
             CryptoRiskValidator.CryptoValidationResult cryptoResult = cryptoRiskValidator.validate(signal);
             if (!cryptoResult.allowed()) {
                 return reject(signal, cryptoResult.reason());

@@ -44,7 +44,7 @@ class VectorBTEngine:
         slippage: float = 0.0005,
     ) -> BacktestResult:
         try:
-            return self._run_with_vectorbt(data, signals, initial_cash, fees)
+            return self._run_with_vectorbt(data, signals, initial_cash, fees, slippage)
         except ImportError:
             logger.warning(
                 "vectorbt is not installed; falling back to pandas engine. "
@@ -58,6 +58,7 @@ class VectorBTEngine:
         signals: pd.DataFrame,
         initial_cash: float,
         fees: float,
+        slippage: float,
     ) -> BacktestResult:
         import vectorbt as vbt  # noqa: PLC0415
 
@@ -69,7 +70,7 @@ class VectorBTEngine:
             entries=entries,
             exits=exits,
             init_cash=initial_cash,
-            fees=fees,
+            fees=fees + slippage,
             freq="1D",
         )
 
@@ -87,7 +88,18 @@ class VectorBTEngine:
                 else 0.0
             )
             total_trades = int(len(trades_pnl))
-            trades_df = portfolio.trades.records_readable
+            raw = portfolio.trades.records_readable
+            col_map = {
+                "Entry Timestamp": "entry_time",
+                "Exit Timestamp": "exit_time",
+                "Avg Entry Price": "entry_price",
+                "Avg Exit Price": "exit_price",
+                "PnL": "pnl",
+            }
+            raw = raw.rename(columns=col_map)
+            raw["side"] = raw["Direction"].str.lower() if "Direction" in raw.columns else "long"
+            schema_cols = ["entry_time", "exit_time", "entry_price", "exit_price", "pnl", "side"]
+            trades_df = raw[[c for c in schema_cols if c in raw.columns]]
         except Exception:
             win_rate = 0.0
             profit_factor = 0.0

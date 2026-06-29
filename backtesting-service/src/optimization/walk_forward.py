@@ -91,8 +91,22 @@ class WalkForwardAnalyzer:
                 )
             except Exception as exc:
                 logger.warning(f"Walk-forward period {i + 1} failed: {exc}")
+                period_results.append(
+                    {
+                        "period": i + 1,
+                        "in_sample_bars": len(in_sample),
+                        "out_sample_bars": len(out_sample),
+                        "best_params": {},
+                        "total_return": 0.0,
+                        "sharpe_ratio": 0.0,
+                        "max_drawdown": 0.0,
+                        "total_trades": 0,
+                        "win_rate": 0.0,
+                        "error": str(exc),
+                    }
+                )
 
-        if not period_results:
+        if not any("error" not in r for r in period_results):
             raise ValueError("All walk-forward periods failed")
 
         returns = [r["total_return"] for r in period_results]

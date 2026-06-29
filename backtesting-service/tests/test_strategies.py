@@ -201,8 +201,12 @@ class TestConfluenceStrategy:
 
     def test_allows_fvg_with_rsi_confirmation(self):
         """
-        A bullish FVG should produce a buy signal when RSI < 100 (always true).
+        A bullish FVG should produce a buy signal when RSI <= rsi_buy_threshold.
+        rsi_period=2 ensures the warm-up completes within the 5-bar test dataset;
+        with all-rising prices RSI=100 and threshold=100, so the condition is met.
         """
         data = _make_bullish_fvg_data()
-        result = ConfluenceStrategy(min_gap_atr=0.0, rsi_buy_threshold=100.0).generate_signals(data)
+        result = ConfluenceStrategy(
+            min_gap_atr=0.0, rsi_period=2, rsi_buy_threshold=100.0
+        ).generate_signals(data)
         assert result["signal"].iloc[3] == 1

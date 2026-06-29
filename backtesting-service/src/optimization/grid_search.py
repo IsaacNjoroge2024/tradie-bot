@@ -38,6 +38,8 @@ class GridSearchOptimizer:
     ) -> OptimizationResult:
         if not param_grid:
             raise ValueError("param_grid must not be empty")
+        if optimize_metric not in BacktestMetrics.__dataclass_fields__:
+            raise ValueError(f"Unknown optimize_metric '{optimize_metric}'")
 
         param_names = list(param_grid.keys())
         param_values = list(param_grid.values())
@@ -55,7 +57,7 @@ class GridSearchOptimizer:
                 signals = strategy.generate_signals(data)
                 equity_curve, trades = run_pandas_backtest(data, signals, initial_cash, fees)
                 metrics = calculate_metrics(equity_curve, trades, initial_cash)
-                metric_value = float(getattr(metrics, optimize_metric, 0.0))
+                metric_value = float(getattr(metrics, optimize_metric))
                 results.append(
                     {
                         "params": params,

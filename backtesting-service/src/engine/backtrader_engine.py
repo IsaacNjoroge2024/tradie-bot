@@ -31,6 +31,9 @@ class BacktraderEngine:
         fees: float = 0.001,
         slippage: float = 0.0005,
     ) -> BacktestResult:
+        if data.empty:
+            raise BacktraderEngineError("run_backtest requires non-empty OHLCV data")
+
         try:
             import backtrader as bt  # noqa: PLC0415
         except ImportError:

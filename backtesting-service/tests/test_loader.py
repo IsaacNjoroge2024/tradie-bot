@@ -107,7 +107,7 @@ class TestHistoricalDataLoader:
         mock_db.pool = mock_pool_instance
 
         loader = HistoricalDataLoader(mock_db)
-        with pytest.raises(Exception, match="Connection refused"):
+        with pytest.raises(RuntimeError, match="Failed to load OHLCV data"):
             await loader.load("AAPL", "1D", date(2023, 1, 1), date(2023, 12, 31))
 
     @pytest.mark.asyncio

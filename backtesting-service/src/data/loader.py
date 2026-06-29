@@ -48,7 +48,7 @@ class HistoricalDataLoader:
                 rows = await conn.fetch(query, symbol, timeframe, exchange, start_date, end_date)
         except Exception as e:
             logger.error(f"Failed to load OHLCV data for {symbol}/{timeframe}: {e}")
-            raise
+            raise RuntimeError(f"Failed to load OHLCV data for {symbol}/{timeframe}") from e
 
         if not rows:
             logger.warning(

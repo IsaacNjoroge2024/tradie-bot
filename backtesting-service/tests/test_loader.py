@@ -77,6 +77,26 @@ class TestHistoricalDataLoader:
         assert end in call_args
 
     @pytest.mark.asyncio
+    async def test_exchange_filter_passed_when_specified(self):
+        mock_db, mock_conn = _make_mock_pool(rows=[])
+        loader = HistoricalDataLoader(mock_db)
+        start = date(2023, 1, 1)
+        end = date(2023, 12, 31)
+        await loader.load("AAPL", "1D", start, end, exchange="NASDAQ")
+        mock_conn.fetch.assert_called_once()
+        call_args = mock_conn.fetch.call_args[0]
+        assert "NASDAQ" in call_args
+
+    @pytest.mark.asyncio
+    async def test_exchange_none_when_not_specified(self):
+        mock_db, mock_conn = _make_mock_pool(rows=[])
+        loader = HistoricalDataLoader(mock_db)
+        await loader.load("AAPL", "1D", date(2023, 1, 1), date(2023, 12, 31))
+        call_args = mock_conn.fetch.call_args[0]
+        # None is passed as the exchange param so the SQL NULL check disables the filter
+        assert None in call_args
+
+    @pytest.mark.asyncio
     async def test_propagates_db_error(self):
         mock_conn = AsyncMock()
         mock_conn.fetch = AsyncMock(side_effect=Exception("Connection refused"))

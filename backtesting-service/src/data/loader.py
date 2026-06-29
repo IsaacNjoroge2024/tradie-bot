@@ -20,9 +20,15 @@ class HistoricalDataLoader:
         timeframe: str,
         start_date: date,
         end_date: date,
+        exchange: str | None = None,
     ) -> pd.DataFrame:
         """
         Load OHLCV candles from TimescaleDB.
+
+        Args:
+            exchange: Optional exchange filter. When provided, only candles from that
+                      exchange are returned, preventing merged series for symbols listed
+                      on multiple exchanges. When None, all exchanges are included.
 
         Returns a DataFrame indexed by datetime with columns:
         open, high, low, close, volume
@@ -32,12 +38,14 @@ class HistoricalDataLoader:
             FROM ohlcv
             WHERE symbol = $1
               AND timeframe = $2
-              AND time BETWEEN $3 AND $4
+              AND ($3::text IS NULL OR exchange = $3)
+              AND time >= $4::date
+              AND time < ($5::date + INTERVAL '1 day')
             ORDER BY time ASC
         """
         try:
             async with self._db.pool.acquire() as conn:
-                rows = await conn.fetch(query, symbol, timeframe, start_date, end_date)
+                rows = await conn.fetch(query, symbol, timeframe, exchange, start_date, end_date)
         except Exception as e:
             logger.error(f"Failed to load OHLCV data for {symbol}/{timeframe}: {e}")
             raise
@@ -45,7 +53,7 @@ class HistoricalDataLoader:
         if not rows:
             logger.warning(
                 f"No OHLCV data found for {symbol}/{timeframe} "
-                f"between {start_date} and {end_date}"
+                f"between {start_date} and {end_date}" + (f" on {exchange}" if exchange else "")
             )
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 

@@ -42,6 +42,8 @@ class BacktraderEngine:
         class _SignalStrategy(bt.Strategy):  # type: ignore[misc]
             def __init__(self_s) -> None:  # noqa: N805
                 self_s.equity_values: list[float] = []
+                self_s.closed_trades: list[dict] = []
+                self_s._entry_size: float = 0.0
 
             def next(self_s) -> None:  # noqa: N805
                 self_s.equity_values.append(float(self_s.broker.getvalue()))
@@ -50,6 +52,30 @@ class BacktraderEngine:
                     self_s.buy()
                 elif self_s.position and signal == -1.0:
                     self_s.close()
+
+            def notify_order(self_s, order) -> None:  # noqa: N805
+                if order.status == order.Completed and order.isbuy():
+                    self_s._entry_size = float(order.executed.size)
+
+            def notify_trade(self_s, trade) -> None:  # noqa: N805
+                if not trade.isclosed:
+                    return
+                entry_time = bt.num2date(trade.dtopen)
+                exit_time = bt.num2date(trade.dtclose)
+                entry_price = float(trade.price)
+                size = self_s._entry_size
+                pnl = float(trade.pnlcomm)
+                exit_price = entry_price + float(trade.pnl) / size if size > 0 else entry_price
+                self_s.closed_trades.append(
+                    {
+                        "entry_time": entry_time,
+                        "exit_time": exit_time,
+                        "entry_price": entry_price,
+                        "exit_price": exit_price,
+                        "pnl": pnl,
+                        "side": "long",
+                    }
+                )
 
         # --- Data feed with pre-computed signal line ---
         class _SignalPandasData(bt.feeds.PandasData):  # type: ignore[misc]
@@ -101,6 +127,13 @@ class BacktraderEngine:
             dtype=float,
         )
 
+        _schema = ["entry_time", "exit_time", "entry_price", "exit_price", "pnl", "side"]
+        trades_df = (
+            pd.DataFrame(strat.closed_trades)
+            if strat.closed_trades
+            else pd.DataFrame(columns=_schema)
+        )
+
         return BacktestResult(
             total_return=total_return,
             annualized_return=annualized,
@@ -111,5 +144,5 @@ class BacktraderEngine:
             profit_factor=profit_factor,
             total_trades=total_trades,
             equity_curve=equity_curve,
-            trades=pd.DataFrame(),
+            trades=trades_df,
         )

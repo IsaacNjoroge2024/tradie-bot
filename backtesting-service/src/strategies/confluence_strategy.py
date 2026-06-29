@@ -61,9 +61,13 @@ class ConfluenceStrategy(BaseStrategy):
         delta = prices.diff()
         gain = delta.where(delta > 0, 0.0)
         loss = (-delta).where(delta < 0, 0.0)
-        avg_gain = gain.ewm(span=period, adjust=False).mean()
-        avg_loss = loss.ewm(span=period, adjust=False).mean()
-        # Replace zero avg_loss with NaN so the division yields NaN (not inf),
-        # then fill NaN → 100.0 (no losses at all means fully overbought: RSI = 100).
-        rsi = 100.0 - (100.0 / (1.0 + avg_gain / avg_loss.replace(0, float("nan"))))
-        return rsi.fillna(100.0)
+        avg_gain = gain.ewm(span=period, adjust=False, min_periods=period).mean()
+        avg_loss = loss.ewm(span=period, adjust=False, min_periods=period).mean()
+        rs = avg_gain / avg_loss.replace(0, float("nan"))
+        rsi = 100.0 - (100.0 / (1.0 + rs))
+        # Flat market (no movement): RSI = 50 (neutral), not overbought
+        flat = (avg_gain == 0) & (avg_loss == 0)
+        rsi = rsi.mask(flat, 50.0)
+        # All gains, no losses: RSI = 100 (overbought)
+        rsi = rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0)
+        return rsi

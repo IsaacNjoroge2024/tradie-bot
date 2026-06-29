@@ -51,9 +51,25 @@ client = TestClient(app)
 
 
 def test_health():
+    _setup_app_state()
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy", "service": "backtesting-service"}
+    assert response.json() == {
+        "status": "healthy",
+        "db_connected": True,
+        "service": "backtesting-service",
+    }
+
+
+def test_health_degraded():
+    mock_db = MagicMock(spec=TimescaleDBPool)
+    mock_db.is_connected = False
+    app.state.db_pool = mock_db
+    response = client.get("/health")
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["db_connected"] is False
 
 
 def test_run_backtest_fvg():

@@ -112,7 +112,7 @@ class BacktestReportGenerator:
     """Generates HTML backtest reports with optional matplotlib charts."""
 
     def __init__(self) -> None:
-        self._env = Environment(loader=BaseLoader())
+        self._env = Environment(loader=BaseLoader(), autoescape=True)
         self._template = self._env.from_string(_REPORT_TEMPLATE)
 
     def generate(

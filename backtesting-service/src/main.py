@@ -1,9 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from .config import settings
@@ -61,8 +61,15 @@ app.include_router(backtest.router, prefix="/api", tags=["Backtesting"])
 
 
 @app.get("/health")
-async def health():
-    return {"status": "healthy", "service": "backtesting-service"}
+async def health(request: Request):
+    db_pool: TimescaleDBPool = getattr(request.app.state, "db_pool", None)
+    db_connected = db_pool.is_connected if db_pool is not None else False
+    if db_connected:
+        return {"status": "healthy", "db_connected": True, "service": "backtesting-service"}
+    return JSONResponse(
+        status_code=503,
+        content={"status": "degraded", "db_connected": False, "service": "backtesting-service"},
+    )
 
 
 @app.get("/metrics", include_in_schema=False)

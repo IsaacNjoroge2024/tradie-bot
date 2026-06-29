@@ -26,6 +26,8 @@ from ..strategies.fvg_strategy import FVGStrategy
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+_METRIC_FIELDS: frozenset[str] = frozenset(BacktestMetrics.__dataclass_fields__)
+
 _STRATEGY_REGISTRY: dict = {
     "FVG_Strategy": FVGStrategy,
     "Confluence_Strategy": ConfluenceStrategy,
@@ -42,6 +44,7 @@ class BacktestRequest(BaseModel):
     timeframe: str = "1D"
     start_date: date
     end_date: date
+    exchange: str | None = None
     strategy: str = "FVG_Strategy"
     strategy_params: dict[str, Any] = Field(default_factory=dict)
     initial_cash: float = Field(default=100000.0, gt=0)
@@ -89,6 +92,7 @@ class OptimizationRequest(BaseModel):
     timeframe: str = "1D"
     start_date: date
     end_date: date
+    exchange: str | None = None
     strategy: str = "FVG_Strategy"
     param_grid: dict[str, list]
     initial_cash: float = Field(default=100000.0, gt=0)
@@ -110,6 +114,7 @@ class WalkForwardRequest(BaseModel):
     timeframe: str = "1D"
     start_date: date
     end_date: date
+    exchange: str | None = None
     strategy: str = "FVG_Strategy"
     param_grid: dict[str, list]
     in_sample_pct: float = Field(default=settings.walk_forward_in_sample_pct, gt=0, lt=1)
@@ -131,6 +136,7 @@ class MonteCarloRequest(BaseModel):
     timeframe: str = "1D"
     start_date: date
     end_date: date
+    exchange: str | None = None
     strategy: str = "FVG_Strategy"
     strategy_params: dict[str, Any] = Field(default_factory=dict)
     initial_cash: float = Field(default=100000.0, gt=0)
@@ -172,12 +178,24 @@ def _resolve_strategy_class(name: str):
     return cls
 
 
+def _build_strategy(strategy_class, params: dict[str, Any]):
+    try:
+        return strategy_class(**params)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 async def _load_data(
-    request: Request, symbol: str, timeframe: str, start_date: date, end_date: date
+    request: Request,
+    symbol: str,
+    timeframe: str,
+    start_date: date,
+    end_date: date,
+    exchange: str | None = None,
 ) -> pd.DataFrame:
     loader: HistoricalDataLoader = request.app.state.data_loader
     try:
-        data = await loader.load(symbol, timeframe, start_date, end_date)
+        data = await loader.load(symbol, timeframe, start_date, end_date, exchange)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     if data.empty:
@@ -197,9 +215,11 @@ async def _load_data(
 async def run_backtest(req: BacktestRequest, request: Request) -> BacktestResponse:
     """Run a full backtest for a strategy over the specified period."""
     strategy_class = _resolve_strategy_class(req.strategy)
-    data = await _load_data(request, req.symbol, req.timeframe, req.start_date, req.end_date)
+    data = await _load_data(
+        request, req.symbol, req.timeframe, req.start_date, req.end_date, req.exchange
+    )
 
-    strategy = strategy_class(**req.strategy_params)
+    strategy = _build_strategy(strategy_class, req.strategy_params)
     signals = strategy.generate_signals(data)
 
     if req.engine == "vectorbt":
@@ -232,7 +252,9 @@ async def run_backtest(req: BacktestRequest, request: Request) -> BacktestRespon
 async def optimize_strategy(req: OptimizationRequest, request: Request) -> OptimizationResponse:
     """Exhaustive grid search to find the best strategy parameters."""
     strategy_class = _resolve_strategy_class(req.strategy)
-    data = await _load_data(request, req.symbol, req.timeframe, req.start_date, req.end_date)
+    data = await _load_data(
+        request, req.symbol, req.timeframe, req.start_date, req.end_date, req.exchange
+    )
 
     optimizer = GridSearchOptimizer()
     try:
@@ -261,7 +283,9 @@ async def optimize_strategy(req: OptimizationRequest, request: Request) -> Optim
 async def walk_forward(req: WalkForwardRequest, request: Request) -> WalkForwardResponse:
     """Run walk-forward analysis to validate strategy robustness out-of-sample."""
     strategy_class = _resolve_strategy_class(req.strategy)
-    data = await _load_data(request, req.symbol, req.timeframe, req.start_date, req.end_date)
+    data = await _load_data(
+        request, req.symbol, req.timeframe, req.start_date, req.end_date, req.exchange
+    )
 
     analyzer = WalkForwardAnalyzer(
         in_sample_pct=req.in_sample_pct,
@@ -295,12 +319,20 @@ async def compare_strategies(
     timeframe: str = Query(default="1D"),
     start_date: date = Query(...),
     end_date: date = Query(...),
+    exchange: str | None = Query(default=None),
     initial_cash: float = Query(default=100000.0),
     commission: float = Query(default=settings.default_commission),
     comparison_metric: str = Query(default="sharpe_ratio"),
 ) -> ComparisonResponse:
     """Compare multiple strategies over the same period."""
-    data = await _load_data(request, symbol, timeframe, start_date, end_date)
+    if comparison_metric not in _METRIC_FIELDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown comparison_metric '{comparison_metric}'. "
+            f"Valid metrics: {sorted(_METRIC_FIELDS)}",
+        )
+
+    data = await _load_data(request, symbol, timeframe, start_date, end_date, exchange)
 
     strategy_results: list[dict[str, Any]] = []
 
@@ -315,7 +347,7 @@ async def compare_strategies(
                 {
                     "strategy": strategy_name,
                     "metrics": asdict(metrics),
-                    "comparison_value": float(getattr(metrics, comparison_metric, 0.0)),
+                    "comparison_value": float(getattr(metrics, comparison_metric)),
                 }
             )
         except Exception as exc:
@@ -328,10 +360,11 @@ async def compare_strategies(
                 }
             )
 
-    if not strategy_results:
+    successful_results = [r for r in strategy_results if "error" not in r]
+    if not successful_results:
         raise HTTPException(status_code=422, detail="All strategy evaluations failed")
 
-    best = max(strategy_results, key=lambda r: r["comparison_value"])
+    best = max(successful_results, key=lambda r: r["comparison_value"])
 
     return ComparisonResponse(
         symbol=symbol,
@@ -348,9 +381,11 @@ async def compare_strategies(
 async def generate_report(req: BacktestRequest, request: Request) -> HTMLResponse:
     """Run a backtest and return a full HTML report with equity curve and trade log."""
     strategy_class = _resolve_strategy_class(req.strategy)
-    data = await _load_data(request, req.symbol, req.timeframe, req.start_date, req.end_date)
+    data = await _load_data(
+        request, req.symbol, req.timeframe, req.start_date, req.end_date, req.exchange
+    )
 
-    strategy = strategy_class(**req.strategy_params)
+    strategy = _build_strategy(strategy_class, req.strategy_params)
     signals = strategy.generate_signals(data)
     equity_curve, trades = run_pandas_backtest(
         data, signals, req.initial_cash, req.commission + req.slippage
@@ -376,9 +411,11 @@ async def generate_report(req: BacktestRequest, request: Request) -> HTMLRespons
 async def run_monte_carlo(req: MonteCarloRequest, request: Request) -> MonteCarloResponse:
     """Run Monte Carlo simulation on backtest trades to estimate realistic expectations."""
     strategy_class = _resolve_strategy_class(req.strategy)
-    data = await _load_data(request, req.symbol, req.timeframe, req.start_date, req.end_date)
+    data = await _load_data(
+        request, req.symbol, req.timeframe, req.start_date, req.end_date, req.exchange
+    )
 
-    strategy = strategy_class(**req.strategy_params)
+    strategy = _build_strategy(strategy_class, req.strategy_params)
     signals = strategy.generate_signals(data)
     _, trades = run_pandas_backtest(data, signals, req.initial_cash, req.commission)
 

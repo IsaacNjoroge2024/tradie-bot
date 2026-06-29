@@ -107,6 +107,9 @@ def run_pandas_backtest(
                 "side": "long",
             }
         )
+        cash = proceeds
+        shares = 0.0
+        equity_values[-1] = cash
 
     equity_curve = pd.Series(equity_values, index=data.index, dtype=float)
     trades_df = (
@@ -248,6 +251,7 @@ def monte_carlo_simulation(
 
     final_equities: list[float] = []
     max_drawdowns: list[float] = []
+    ruin_events: list[bool] = []
 
     for _ in range(num_simulations):
         shuffled = rng.choice(pnl_array, size=len(pnl_array), replace=True)
@@ -261,12 +265,12 @@ def monte_carlo_simulation(
 
         final_equities.append(float(equity[-1]))
         max_drawdowns.append(max_dd)
+        ruin_events.append(bool(np.any(equity < initial_cash * 0.5)))
 
     fe = np.array(final_equities)
     md = np.array(max_drawdowns)
 
-    ruin_threshold = initial_cash * 0.5
-    risk_of_ruin = float(np.mean(fe < ruin_threshold))
+    risk_of_ruin = float(np.mean(ruin_events))
     median_return = float((np.median(fe) - initial_cash) / initial_cash)
     drawdown_pct = float(np.percentile(md, confidence_level))
 

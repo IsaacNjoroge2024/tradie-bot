@@ -29,6 +29,7 @@ backtesting = [
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.23.0",
+    "httpx2>=0.28.0",
     "black>=24.1.0",
     "yfinance>=0.2.0",
 ]

@@ -171,6 +171,15 @@ class TestCalculateMetrics:
         m = calculate_metrics(equity, pd.DataFrame(), initial_cash=100000.0)
         assert m.max_drawdown_duration >= 5
 
+    def test_sharpe_annualisation_differs_by_timeframe(self):
+        # 1H bars have sqrt(1638 / 252) ≈ 2.55× the annualisation factor of 1D bars.
+        # The same equity curve must therefore produce a higher absolute Sharpe for 1H.
+        equity = _equity([100000.0, 102000.0, 101000.0, 103000.0, 102000.0, 104000.0])
+        m_daily = calculate_metrics(equity, pd.DataFrame(), initial_cash=100000.0, timeframe="1D")
+        m_hourly = calculate_metrics(equity, pd.DataFrame(), initial_cash=100000.0, timeframe="1H")
+        assert m_hourly.sharpe_ratio != pytest.approx(m_daily.sharpe_ratio, rel=1e-3)
+        assert abs(m_hourly.sharpe_ratio) > abs(m_daily.sharpe_ratio)
+
 
 # ---------------------------------------------------------------------------
 # monte_carlo_simulation

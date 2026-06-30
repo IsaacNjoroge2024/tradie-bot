@@ -47,6 +47,7 @@ class WalkForwardAnalyzer:
         param_grid: dict[str, list],
         initial_cash: float = 100000.0,
         fees: float = 0.001,
+        timeframe: str = "1D",
     ) -> WalkForwardResult:
         min_bars = self.num_periods * 20
         if len(data) < min_bars:
@@ -70,11 +71,12 @@ class WalkForwardAnalyzer:
                     param_grid,
                     initial_cash,
                     fees,
+                    timeframe=timeframe,
                 )
                 strategy = strategy_class(**opt.best_params)
                 signals = strategy.generate_signals(out_sample)
                 equity_curve, trades = run_pandas_backtest(out_sample, signals, initial_cash, fees)
-                metrics = calculate_metrics(equity_curve, trades, initial_cash)
+                metrics = calculate_metrics(equity_curve, trades, initial_cash, timeframe)
 
                 period_results.append(
                     {

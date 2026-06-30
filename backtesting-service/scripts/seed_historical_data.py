@@ -10,6 +10,7 @@ Usage (from backtesting-service/ directory):
 
 Edit SYMBOLS, TIMEFRAMES, START_DATE, END_DATE below to control what is seeded.
 """
+
 import asyncio
 import sys
 from datetime import timezone

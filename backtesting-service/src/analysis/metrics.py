@@ -6,6 +6,21 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Bars per trading year for each supported timeframe.
+# Intraday values use US session hours (6.5 h/day × 252 trading days)
+# which is the standard quant-finance convention for multi-asset strategies.
+_BARS_PER_YEAR: dict[str, float] = {
+    "1m": 252.0 * 390,  # 390 min/trading day
+    "5m": 252.0 * 78,
+    "15m": 252.0 * 26,
+    "30m": 252.0 * 13,
+    "1H": 252.0 * 6.5,
+    "2H": 252.0 * 3.25,
+    "4H": 252.0 * 1.625,
+    "1D": 252.0,
+    "1W": 52.0,
+}
+
 
 @dataclass
 class BacktestMetrics:
@@ -127,6 +142,7 @@ def calculate_metrics(
     equity_curve: pd.Series,
     trades: pd.DataFrame,
     initial_cash: float = 100000.0,
+    timeframe: str = "1D",
 ) -> BacktestMetrics:
     """Calculate comprehensive performance metrics from equity curve and trade log."""
     if equity_curve.empty:
@@ -138,16 +154,18 @@ def calculate_metrics(
     days = max((equity_curve.index[-1] - equity_curve.index[0]).days, 1)
     annualized_return = float((1.0 + total_return) ** (365.0 / days) - 1.0)
 
-    # --- Risk-adjusted metrics (daily return basis) ---
-    daily_returns = equity_curve.pct_change().dropna()
+    # --- Risk-adjusted metrics ---
+    per_bar_returns = equity_curve.pct_change().dropna()
+    bars_per_year = _BARS_PER_YEAR.get(timeframe, 252.0)
+    ann_factor = np.sqrt(bars_per_year)
 
-    std = float(daily_returns.std())
-    sharpe_ratio = float(daily_returns.mean() / std) * np.sqrt(252) if std > 1e-10 else 0.0
+    std = float(per_bar_returns.std())
+    sharpe_ratio = float(per_bar_returns.mean() / std) * ann_factor if std > 1e-10 else 0.0
 
-    downside = daily_returns[daily_returns < 0]
+    downside = per_bar_returns[per_bar_returns < 0]
     down_std = float(downside.std()) if len(downside) > 1 else 0.0
     sortino_ratio = (
-        float(daily_returns.mean() / down_std) * np.sqrt(252) if down_std > 1e-10 else 0.0
+        float(per_bar_returns.mean() / down_std) * ann_factor if down_std > 1e-10 else 0.0
     )
 
     # --- Drawdown ---

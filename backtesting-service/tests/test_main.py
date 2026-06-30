@@ -128,6 +128,20 @@ def test_run_backtest_unknown_strategy():
     assert response.status_code == 400
 
 
+def test_run_backtest_unknown_engine():
+    _setup_app_state()
+    payload = {
+        "symbol": "AAPL",
+        "timeframe": "1D",
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "strategy": "FVG_Strategy",
+        "engine": "vectortbt",
+    }
+    response = client.post("/api/backtest/run", json=payload)
+    assert response.status_code == 422
+
+
 def test_run_backtest_no_data():
     _setup_app_state(data=pd.DataFrame(columns=["open", "high", "low", "close", "volume"]))
     payload = {

@@ -68,7 +68,7 @@ class VectorBTEngine:
                 "vectorbt is not installed; falling back to pandas engine. "
                 "Install it with: pip install -e '.[backtesting]'"
             )
-            return self._run_with_pandas(data, signals, initial_cash, fees, slippage)
+            return self._run_with_pandas(data, signals, initial_cash, fees, slippage, timeframe)
 
     def _run_with_vectorbt(
         self,
@@ -153,11 +153,12 @@ class VectorBTEngine:
         initial_cash: float,
         fees: float,
         slippage: float,
+        timeframe: str = "1D",
     ) -> BacktestResult:
         from ..analysis.metrics import calculate_metrics, run_pandas_backtest
 
         equity_curve, trades_df = run_pandas_backtest(data, signals, initial_cash, fees + slippage)
-        metrics = calculate_metrics(equity_curve, trades_df, initial_cash)
+        metrics = calculate_metrics(equity_curve, trades_df, initial_cash, timeframe)
 
         return BacktestResult(
             total_return=metrics.total_return,

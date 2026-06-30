@@ -35,6 +35,7 @@ class GridSearchOptimizer:
         initial_cash: float = 100000.0,
         fees: float = 0.001,
         optimize_metric: str = "sharpe_ratio",
+        timeframe: str = "1D",
     ) -> OptimizationResult:
         if not param_grid:
             raise ValueError("param_grid must not be empty")
@@ -56,7 +57,7 @@ class GridSearchOptimizer:
                 strategy = strategy_class(**params)
                 signals = strategy.generate_signals(data)
                 equity_curve, trades = run_pandas_backtest(data, signals, initial_cash, fees)
-                metrics = calculate_metrics(equity_curve, trades, initial_cash)
+                metrics = calculate_metrics(equity_curve, trades, initial_cash, timeframe)
                 metric_value = float(getattr(metrics, optimize_metric))
                 results.append(
                     {

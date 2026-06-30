@@ -228,7 +228,9 @@ async def run_backtest(req: BacktestRequest, request: Request) -> BacktestRespon
         result = vbt_engine.run_backtest(
             data, signals, req.initial_cash, req.commission, req.slippage, req.timeframe
         )
-        metrics = calculate_metrics(result.equity_curve, result.trades, req.initial_cash)
+        metrics = calculate_metrics(
+            result.equity_curve, result.trades, req.initial_cash, req.timeframe
+        )
         equity_curve = result.equity_curve
         engine_used = "vectorbt" if _vectorbt_available() else "pandas_fallback"
     elif req.engine == "backtrader":
@@ -238,16 +240,23 @@ async def run_backtest(req: BacktestRequest, request: Request) -> BacktestRespon
                 data, signals, req.initial_cash, req.commission, req.slippage
             )
         except BacktraderEngineError as exc:
-            raise HTTPException(status_code=503, detail=str(exc))
-        metrics = calculate_metrics(result.equity_curve, result.trades, req.initial_cash)
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        metrics = calculate_metrics(
+            result.equity_curve, result.trades, req.initial_cash, req.timeframe
+        )
         equity_curve = result.equity_curve
         engine_used = "backtrader"
-    else:
+    elif req.engine == "pandas":
         equity_curve, trades = run_pandas_backtest(
             data, signals, req.initial_cash, req.commission + req.slippage
         )
-        metrics = calculate_metrics(equity_curve, trades, req.initial_cash)
+        metrics = calculate_metrics(equity_curve, trades, req.initial_cash, req.timeframe)
         engine_used = "pandas"
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown engine '{req.engine}'. Must be one of: pandas, vectorbt, backtrader",
+        )
 
     return BacktestResponse(
         strategy=strategy.name,
@@ -279,6 +288,7 @@ async def optimize_strategy(req: OptimizationRequest, request: Request) -> Optim
             req.initial_cash,
             req.commission,
             req.optimize_metric,
+            req.timeframe,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -312,6 +322,7 @@ async def walk_forward(req: WalkForwardRequest, request: Request) -> WalkForward
             req.param_grid,
             req.initial_cash,
             req.commission,
+            req.timeframe,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -356,7 +367,7 @@ async def compare_strategies(
             strategy = strategy_class()
             signals = strategy.generate_signals(data)
             equity_curve, trades = run_pandas_backtest(data, signals, initial_cash, commission)
-            metrics = calculate_metrics(equity_curve, trades, initial_cash)
+            metrics = calculate_metrics(equity_curve, trades, initial_cash, timeframe)
             strategy_results.append(
                 {
                     "strategy": strategy_name,
@@ -404,7 +415,7 @@ async def generate_report(req: BacktestRequest, request: Request) -> HTMLRespons
     equity_curve, trades = run_pandas_backtest(
         data, signals, req.initial_cash, req.commission + req.slippage
     )
-    metrics = calculate_metrics(equity_curve, trades, req.initial_cash)
+    metrics = calculate_metrics(equity_curve, trades, req.initial_cash, req.timeframe)
 
     generator = BacktestReportGenerator()
     html = generator.generate(

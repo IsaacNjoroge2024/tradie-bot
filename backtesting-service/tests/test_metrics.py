@@ -100,6 +100,7 @@ class TestRunPandasBacktest:
         signals = self._make_signals(data.index, sigs)
         _, trades = run_pandas_backtest(data, signals, initial_cash=10000.0, fees=0.0)
         assert len(trades) == 1  # position force-closed at last bar
+        assert trades.iloc[0]["pnl"] > 0  # bought at 100, force-closed at 110
 
 
 # ---------------------------------------------------------------------------
@@ -213,3 +214,13 @@ class TestMonteCarloSimulation:
         r2 = monte_carlo_simulation(trades, num_simulations=100)
         assert r1.median_return == r2.median_return
         assert r1.risk_of_ruin == r2.risk_of_ruin
+
+    def test_path_level_ruin_detected_when_equity_recovers(self):
+        # A large loss (-600) can drop equity below the 50% ruin threshold mid-sequence
+        # even when subsequent gains (+700) bring the final value back above it.
+        # With bootstrap sampling (replace=True), ~50% of sequences see the -600 first
+        # and trigger path-level ruin; a final-value-only check would only catch ~25%.
+        # We assert > 0.30 to confirm np.any (path-level) is active, not equity[-1].
+        trades = _trades([-600.0, 700.0])
+        result = monte_carlo_simulation(trades, initial_cash=1000.0, num_simulations=500)
+        assert result.risk_of_ruin > 0.30

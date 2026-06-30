@@ -17,6 +17,7 @@ from ..analysis.metrics import (
 from ..analysis.reports import BacktestReportGenerator
 from ..config import settings
 from ..data.loader import HistoricalDataLoader
+from ..engine.backtrader_engine import BacktraderEngine, BacktraderEngineError
 from ..engine.vectorbt_engine import VectorBTEngine
 from ..optimization.grid_search import GridSearchOptimizer
 from ..optimization.walk_forward import WalkForwardAnalyzer
@@ -223,11 +224,24 @@ async def run_backtest(req: BacktestRequest, request: Request) -> BacktestRespon
     signals = strategy.generate_signals(data)
 
     if req.engine == "vectorbt":
-        engine = VectorBTEngine()
-        result = engine.run_backtest(data, signals, req.initial_cash, req.commission, req.slippage)
+        vbt_engine = VectorBTEngine()
+        result = vbt_engine.run_backtest(
+            data, signals, req.initial_cash, req.commission, req.slippage, req.timeframe
+        )
         metrics = calculate_metrics(result.equity_curve, result.trades, req.initial_cash)
         equity_curve = result.equity_curve
         engine_used = "vectorbt" if _vectorbt_available() else "pandas_fallback"
+    elif req.engine == "backtrader":
+        try:
+            bt_engine = BacktraderEngine()
+            result = bt_engine.run_backtest(
+                data, signals, req.initial_cash, req.commission, req.slippage
+            )
+        except BacktraderEngineError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        metrics = calculate_metrics(result.equity_curve, result.trades, req.initial_cash)
+        equity_curve = result.equity_curve
+        engine_used = "backtrader"
     else:
         equity_curve, trades = run_pandas_backtest(
             data, signals, req.initial_cash, req.commission + req.slippage

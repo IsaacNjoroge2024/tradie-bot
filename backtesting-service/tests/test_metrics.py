@@ -180,6 +180,17 @@ class TestCalculateMetrics:
         assert m_hourly.sharpe_ratio != pytest.approx(m_daily.sharpe_ratio, rel=1e-3)
         assert abs(m_hourly.sharpe_ratio) > abs(m_daily.sharpe_ratio)
 
+    def test_unknown_timeframe_warns_and_defaults_to_daily(self, caplog):
+        import logging
+
+        equity = _equity([100000.0, 102000.0, 101000.0])
+        with caplog.at_level(logging.WARNING):
+            m = calculate_metrics(equity, pd.DataFrame(), initial_cash=100000.0, timeframe="bad_tf")
+        assert any("bad_tf" in r.message for r in caplog.records)
+        # Fallback must equal the explicit daily result
+        m_daily = calculate_metrics(equity, pd.DataFrame(), initial_cash=100000.0, timeframe="1D")
+        assert m.sharpe_ratio == pytest.approx(m_daily.sharpe_ratio)
+
 
 # ---------------------------------------------------------------------------
 # monte_carlo_simulation

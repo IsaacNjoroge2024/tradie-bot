@@ -156,7 +156,15 @@ def calculate_metrics(
 
     # --- Risk-adjusted metrics ---
     per_bar_returns = equity_curve.pct_change().dropna()
-    bars_per_year = _BARS_PER_YEAR.get(timeframe, 252.0)
+    bars_per_year = _BARS_PER_YEAR.get(timeframe)
+    if bars_per_year is None:
+        logger.warning(
+            "Unknown timeframe %r; defaulting to 252 bars/year (daily annualisation). "
+            "Supported values: %s",
+            timeframe,
+            list(_BARS_PER_YEAR),
+        )
+        bars_per_year = 252.0
     ann_factor = np.sqrt(bars_per_year)
 
     std = float(per_bar_returns.std())

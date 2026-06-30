@@ -70,6 +70,10 @@ class HistoricalDataLoader:
     async def get_available_symbols(self) -> list[str]:
         """Return list of symbols present in the ohlcv table."""
         query = "SELECT DISTINCT symbol FROM ohlcv ORDER BY symbol"
-        async with self._db.pool.acquire() as conn:
-            rows = await conn.fetch(query)
+        try:
+            async with self._db.pool.acquire() as conn:
+                rows = await conn.fetch(query)
+        except Exception as e:
+            logger.error(f"Failed to get available symbols: {e}")
+            raise RuntimeError("Failed to get available symbols") from e
         return [r["symbol"] for r in rows]

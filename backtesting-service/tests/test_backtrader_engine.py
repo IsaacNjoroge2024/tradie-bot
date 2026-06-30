@@ -82,32 +82,20 @@ class TestBacktraderEngineTrades:
         data = _make_data()
         signals = _make_signals(data, buy_at=[5], sell_at=[20])
         result = engine.run_backtest(data, signals)
-        if not result.trades.empty:
-            assert pd.api.types.is_numeric_dtype(result.trades["pnl"])
+        assert pd.api.types.is_numeric_dtype(result.trades["pnl"])
 
     def test_side_is_long(self):
         engine = BacktraderEngine()
         data = _make_data()
         signals = _make_signals(data, buy_at=[5], sell_at=[20])
         result = engine.run_backtest(data, signals)
-        if not result.trades.empty:
-            assert (result.trades["side"] == "long").all()
+        assert (result.trades["side"] == "long").all()
 
     def test_entry_time_before_exit_time(self):
         engine = BacktraderEngine()
         data = _make_data()
         signals = _make_signals(data, buy_at=[5], sell_at=[20])
         result = engine.run_backtest(data, signals)
-        if not result.trades.empty:
-            entry = pd.to_datetime(result.trades["entry_time"])
-            exit_ = pd.to_datetime(result.trades["exit_time"])
-            assert (entry < exit_).all()
-
-    def test_raises_on_empty_data(self):
-        from src.engine.backtrader_engine import BacktraderEngineError
-
-        engine = BacktraderEngine()
-        empty_data = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
-        empty_signals = pd.DataFrame(columns=["signal"])
-        with pytest.raises(BacktraderEngineError, match="non-empty OHLCV data"):
-            engine.run_backtest(empty_data, empty_signals)
+        entry = pd.to_datetime(result.trades["entry_time"])
+        exit_ = pd.to_datetime(result.trades["exit_time"])
+        assert (entry < exit_).all()

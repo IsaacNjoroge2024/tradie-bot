@@ -5,6 +5,23 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+_TF_TO_FREQ: dict[str, str] = {
+    "1m": "1min",
+    "5m": "5min",
+    "15m": "15min",
+    "30m": "30min",
+    "1H": "1h",
+    "2H": "2h",
+    "4H": "4h",
+    "1D": "1D",
+    "1W": "1W",
+}
+
+
+def _timeframe_to_freq(timeframe: str) -> str:
+    """Map tradie timeframe string to a VectorBT/pandas offset alias."""
+    return _TF_TO_FREQ.get(timeframe, timeframe)
+
 
 class BacktestEngineError(Exception):
     pass
@@ -42,9 +59,10 @@ class VectorBTEngine:
         initial_cash: float = 100000.0,
         fees: float = 0.001,
         slippage: float = 0.0005,
+        timeframe: str = "1D",
     ) -> BacktestResult:
         try:
-            return self._run_with_vectorbt(data, signals, initial_cash, fees, slippage)
+            return self._run_with_vectorbt(data, signals, initial_cash, fees, slippage, timeframe)
         except ImportError:
             logger.warning(
                 "vectorbt is not installed; falling back to pandas engine. "
@@ -59,6 +77,7 @@ class VectorBTEngine:
         initial_cash: float,
         fees: float,
         slippage: float,
+        timeframe: str = "1D",
     ) -> BacktestResult:
         import vectorbt as vbt  # noqa: PLC0415
 
@@ -71,7 +90,7 @@ class VectorBTEngine:
             exits=exits,
             init_cash=initial_cash,
             fees=fees + slippage,
-            freq="1D",
+            freq=_timeframe_to_freq(timeframe),
         )
 
         equity_curve = portfolio.value()

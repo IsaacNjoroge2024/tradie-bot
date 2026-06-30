@@ -107,8 +107,24 @@ class TestHistoricalDataLoader:
         mock_db.pool = mock_pool_instance
 
         loader = HistoricalDataLoader(mock_db)
-        with pytest.raises(RuntimeError, match="Failed to load OHLCV data"):
+        with pytest.raises(RuntimeError, match="Failed to load OHLCV data") as exc_info:
             await loader.load("AAPL", "1D", date(2023, 1, 1), date(2023, 12, 31))
+        assert exc_info.value.__cause__ is not None
+
+    @pytest.mark.asyncio
+    async def test_get_available_symbols_propagates_db_error(self):
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(side_effect=Exception("Connection refused"))
+        mock_pool_instance = MagicMock()
+        mock_pool_instance.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_pool_instance.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_db = MagicMock(spec=TimescaleDBPool)
+        mock_db.pool = mock_pool_instance
+
+        loader = HistoricalDataLoader(mock_db)
+        with pytest.raises(RuntimeError, match="Failed to get available symbols") as exc_info:
+            await loader.get_available_symbols()
+        assert exc_info.value.__cause__ is not None
 
     @pytest.mark.asyncio
     async def test_numeric_columns_are_float(self):

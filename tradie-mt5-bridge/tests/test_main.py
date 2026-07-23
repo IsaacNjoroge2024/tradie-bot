@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,6 +28,45 @@ def restore_app_state():
     app.state.mt5_client = prev_client
     app.state.order_service = prev_order
     app.state.position_service = prev_position
+
+
+class TestAuth:
+    def test_no_key_configured_open_mode(self):
+        _setup_app_state()
+        app.state.position_service.get_positions.return_value = []
+        # MT5_API_KEY is "" → open mode, no authentication check
+        response = client.get("/api/positions/")
+        assert response.status_code != 403
+
+    def test_valid_key_allows_access(self):
+        _setup_app_state()
+        app.state.position_service.get_positions.return_value = []
+        with patch("app.auth.settings") as mock_settings:
+            mock_settings.mt5_api_key = "test-key"
+            response = client.get("/api/positions/", headers={"X-API-Key": "test-key"})
+        assert response.status_code == 200
+
+    def test_wrong_key_returns_403(self):
+        _setup_app_state()
+        with patch("app.auth.settings") as mock_settings:
+            mock_settings.mt5_api_key = "test-key"
+            response = client.get("/api/positions/", headers={"X-API-Key": "wrong-key"})
+        assert response.status_code == 403
+
+    def test_missing_key_returns_403(self):
+        _setup_app_state()
+        with patch("app.auth.settings") as mock_settings:
+            mock_settings.mt5_api_key = "test-key"
+            response = client.get("/api/positions/")
+        assert response.status_code == 403
+
+    def test_health_bypasses_auth(self):
+        _setup_app_state()
+        with patch("app.auth.settings") as mock_settings:
+            mock_settings.mt5_api_key = "test-key"
+            # /health has no auth dependency — should never return 403
+            response = client.get("/health")
+        assert response.status_code != 403
 
 
 class TestHealth:

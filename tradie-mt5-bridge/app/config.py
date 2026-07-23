@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     mt5_max_retries: int = 3
     mt5_retry_delay_seconds: float = 1.0
 
+    # Authentication
+    mt5_api_key: str = ""
+
     # CORS
     cors_allowed_origins: list[str] = ["http://localhost:8080", "http://localhost:3000"]
 

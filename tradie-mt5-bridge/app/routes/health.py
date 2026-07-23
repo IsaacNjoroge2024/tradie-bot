@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -10,7 +12,7 @@ router = APIRouter(tags=["Health"])
 async def health(request: Request):
     """Health check — reports MT5 connection status."""
     client: MT5Client = request.app.state.mt5_client
-    connected = client.is_connected()
+    connected = await asyncio.to_thread(client.is_connected)
     body = {
         "status": "healthy" if connected else "degraded",
         "service": "tradie-mt5-bridge",

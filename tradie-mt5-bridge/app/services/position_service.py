@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -10,21 +11,21 @@ class PositionService:
     def __init__(self, client: MT5Client):
         self._client = client
 
-    def get_positions(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_positions(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         try:
-            return self._client.get_positions(symbol=symbol)
+            return await asyncio.to_thread(self._client.get_positions, symbol=symbol)
         except ConnectionError as e:
             logger.error(f"Failed to get positions: {e}")
             raise
 
-    def get_pending_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_pending_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         try:
-            return self._client.get_pending_orders(symbol=symbol)
+            return await asyncio.to_thread(self._client.get_pending_orders, symbol=symbol)
         except ConnectionError as e:
             logger.error(f"Failed to get pending orders: {e}")
             raise
 
-    def modify_position(
+    async def modify_position(
         self,
         ticket: int,
         sl: Optional[float] = None,
@@ -32,7 +33,9 @@ class PositionService:
     ) -> OrderResult:
         logger.info(f"Modifying position: ticket={ticket} sl={sl} tp={tp}")
         try:
-            result = self._client.modify_position(ticket=ticket, sl=sl, tp=tp)
+            result = await asyncio.to_thread(
+                self._client.modify_position, ticket=ticket, sl=sl, tp=tp
+            )
         except ConnectionError as e:
             logger.error(f"Failed to modify position {ticket}: {e}")
             raise
@@ -44,10 +47,12 @@ class PositionService:
             )
         return result
 
-    def close_position(self, ticket: int, volume: Optional[float] = None) -> OrderResult:
+    async def close_position(self, ticket: int, volume: Optional[float] = None) -> OrderResult:
         logger.info(f"Closing position: ticket={ticket} volume={volume}")
         try:
-            result = self._client.close_position(ticket=ticket, volume=volume)
+            result = await asyncio.to_thread(
+                self._client.close_position, ticket=ticket, volume=volume
+            )
         except ConnectionError as e:
             logger.error(f"Failed to close position {ticket}: {e}")
             raise
@@ -62,10 +67,10 @@ class PositionService:
             )
         return result
 
-    def close_all_positions(self, symbol: Optional[str] = None) -> List[OrderResult]:
+    async def close_all_positions(self, symbol: Optional[str] = None) -> List[OrderResult]:
         logger.info(f"Closing all positions: symbol={symbol}")
         try:
-            results = self._client.close_all_positions(symbol=symbol)
+            results = await asyncio.to_thread(self._client.close_all_positions, symbol=symbol)
         except ConnectionError as e:
             logger.error(f"Failed to close all positions: {e}")
             raise

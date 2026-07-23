@@ -1,11 +1,12 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from .auth import verify_api_key
 from .config import settings
 from .mt5_client import MT5Client, MT5Config
 from .routes import account, health, orders, positions
@@ -39,6 +40,9 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("MT5 credentials not configured. Running in degraded mode.")
 
+    if not settings.mt5_api_key:
+        logger.warning("MT5_API_KEY not configured; /api routes are open without authentication")
+
     app.state.mt5_client = client
     app.state.order_service = OrderService(client)
     app.state.position_service = PositionService(client)
@@ -64,13 +68,13 @@ app.add_middleware(
     allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
 app.include_router(health.router)
-app.include_router(orders.router, prefix="/api")
-app.include_router(positions.router, prefix="/api")
-app.include_router(account.router, prefix="/api")
+app.include_router(orders.router, prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(positions.router, prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(account.router, prefix="/api", dependencies=[Depends(verify_api_key)])
 
 
 @app.get("/metrics", include_in_schema=False)

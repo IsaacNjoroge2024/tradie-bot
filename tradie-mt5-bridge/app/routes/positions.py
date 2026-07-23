@@ -21,7 +21,7 @@ async def get_positions(
     """Get all open positions."""
     service: PositionService = request.app.state.position_service
     try:
-        return service.get_positions(symbol=symbol)
+        return await service.get_positions(symbol=symbol)
     except ConnectionError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
@@ -34,7 +34,7 @@ async def get_pending_orders(
     """Get all pending orders."""
     service: PositionService = request.app.state.position_service
     try:
-        return service.get_pending_orders(symbol=symbol)
+        return await service.get_pending_orders(symbol=symbol)
     except ConnectionError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
@@ -44,7 +44,7 @@ async def modify_position(body: ModifyPositionRequest, request: Request) -> dict
     """Modify stop loss and/or take profit on an existing position."""
     service: PositionService = request.app.state.position_service
     try:
-        result = service.modify_position(ticket=body.ticket, sl=body.sl, tp=body.tp)
+        result = await service.modify_position(ticket=body.ticket, sl=body.sl, tp=body.tp)
     except ConnectionError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     if not result.success:
@@ -57,7 +57,7 @@ async def close_position(body: ClosePositionRequest, request: Request) -> CloseP
     """Close a position fully or partially."""
     service: PositionService = request.app.state.position_service
     try:
-        result = service.close_position(ticket=body.ticket, volume=body.volume)
+        result = await service.close_position(ticket=body.ticket, volume=body.volume)
     except ConnectionError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     if not result.success:
@@ -80,7 +80,7 @@ async def close_all_positions(
     """Close all open positions (kill switch). Optionally filter by symbol."""
     service: PositionService = request.app.state.position_service
     try:
-        results = service.close_all_positions(symbol=symbol)
+        results = await service.close_all_positions(symbol=symbol)
     except ConnectionError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     closed = sum(1 for r in results if r.success)

@@ -11,7 +11,7 @@ async def place_order(body: PlaceOrderRequest, request: Request) -> PlaceOrderRe
     """Place a new market, limit, or stop order."""
     service: OrderService = request.app.state.order_service
     try:
-        result = service.place_order(
+        result = await service.place_order(
             symbol=body.symbol,
             side=body.side,
             volume=body.volume,
@@ -39,7 +39,7 @@ async def cancel_order(body: CancelOrderRequest, request: Request) -> dict:
     """Cancel a pending order."""
     service: OrderService = request.app.state.order_service
     try:
-        result = service.cancel_order(ticket=body.ticket)
+        result = await service.cancel_order(ticket=body.ticket)
     except ConnectionError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     if not result.success:

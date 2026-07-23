@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 
 from ..models import AccountInfoResponse, SymbolInfoResponse
@@ -11,7 +13,7 @@ async def get_account_info(request: Request) -> AccountInfoResponse:
     """Get current account balance, equity, margin, and leverage."""
     client: MT5Client = request.app.state.mt5_client
     try:
-        info = client.get_account_info()
+        info = await asyncio.to_thread(client.get_account_info)
     except ConnectionError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     if not info:
@@ -24,7 +26,7 @@ async def get_symbol_info(symbol: str, request: Request) -> SymbolInfoResponse:
     """Get current bid/ask, spread, lot sizes, and swap rates for a symbol."""
     client: MT5Client = request.app.state.mt5_client
     try:
-        info = client.get_symbol_info(symbol)
+        info = await asyncio.to_thread(client.get_symbol_info, symbol)
     except ConnectionError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     if info is None:

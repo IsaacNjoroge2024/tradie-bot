@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from typing import Optional
@@ -21,7 +22,7 @@ class OrderService:
     def __init__(self, client: MT5Client):
         self._client = client
 
-    def place_order(
+    async def place_order(
         self,
         symbol: str,
         side: str,
@@ -41,7 +42,8 @@ class OrderService:
             )
 
         logger.info(f"Placing {side} {order_type} order: {symbol} vol={volume}")
-        result = self._retry(
+        result = await asyncio.to_thread(
+            self._retry,
             lambda: self._client.place_order(
                 symbol=symbol,
                 order_type=mt5_order_type,
@@ -51,7 +53,7 @@ class OrderService:
                 tp=tp,
                 magic=settings.mt5_magic,
                 comment=comment,
-            )
+            ),
         )
         if result.success:
             logger.info(
@@ -62,9 +64,9 @@ class OrderService:
             logger.error(f"Order failed: {result.error_code} - {result.error_message}")
         return result
 
-    def cancel_order(self, ticket: int) -> OrderResult:
+    async def cancel_order(self, ticket: int) -> OrderResult:
         logger.info(f"Cancelling pending order: ticket={ticket}")
-        result = self._retry(lambda: self._client.cancel_order(ticket))
+        result = await asyncio.to_thread(self._retry, lambda: self._client.cancel_order(ticket))
         if result.success:
             logger.info(f"Order cancelled: ticket={ticket}")
         else:
@@ -74,7 +76,7 @@ class OrderService:
         return result
 
     def _retry(self, func) -> OrderResult:
-        """Retry on transient MT5 connection errors only."""
+        """Retry on transient MT5 connection errors only. Runs in a thread pool worker."""
         max_retries = settings.mt5_max_retries
         retry_delay = settings.mt5_retry_delay_seconds
         for attempt in range(max_retries):

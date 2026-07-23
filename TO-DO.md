@@ -54,12 +54,14 @@ Resolved in `RolloverService.java`:
 
 ## Ticket 21 — MT5 Bridge
 
-### 1. Add API key / mTLS authentication to bridge routes (Comment 8)
-The `/api/orders/*`, `/api/positions/*`, and `/api/account/*` routes have no authentication layer.
-Currently mitigated by the fact that port 8002 should only be exposed on internal Docker networking.
-For production hardening, add a header-based API key dependency injected via FastAPI `Depends()`.
+### 1. Add API key / mTLS authentication to bridge routes (Comment 8) ✅ DONE
+Resolved: `app/auth.py` adds `verify_api_key` FastAPI dependency using `APIKeyHeader("X-API-Key")`.
+Applied via `dependencies=[Depends(verify_api_key)]` to orders, positions, and account routers in `main.py`.
+`/health` and `/metrics` remain unauthenticated (monitoring/k8s probes). Open mode when `MT5_API_KEY` is unset.
 
-### 2. Offload blocking MT5 SDK calls to asyncio thread pool (Comment 10)
-All `MT5Client` methods perform synchronous native I/O called directly from `async def` route handlers.
-Under a single Uvicorn worker, slow or retried MT5 calls (plus `time.sleep` in `_retry`) stall the event loop.
-Fix: wrap all `MT5Client` method calls in `await asyncio.to_thread(...)` at the service layer.
+### 2. Offload blocking MT5 SDK calls to asyncio thread pool (Comment 10) ✅ DONE
+Resolved: `OrderService.place_order` and `cancel_order` are now `async def`, wrapping `_retry` in
+`await asyncio.to_thread(self._retry, lambda: ...)`. All `PositionService` public methods are `async def`
+with every `MT5Client` call wrapped in `await asyncio.to_thread(...)`. `account.py` and `health.py` routes
+wrap their direct `MT5Client` calls in `await asyncio.to_thread(...)`. Route handlers now `await` all
+service calls. All service unit tests updated to `async def` with `asyncio_mode = "auto"`.

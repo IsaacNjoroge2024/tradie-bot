@@ -41,7 +41,15 @@ async def lifespan(app: FastAPI):
         logger.warning("MT5 credentials not configured. Running in degraded mode.")
 
     if not settings.mt5_api_key:
-        logger.warning("MT5_API_KEY not configured; /api routes are open without authentication")
+        if settings.mt5_dev_mode:
+            logger.warning(
+                "MT5 Bridge running in DEV MODE — /api routes are open without authentication"
+            )
+        else:
+            logger.warning(
+                "MT5_API_KEY not configured and MT5_DEV_MODE is not set; "
+                "all /api requests will return 403 until a key is configured"
+            )
 
     app.state.mt5_client = client
     app.state.order_service = OrderService(client)

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     # Authentication
     mt5_api_key: str = ""
+    mt5_dev_mode: bool = False
 
     # CORS
     cors_allowed_origins: list[str] = ["http://localhost:8080", "http://localhost:3000"]

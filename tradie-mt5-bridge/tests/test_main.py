@@ -31,12 +31,22 @@ def restore_app_state():
 
 
 class TestAuth:
-    def test_no_key_configured_open_mode(self):
+    def test_no_key_dev_mode_allows_access(self):
         _setup_app_state()
         app.state.position_service.get_positions.return_value = []
-        # MT5_API_KEY is "" → open mode, no authentication check
-        response = client.get("/api/positions/")
-        assert response.status_code != 403
+        with patch("app.auth.settings") as mock_settings:
+            mock_settings.mt5_api_key = ""
+            mock_settings.mt5_dev_mode = True
+            response = client.get("/api/positions/")
+        assert response.status_code == 200
+
+    def test_no_key_not_dev_mode_fails_closed(self):
+        _setup_app_state()
+        with patch("app.auth.settings") as mock_settings:
+            mock_settings.mt5_api_key = ""
+            mock_settings.mt5_dev_mode = False
+            response = client.get("/api/positions/")
+        assert response.status_code == 403
 
     def test_valid_key_allows_access(self):
         _setup_app_state()

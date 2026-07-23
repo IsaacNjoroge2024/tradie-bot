@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+
+  tradie-mt5-bridge:
+    build: .
+    ports:
+      - "8002:8002"
+    env_file:
+      - ../.env
+    # On Linux: MetaTrader5 Python package requires Wine + Windows Python.
+    # For production use, deploy natively on a Windows VPS and install
+    # the MetaTrader5 package with: pip install MetaTrader5
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

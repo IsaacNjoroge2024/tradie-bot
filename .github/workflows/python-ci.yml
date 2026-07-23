@@ -6,12 +6,14 @@ on:
     paths:
       - 'news-shield/**'
       - 'backtesting-service/**'
+      - 'tradie-mt5-bridge/**'
       - '.github/workflows/python-ci.yml'
   push:
     branches: [ main ]
     paths:
       - 'news-shield/**'
       - 'backtesting-service/**'
+      - 'tradie-mt5-bridge/**'
       - '.github/workflows/python-ci.yml'
 
 jobs:
@@ -40,6 +42,35 @@ jobs:
 
       - name: Check formatting with black
         run: black --check src/ tests/
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+  test-mt5-bridge:
+    name: Test and Lint MT5 Bridge
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tradie-mt5-bridge
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: tradie-mt5-bridge/pyproject.toml
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Check formatting with black
+        run: black --check app/ tests/
 
       - name: Run tests
         run: pytest tests/ -v

@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting MT5 Bridge service...")
     config = MT5Config(
         login=settings.mt5_login,
-        password=settings.mt5_password,
+        password=settings.mt5_password.get_secret_value(),
         server=settings.mt5_server,
         path=settings.mt5_path,
         timeout=settings.mt5_timeout,
@@ -63,8 +63,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(health.router)

@@ -27,7 +27,7 @@ _TRADE_ACTION_PENDING = 5
 _TRADE_ACTION_SLTP = 6
 _TRADE_ACTION_REMOVE = 8
 _TRADE_RETCODE_DONE = 10009
-_ORDER_TIME_GTC = 1
+_ORDER_TIME_GTC = 0
 _ORDER_FILLING_IOC = 1
 
 
@@ -82,7 +82,10 @@ class MT5Client:
 
         self._connected = True
         account_info = mt5.account_info()
-        logger.info(f"Connected to MT5: {account_info.server}, Balance: {account_info.balance}")
+        if account_info is not None:
+            logger.info(f"Connected to MT5: {account_info.server}, Balance: {account_info.balance}")
+        else:
+            logger.warning("MT5 initialize succeeded but account_info() returned None")
         return True
 
     def disconnect(self):
@@ -274,6 +277,11 @@ class MT5Client:
             close_type = _ORDER_TYPE_SELL if pos.type == _ORDER_TYPE_BUY else _ORDER_TYPE_BUY
 
             tick = mt5.symbol_info_tick(pos.symbol)
+            if tick is None:
+                return OrderResult(
+                    success=False,
+                    error_message=f"Failed to get tick for {pos.symbol}",
+                )
             price = tick.bid if close_type == _ORDER_TYPE_SELL else tick.ask
 
             request = {

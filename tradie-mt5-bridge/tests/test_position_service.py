@@ -94,11 +94,10 @@ class TestModifyPosition:
         assert result.success is False
         assert "not found" in result.error_message
 
-    def test_connection_error_returns_failure(self, service, mock_client):
+    def test_connection_error_raises(self, service, mock_client):
         mock_client.modify_position.side_effect = ConnectionError("MT5 disconnected")
-        result = service.modify_position(300001, sl=1.088)
-        assert result.success is False
-        assert "MT5 disconnected" in result.error_message
+        with pytest.raises(ConnectionError, match="MT5 disconnected"):
+            service.modify_position(300001, sl=1.088)
 
 
 class TestClosePosition:
@@ -126,11 +125,10 @@ class TestClosePosition:
         result = service.close_position(999)
         assert result.success is False
 
-    def test_connection_error_returns_failure(self, service, mock_client):
+    def test_connection_error_raises(self, service, mock_client):
         mock_client.close_position.side_effect = ConnectionError("MT5 disconnected")
-        result = service.close_position(300001)
-        assert result.success is False
-        assert "MT5 disconnected" in result.error_message
+        with pytest.raises(ConnectionError, match="MT5 disconnected"):
+            service.close_position(300001)
 
 
 class TestCloseAllPositions:

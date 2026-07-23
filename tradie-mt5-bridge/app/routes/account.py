@@ -13,7 +13,7 @@ async def get_account_info(request: Request) -> AccountInfoResponse:
     try:
         info = client.get_account_info()
     except ConnectionError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
     if not info:
         raise HTTPException(status_code=503, detail="Failed to get account info from MT5")
     return AccountInfoResponse(**info)
@@ -26,7 +26,7 @@ async def get_symbol_info(symbol: str, request: Request) -> SymbolInfoResponse:
     try:
         info = client.get_symbol_info(symbol)
     except ConnectionError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
     if info is None:
         raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found")
     return SymbolInfoResponse(**info)

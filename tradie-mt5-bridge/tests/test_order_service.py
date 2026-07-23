@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.config import settings
 from app.mt5_client import MT5Client, OrderResult, OrderType
 from app.services.order_service import OrderService
 
@@ -33,7 +34,7 @@ class TestPlaceOrder:
             price=None,
             sl=1.085,
             tp=1.100,
-            magic=pytest.approx(123456, abs=0),
+            magic=settings.mt5_magic,
             comment="Tradie",
         )
 
@@ -147,10 +148,9 @@ class TestRetry:
             with patch("app.services.order_service.settings") as mock_settings:
                 mock_settings.mt5_max_retries = 2
                 mock_settings.mt5_retry_delay_seconds = 0.0
-                result = service.cancel_order(100002)
+                with pytest.raises(ConnectionError, match="Disconnected"):
+                    service.cancel_order(100002)
 
-        assert result.success is False
-        assert "Disconnected" in result.error_message
         assert mock_client.cancel_order.call_count == 2
 
     def test_no_retry_on_business_logic_failure(self, service, mock_client):

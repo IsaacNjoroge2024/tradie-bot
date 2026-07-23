@@ -34,7 +34,8 @@ class PositionService:
         try:
             result = self._client.modify_position(ticket=ticket, sl=sl, tp=tp)
         except ConnectionError as e:
-            return OrderResult(success=False, error_message=str(e))
+            logger.error(f"Failed to modify position {ticket}: {e}")
+            raise
         if result.success:
             logger.info(f"Position modified: ticket={ticket}")
         else:
@@ -48,7 +49,8 @@ class PositionService:
         try:
             result = self._client.close_position(ticket=ticket, volume=volume)
         except ConnectionError as e:
-            return OrderResult(success=False, error_message=str(e))
+            logger.error(f"Failed to close position {ticket}: {e}")
+            raise
         if result.success:
             logger.info(
                 f"Position closed: ticket={ticket} deal_id={result.deal_id} "

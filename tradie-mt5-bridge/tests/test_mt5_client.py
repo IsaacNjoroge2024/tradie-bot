@@ -110,8 +110,13 @@ class TestGetAccountInfo:
         assert info["login"] == 12345678
         assert info["server"] == "Exness-MT5Demo2"
         assert info["balance"] == 10000.0
+        assert info["equity"] == 10050.0
+        assert info["margin"] == 100.0
+        assert info["free_margin"] == 9950.0
+        assert info["margin_level"] == 10050.0
         assert info["leverage"] == 500
         assert info["currency"] == "USD"
+        assert info["profit"] == 50.0
 
     def test_returns_empty_when_none(self, mt5_mock, client):
         mt5_mock.account_info.return_value = None

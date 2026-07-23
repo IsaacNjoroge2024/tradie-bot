@@ -1,17 +1,24 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PlaceOrderRequest(BaseModel):
     symbol: str = Field(..., description="Trading symbol, e.g. EURUSD")
-    side: str = Field(..., description="BUY or SELL")
+    side: Literal["BUY", "SELL"] = Field(..., description="BUY or SELL")
     volume: float = Field(..., gt=0, description="Trade volume in lots")
-    order_type: str = Field(default="MARKET", description="MARKET, LIMIT, or STOP")
+    order_type: Literal["MARKET", "LIMIT", "STOP"] = Field(
+        default="MARKET", description="MARKET, LIMIT, or STOP"
+    )
     price: Optional[float] = Field(default=None, description="Required for LIMIT and STOP orders")
     sl: Optional[float] = Field(default=None, description="Stop loss price")
     tp: Optional[float] = Field(default=None, description="Take profit price")
     comment: str = Field(default="Tradie", description="Order comment")
+
+    @field_validator("side", "order_type", mode="before")
+    @classmethod
+    def normalise_to_uppercase(cls, v: object) -> object:
+        return v.upper() if isinstance(v, str) else v
 
 
 class ModifyPositionRequest(BaseModel):

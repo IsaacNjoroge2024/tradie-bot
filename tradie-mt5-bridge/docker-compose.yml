@@ -8,12 +8,6 @@ services:
       - "8002:8002"
     env_file:
       - ../.env
-    environment:
-      - MT5_LOGIN=${MT5_LOGIN}
-      - MT5_PASSWORD=${MT5_PASSWORD}
-      - MT5_SERVER=${MT5_SERVER}
-      - MT5_PATH=${MT5_PATH:-C:/Program Files/MetaTrader 5/terminal64.exe}
-      - MT5_MAGIC=${MT5_MAGIC:-123456}
     # On Linux: MetaTrader5 Python package requires Wine + Windows Python.
     # For production use, deploy natively on a Windows VPS and install
     # the MetaTrader5 package with: pip install MetaTrader5

@@ -87,5 +87,5 @@ class OrderService:
                     )
                     time.sleep(retry_delay)
                 else:
-                    return OrderResult(success=False, error_message=str(e))
+                    raise
         return OrderResult(success=False, error_message="All retry attempts exhausted")

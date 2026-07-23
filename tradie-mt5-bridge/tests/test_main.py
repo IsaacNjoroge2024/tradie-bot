@@ -133,6 +133,20 @@ class TestOrderEndpoints:
         response = client.post("/api/orders/place", json={"symbol": "EURUSD"})
         assert response.status_code == 422
 
+    def test_place_order_connection_error_returns_503(self):
+        _setup_app_state()
+        app.state.order_service.place_order.side_effect = ConnectionError("MT5 disconnected")
+        response = client.post(
+            "/api/orders/place", json={"symbol": "EURUSD", "side": "BUY", "volume": 0.1}
+        )
+        assert response.status_code == 503
+
+    def test_cancel_order_connection_error_returns_503(self):
+        _setup_app_state()
+        app.state.order_service.cancel_order.side_effect = ConnectionError("MT5 disconnected")
+        response = client.post("/api/orders/cancel", json={"ticket": 100001})
+        assert response.status_code == 503
+
 
 class TestPositionEndpoints:
     def test_get_positions_empty(self):
@@ -305,6 +319,18 @@ class TestPositionEndpoints:
         _setup_app_state()
         app.state.position_service.get_positions.side_effect = ConnectionError("MT5 disconnected")
         response = client.get("/api/positions/")
+        assert response.status_code == 503
+
+    def test_modify_position_connection_error_returns_503(self):
+        _setup_app_state()
+        app.state.position_service.modify_position.side_effect = ConnectionError("MT5 disconnected")
+        response = client.post("/api/positions/modify", json={"ticket": 300001, "sl": 1.085})
+        assert response.status_code == 503
+
+    def test_close_position_connection_error_returns_503(self):
+        _setup_app_state()
+        app.state.position_service.close_position.side_effect = ConnectionError("MT5 disconnected")
+        response = client.post("/api/positions/close", json={"ticket": 300001})
         assert response.status_code == 503
 
 

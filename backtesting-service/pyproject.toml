@@ -18,6 +18,10 @@ dependencies = [
     "prometheus-client>=0.19.0",
     "jinja2>=3.1.0",
     "matplotlib>=3.7.0",
+    "joblib>=1.3.0",
+    "plotly>=5.0.0",
+    "click>=8.0.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +35,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "httpx2>=0.28.0",
     "black>=24.1.0",
+    "ruff>=0.6.0",
     "yfinance>=0.2.0",
 ]
 
@@ -42,3 +47,20 @@ asyncio_mode = "auto"
 [tool.black]
 line-length = 100
 target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Ruff defaults (E4/E7/E9/F) plus bugbear (B) and ruff-specific (RUF) checks —
+# the categories that caught real issues in review (unsorted __all__, unused
+# f-string). Import sorting (I) is deliberately left off for now: enabling it
+# would reorder imports across the whole existing codebase in one shot rather
+# than as reviewed, incremental changes.
+select = ["E4", "E7", "E9", "F", "B", "RUF"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection pattern requires Query()/Depends()/Path()/Body()
+# as argument defaults — that's not the mutable-default-argument bug B008 targets.
+extend-immutable-calls = ["fastapi.Query", "fastapi.Depends", "fastapi.Path", "fastapi.Body"]

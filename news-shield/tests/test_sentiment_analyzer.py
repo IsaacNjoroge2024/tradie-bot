@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.services.sentiment_analyzer import SentimentAnalyzer, SentimentResult
+from src.services.sentiment_analyzer import SentimentAnalyzer
 
 
 @pytest.fixture

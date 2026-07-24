@@ -52,7 +52,7 @@ class GridSearchOptimizer:
         results: list[dict[str, Any]] = []
 
         for combo in combinations:
-            params = dict(zip(param_names, combo))
+            params = dict(zip(param_names, combo, strict=True))
             try:
                 strategy = strategy_class(**params)
                 signals = strategy.generate_signals(data)

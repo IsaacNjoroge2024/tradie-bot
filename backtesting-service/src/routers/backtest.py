@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import asdict
 from datetime import date
@@ -19,10 +20,21 @@ from ..config import settings
 from ..data.loader import HistoricalDataLoader
 from ..engine.backtrader_engine import BacktraderEngine, BacktraderEngineError
 from ..engine.vectorbt_engine import VectorBTEngine
+from ..monte_carlo.models import MonteCarloResult, SimulationConfig, Trade
+from ..monte_carlo.simulator import MIN_TRADES_REQUIRED, MonteCarloSimulator
+from ..monte_carlo.thresholds import THRESHOLDS
 from ..optimization.grid_search import GridSearchOptimizer
 from ..optimization.walk_forward import WalkForwardAnalyzer
 from ..strategies.confluence_strategy import ConfluenceStrategy
 from ..strategies.fvg_strategy import FVGStrategy
+
+# MonteCarloSimulator (permutation-shuffle engine, Ticket 22) requires >=
+# MIN_TRADES_REQUIRED trades for a statistically meaningful result. Below that,
+# /backtest/monte-carlo falls back to the bootstrap-resampling
+# monte_carlo_simulation() from Ticket 18, which has no minimum trade count.
+# The two use different resampling strategies (permutation without replacement
+# vs. bootstrap with replacement) and are not numerically equivalent — this is
+# an intentional compatibility fallback for short backtests, not an oversight.
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -198,13 +210,60 @@ async def _load_data(
     try:
         data = await loader.load(symbol, timeframe, start_date, end_date, exchange)
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if data.empty:
         raise HTTPException(
             status_code=404,
             detail=f"No OHLCV data for {symbol}/{timeframe} between {start_date} and {end_date}",
         )
     return data
+
+
+def _trades_df_to_objects(
+    trades: pd.DataFrame, symbol: str, strategy: str, initial_cash: float
+) -> list[Trade]:
+    """Convert a run_pandas_backtest() trades DataFrame into monte_carlo.Trade objects."""
+    trade_objs: list[Trade] = []
+    for i, t in enumerate(trades.to_dict("records")):
+        pnl_val = float(t.get("pnl", 0.0))
+        trade_objs.append(
+            Trade(
+                trade_id=f"T{i}",
+                symbol=symbol,
+                side=str(t.get("side", "BUY")).upper(),
+                entry_price=float(t.get("entry_price", 0.0)),
+                exit_price=float(t.get("exit_price", 0.0)),
+                quantity=1.0,
+                pnl=pnl_val,
+                pnl_pct=pnl_val / initial_cash if initial_cash > 0 else 0.0,
+                hold_time_minutes=0,
+                strategy=strategy,
+                timestamp=str(t.get("entry_time", "")),
+            )
+        )
+    return trade_objs
+
+
+async def _run_new_monte_carlo(
+    trades: pd.DataFrame,
+    symbol: str,
+    strategy: str,
+    initial_cash: float,
+    num_simulations: int,
+    ruin_threshold_pct: float = THRESHOLDS.default_ruin_threshold_pct,
+) -> Optional[MonteCarloResult]:
+    """Run the Ticket 22 permutation-based simulator, or None if too few trades."""
+    if len(trades) < MIN_TRADES_REQUIRED:
+        return None
+
+    trade_objs = _trades_df_to_objects(trades, symbol, strategy, initial_cash)
+    config = SimulationConfig(
+        initial_balance=initial_cash,
+        num_simulations=num_simulations,
+        ruin_threshold_pct=ruin_threshold_pct,
+    )
+    # CPU-bound (joblib dispatch + wait); offload so this doesn't block the event loop.
+    return await asyncio.to_thread(MonteCarloSimulator(config).run, trade_objs)
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +350,7 @@ async def optimize_strategy(req: OptimizationRequest, request: Request) -> Optim
             req.timeframe,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return OptimizationResponse(
         strategy=req.strategy,
@@ -325,7 +384,7 @@ async def walk_forward(req: WalkForwardRequest, request: Request) -> WalkForward
             req.timeframe,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return WalkForwardResponse(
         strategy=req.strategy,
@@ -404,7 +463,8 @@ async def compare_strategies(
 
 @router.post("/backtest/report", response_class=HTMLResponse)
 async def generate_report(req: BacktestRequest, request: Request) -> HTMLResponse:
-    """Run a backtest and return a full HTML report with equity curve and trade log."""
+    """Run a backtest and return a full HTML report with equity curve, trade log,
+    and (when at least 30 trades are available) a Monte Carlo risk analysis section."""
     strategy_class = _resolve_strategy_class(req.strategy)
     data = await _load_data(
         request, req.symbol, req.timeframe, req.start_date, req.end_date, req.exchange
@@ -417,6 +477,14 @@ async def generate_report(req: BacktestRequest, request: Request) -> HTMLRespons
     )
     metrics = calculate_metrics(equity_curve, trades, req.initial_cash, req.timeframe)
 
+    monte_carlo_result = await _run_new_monte_carlo(
+        trades,
+        symbol=req.symbol,
+        strategy=strategy.name,
+        initial_cash=req.initial_cash,
+        num_simulations=settings.monte_carlo_simulations,
+    )
+
     generator = BacktestReportGenerator()
     html = generator.generate(
         strategy=strategy.name,
@@ -427,6 +495,7 @@ async def generate_report(req: BacktestRequest, request: Request) -> HTMLRespons
         metrics=metrics,
         equity_curve=equity_curve,
         trades=trades,
+        monte_carlo=monte_carlo_result,
     )
 
     return HTMLResponse(content=html)
@@ -444,21 +513,43 @@ async def run_monte_carlo(req: MonteCarloRequest, request: Request) -> MonteCarl
     signals = strategy.generate_signals(data)
     _, trades = run_pandas_backtest(data, signals, req.initial_cash, req.commission)
 
-    mc_result = monte_carlo_simulation(
+    result = await _run_new_monte_carlo(
         trades,
+        symbol=req.symbol,
+        strategy=req.strategy,
         initial_cash=req.initial_cash,
         num_simulations=req.num_simulations,
-        confidence_level=settings.monte_carlo_confidence_level,
     )
 
-    return MonteCarloResponse(
-        strategy=req.strategy,
-        symbol=req.symbol,
-        median_return=mc_result.median_return,
-        drawdown_95th=mc_result.drawdown_95th,
-        risk_of_ruin=mc_result.risk_of_ruin,
-        simulations=mc_result.simulations,
-    )
+    if result is not None:
+        median_ret = (result.median_final_balance - req.initial_cash) / req.initial_cash
+        return MonteCarloResponse(
+            strategy=req.strategy,
+            symbol=req.symbol,
+            median_return=round(median_ret, 6),
+            drawdown_95th=round(result.percentile_95_max_drawdown / 100.0, 6),
+            risk_of_ruin=round(result.probability_of_ruin, 4),
+            simulations=result.config.num_simulations,
+        )
+    else:
+        # Same offload rationale as the branch above — keep this handler's blocking
+        # behavior consistent regardless of which Monte Carlo path it takes.
+        mc_result = await asyncio.to_thread(
+            monte_carlo_simulation,
+            trades,
+            initial_cash=req.initial_cash,
+            num_simulations=req.num_simulations,
+            confidence_level=settings.monte_carlo_confidence_level,
+        )
+
+        return MonteCarloResponse(
+            strategy=req.strategy,
+            symbol=req.symbol,
+            median_return=mc_result.median_return,
+            drawdown_95th=mc_result.drawdown_95th,
+            risk_of_ruin=mc_result.risk_of_ruin,
+            simulations=mc_result.simulations,
+        )
 
 
 def _vectorbt_available() -> bool:

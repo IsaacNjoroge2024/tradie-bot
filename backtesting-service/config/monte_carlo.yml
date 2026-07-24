@@ -1,0 +1,26 @@
+monte_carlo:
+  default:
+    num_simulations: 10000
+    ruin_threshold_pct: 50.0
+    position_sizing: "fixed"
+    
+  thresholds:
+    max_probability_of_ruin: 0.05
+    max_drawdown_95_pct: 40.0
+    min_probability_of_profit: 0.55
+    caution_probability_of_ruin: 0.02
+    caution_drawdown_95_pct: 30.0
+    max_var_95_pct: 25.0
+    
+  stress_test:
+    num_simulations: 5000
+    # Informational only — the actual scenario set is defined in
+    # StressTestSuite.SCENARIOS (src/monte_carlo/stress_tests.py) and always
+    # runs all of them; this list is not read by any code.
+    scenarios:
+      - baseline
+      - miss_10_pct
+      - miss_20_pct
+      - miss_best_10_pct
+      - double_losses
+      - halve_wins

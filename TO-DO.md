@@ -52,6 +52,22 @@ Resolved in `RolloverService.java`:
 
 ---
 
+## Ticket 22 — Monte Carlo Simulation Engine
+
+### 1. Vectorize MonteCarloSimulator's per-simulation loop (CodeRabbit comment)
+**File**: `backtesting-service/src/monte_carlo/simulator.py` — `_run_single_simulation()`, called `num_simulations` times via `joblib.Parallel`
+**Problem**: The per-trade equity/drawdown/streak tracking is a plain Python `for` loop. The legacy bootstrap fallback (`monte_carlo_simulation()` in `analysis/metrics.py`) already vectorizes the equivalent calculation with `np.cumsum`/`np.maximum.accumulate`.
+**Why deferred, not fixed now**: measured live at 1.0–1.2s for 10,000 simulations — ~25x under the ticket's own 30s acceptance criterion. There is no current performance problem. Drawdown/streak tracking is inherently sequential/stateful (each step depends on the running peak and current streak), so vectorizing it correctly is a non-trivial rewrite of the core risk engine, not a mechanical transform — real risk of introducing subtle numerical bugs for a benefit that isn't needed yet.
+**Solution** (when actually needed): vectorize peak/drawdown via `np.maximum.accumulate` on the cumulative equity array per simulation; losing-streak length can be computed via a run-length approach on the sign of the shuffled P&L array. Re-benchmark before and after to confirm the complexity is worth it.
+
+### 2. Event-loop-blocking pattern in the rest of `routers/backtest.py` (CodeRabbit comment, partial scope)
+**Files**: `backtesting-service/src/routers/backtest.py` — `/backtest/run`, `/backtest/optimize`, `/backtest/walk-forward`, `/backtest/compare`
+**Problem**: Same issue fixed for the Monte Carlo endpoints in this ticket (CPU-bound synchronous work — `run_pandas_backtest`, `GridSearchOptimizer.optimize`, `WalkForwardAnalyzer.run`, engine backtests — called directly inside `async def` handlers, blocking the FastAPI event loop for the duration).
+**Why deferred**: these four endpoints predate Ticket 22 and were not touched by it; fixing them is a pre-existing Ticket 18 concern, not part of this ticket's scope.
+**Solution**: wrap the CPU-bound call in each handler with `await asyncio.to_thread(...)`, following the same pattern now used in `run_monte_carlo`, `generate_report`, and `_run_new_monte_carlo`.
+
+---
+
 ## Ticket 21 — MT5 Bridge
 
 ### 1. Add API key / mTLS authentication to bridge routes (Comment 8) ✅ DONE

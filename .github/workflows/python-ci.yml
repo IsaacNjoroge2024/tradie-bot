@@ -43,6 +43,9 @@ jobs:
       - name: Check formatting with black
         run: black --check src/ tests/
 
+      - name: Lint with ruff
+        run: ruff check src/ tests/
+
       - name: Run tests
         run: pytest tests/ -v
 
@@ -72,6 +75,9 @@ jobs:
       - name: Check formatting with black
         run: black --check app/ tests/
 
+      - name: Lint with ruff
+        run: ruff check app/ tests/
+
       - name: Run tests
         run: pytest tests/ -v
 
@@ -100,6 +106,9 @@ jobs:
 
       - name: Check formatting with black
         run: black --check src/ tests/
+
+      - name: Lint with ruff
+        run: ruff check src/ tests/
 
       - name: Run tests
         run: pytest tests/ -v

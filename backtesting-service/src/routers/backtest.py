@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import asdict
 from datetime import date
@@ -242,7 +243,7 @@ def _trades_df_to_objects(
     return trade_objs
 
 
-def _run_new_monte_carlo(
+async def _run_new_monte_carlo(
     trades: pd.DataFrame,
     symbol: str,
     strategy: str,
@@ -260,7 +261,8 @@ def _run_new_monte_carlo(
         num_simulations=num_simulations,
         ruin_threshold_pct=ruin_threshold_pct,
     )
-    return MonteCarloSimulator(config).run(trade_objs)
+    # CPU-bound (joblib dispatch + wait); offload so this doesn't block the event loop.
+    return await asyncio.to_thread(MonteCarloSimulator(config).run, trade_objs)
 
 
 # ---------------------------------------------------------------------------
@@ -474,7 +476,7 @@ async def generate_report(req: BacktestRequest, request: Request) -> HTMLRespons
     )
     metrics = calculate_metrics(equity_curve, trades, req.initial_cash, req.timeframe)
 
-    monte_carlo_result = _run_new_monte_carlo(
+    monte_carlo_result = await _run_new_monte_carlo(
         trades,
         symbol=req.symbol,
         strategy=strategy.name,
@@ -510,7 +512,7 @@ async def run_monte_carlo(req: MonteCarloRequest, request: Request) -> MonteCarl
     signals = strategy.generate_signals(data)
     _, trades = run_pandas_backtest(data, signals, req.initial_cash, req.commission)
 
-    result = _run_new_monte_carlo(
+    result = await _run_new_monte_carlo(
         trades,
         symbol=req.symbol,
         strategy=req.strategy,
@@ -529,7 +531,10 @@ async def run_monte_carlo(req: MonteCarloRequest, request: Request) -> MonteCarl
             simulations=result.config.num_simulations,
         )
     else:
-        mc_result = monte_carlo_simulation(
+        # Same offload rationale as the branch above — keep this handler's blocking
+        # behavior consistent regardless of which Monte Carlo path it takes.
+        mc_result = await asyncio.to_thread(
+            monte_carlo_simulation,
             trades,
             initial_cash=req.initial_cash,
             num_simulations=req.num_simulations,

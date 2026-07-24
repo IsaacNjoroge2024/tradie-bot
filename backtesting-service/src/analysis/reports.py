@@ -82,9 +82,9 @@ _REPORT_TEMPLATE = """<!DOCTYPE html>
   {% if monte_carlo %}
   <h2>Monte Carlo Risk Analysis</h2>
   <p><strong>Recommendation:</strong> <span class="{{ 'positive' if monte_carlo.recommendation == 'APPROVED' else ('negative' if monte_carlo.recommendation == 'REJECTED' else '') }}">{{ monte_carlo.recommendation }}</span></p>
-  {% if monte_carlo.rejection_reasons %}
+  {% if monte_carlo.recommendation_reasons %}
   <ul>
-    {% for reason in monte_carlo.rejection_reasons %}
+    {% for reason in monte_carlo.recommendation_reasons %}
     <li class="negative">{{ reason }}</li>
     {% endfor %}
   </ul>

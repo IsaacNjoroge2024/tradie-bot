@@ -236,7 +236,7 @@ class MonteCarloSimulator:
             percentile_5_curve=equity_curves[p5_idx],
             percentile_95_curve=equity_curves[p95_idx],
             recommendation=recommendation,
-            rejection_reasons=reasons,
+            recommendation_reasons=reasons,
         )
 
     def _generate_recommendation(

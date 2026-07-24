@@ -46,46 +46,56 @@ def _load() -> MonteCarloThresholds:
     try:
         with open(_CONFIG_PATH) as f:
             raw = yaml.safe_load(f) or {}
-    except (yaml.YAMLError, OSError) as exc:
-        logger.warning("Failed to read monte_carlo.yml (%s); using built-in defaults", exc)
+
+        # yaml.safe_load succeeds on syntactically valid YAML that is the wrong
+        # shape for this config (e.g. a list or scalar document, or a value that
+        # doesn't cast to float/int) — that's not a YAMLError/OSError, so it must
+        # be validated here too, inside the same fallback path. THRESHOLDS is
+        # built at import time, so an uncaught exception here would crash FastAPI
+        # and CLI startup on a simple config typo.
+        mc = raw.get("monte_carlo", {}) or {}
+        default = mc.get("default", {}) or {}
+        thresholds = mc.get("thresholds", {}) or {}
+        stress_test = mc.get("stress_test", {}) or {}
+        fallback = MonteCarloThresholds()
+
+        return MonteCarloThresholds(
+            max_probability_of_ruin=float(
+                thresholds.get("max_probability_of_ruin", fallback.max_probability_of_ruin)
+            ),
+            max_drawdown_95_pct=float(
+                thresholds.get("max_drawdown_95_pct", fallback.max_drawdown_95_pct)
+            ),
+            min_probability_of_profit=float(
+                thresholds.get("min_probability_of_profit", fallback.min_probability_of_profit)
+            ),
+            caution_probability_of_ruin=float(
+                thresholds.get("caution_probability_of_ruin", fallback.caution_probability_of_ruin)
+            ),
+            caution_drawdown_95_pct=float(
+                thresholds.get("caution_drawdown_95_pct", fallback.caution_drawdown_95_pct)
+            ),
+            max_var_95_pct=float(thresholds.get("max_var_95_pct", fallback.max_var_95_pct)),
+            default_num_simulations=int(
+                default.get("num_simulations", fallback.default_num_simulations)
+            ),
+            default_ruin_threshold_pct=float(
+                default.get("ruin_threshold_pct", fallback.default_ruin_threshold_pct)
+            ),
+            default_position_sizing=str(
+                default.get("position_sizing", fallback.default_position_sizing)
+            ),
+            stress_test_num_simulations=int(
+                stress_test.get("num_simulations", fallback.stress_test_num_simulations)
+            ),
+        )
+    except (yaml.YAMLError, OSError, AttributeError, ValueError, TypeError) as exc:
+        logger.warning(
+            "Failed to load monte_carlo.yml (%s: %s); using built-in defaults",
+            type(exc).__name__,
+            exc,
+        )
         return MonteCarloThresholds()
-
-    mc = raw.get("monte_carlo", {}) or {}
-    default = mc.get("default", {}) or {}
-    thresholds = mc.get("thresholds", {}) or {}
-    stress_test = mc.get("stress_test", {}) or {}
-    fallback = MonteCarloThresholds()
-
-    return MonteCarloThresholds(
-        max_probability_of_ruin=float(
-            thresholds.get("max_probability_of_ruin", fallback.max_probability_of_ruin)
-        ),
-        max_drawdown_95_pct=float(
-            thresholds.get("max_drawdown_95_pct", fallback.max_drawdown_95_pct)
-        ),
-        min_probability_of_profit=float(
-            thresholds.get("min_probability_of_profit", fallback.min_probability_of_profit)
-        ),
-        caution_probability_of_ruin=float(
-            thresholds.get("caution_probability_of_ruin", fallback.caution_probability_of_ruin)
-        ),
-        caution_drawdown_95_pct=float(
-            thresholds.get("caution_drawdown_95_pct", fallback.caution_drawdown_95_pct)
-        ),
-        max_var_95_pct=float(thresholds.get("max_var_95_pct", fallback.max_var_95_pct)),
-        default_num_simulations=int(
-            default.get("num_simulations", fallback.default_num_simulations)
-        ),
-        default_ruin_threshold_pct=float(
-            default.get("ruin_threshold_pct", fallback.default_ruin_threshold_pct)
-        ),
-        default_position_sizing=str(
-            default.get("position_sizing", fallback.default_position_sizing)
-        ),
-        stress_test_num_simulations=int(
-            stress_test.get("num_simulations", fallback.stress_test_num_simulations)
-        ),
-    )
 
 
 THRESHOLDS = _load()

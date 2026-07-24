@@ -81,4 +81,7 @@ class MonteCarloResult:
 
     # Recommendation
     recommendation: str  # APPROVED, CAUTION, REJECTED
-    rejection_reasons: List[str]
+    # Reasons behind `recommendation` — populated for both CAUTION (warnings)
+    # and REJECTED (hard failures), so this is deliberately not named
+    # "rejection_reasons": a CAUTION result is not a rejection.
+    recommendation_reasons: List[str]

@@ -57,12 +57,12 @@ def monte_carlo(trades_file, simulations, initial_balance, ruin_threshold, outpu
     click.echo(f"RECOMMENDATION: {result.recommendation}")
     click.echo(f"{'='*50}")
 
-    if result.rejection_reasons:
+    if result.recommendation_reasons:
         click.echo("\nReasons:")
-        for reason in result.rejection_reasons:
+        for reason in result.recommendation_reasons:
             click.echo(f"  ⚠️  {reason}")
 
-    click.echo(f"\nKey Metrics:")
+    click.echo("\nKey Metrics:")
     click.echo(f"  Probability of Profit: {result.probability_of_profit:.1%}")
     click.echo(f"  Probability of Ruin:   {result.probability_of_ruin:.1%}")
     click.echo(f"  Median Final Balance:  ${result.median_final_balance:,.2f}")
@@ -73,7 +73,7 @@ def monte_carlo(trades_file, simulations, initial_balance, ruin_threshold, outpu
     if output:
         res_dict = {
             "recommendation": result.recommendation,
-            "rejection_reasons": result.rejection_reasons,
+            "recommendation_reasons": result.recommendation_reasons,
             "num_trades": result.num_trades,
             "probability_of_profit": result.probability_of_profit,
             "probability_of_ruin": result.probability_of_ruin,

@@ -7,9 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.data.loader import HistoricalDataLoader
 from src.data.timescale import TimescaleDBPool
 from src.main import app
+from src.monte_carlo import thresholds as thresholds_module
 from src.monte_carlo.models import SimulationConfig, Trade
 from src.monte_carlo.simulator import MonteCarloSimulator
 from src.monte_carlo.stress_tests import StressTestSuite
+from src.monte_carlo.thresholds import MonteCarloThresholds
 from src.monte_carlo.visualizer import MonteCarloVisualizer
 
 
@@ -91,7 +93,7 @@ class TestMonteCarloSimulator:
 
         assert result.probability_of_profit < 0.5
         assert result.recommendation == "REJECTED"
-        assert len(result.rejection_reasons) > 0
+        assert len(result.recommendation_reasons) > 0
 
     def test_minimum_trades_required(self):
         """Should require minimum 30 trades"""
@@ -367,3 +369,38 @@ class TestBacktestRouterMonteCarloIntegration:
 
         assert response.status_code == 200
         assert "Monte Carlo Risk Analysis" not in response.text
+
+
+class TestThresholdsLoaderResilience:
+    """thresholds.THRESHOLDS is built at package import time, so a malformed
+    config/monte_carlo.yml must never raise — only yaml.YAMLError/OSError were
+    guarded originally; syntactically-valid-but-wrong-shaped YAML (e.g. a list
+    root, or a threshold value that won't cast to float) slipped through and
+    would have crashed FastAPI/CLI startup."""
+
+    def test_wrong_shaped_yaml_falls_back_to_defaults(self, tmp_path, monkeypatch):
+        bad_yaml = tmp_path / "monte_carlo.yml"
+        bad_yaml.write_text("- just\n- a\n- list\n")  # valid YAML, wrong shape (no .get())
+        monkeypatch.setattr(thresholds_module, "_CONFIG_PATH", bad_yaml)
+
+        result = thresholds_module._load()
+
+        assert result == MonteCarloThresholds()
+
+    def test_non_numeric_threshold_value_falls_back_to_defaults(self, tmp_path, monkeypatch):
+        bad_yaml = tmp_path / "monte_carlo.yml"
+        bad_yaml.write_text(
+            "monte_carlo:\n" "  thresholds:\n" "    max_probability_of_ruin: not_a_number\n"
+        )
+        monkeypatch.setattr(thresholds_module, "_CONFIG_PATH", bad_yaml)
+
+        result = thresholds_module._load()
+
+        assert result == MonteCarloThresholds()
+
+    def test_missing_file_falls_back_to_defaults(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(thresholds_module, "_CONFIG_PATH", tmp_path / "does_not_exist.yml")
+
+        result = thresholds_module._load()
+
+        assert result == MonteCarloThresholds()

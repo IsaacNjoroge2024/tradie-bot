@@ -1,6 +1,7 @@
+import asyncio
 from typing import List
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..monte_carlo.models import SimulationConfig, Trade
 from ..monte_carlo.simulator import MIN_TRADES_REQUIRED, MonteCarloSimulator
@@ -12,17 +13,19 @@ router = APIRouter(prefix="/api/monte-carlo", tags=["Monte Carlo"])
 
 class MonteCarloRequest(BaseModel):
     trades: List[dict]  # Trade data from backtest
-    initial_balance: float = 10000.0
-    num_simulations: int = THRESHOLDS.default_num_simulations
-    ruin_threshold_pct: float = THRESHOLDS.default_ruin_threshold_pct
-    skip_trade_pct: float = 0.0
+    initial_balance: float = Field(default=10000.0, gt=0)
+    num_simulations: int = Field(default=THRESHOLDS.default_num_simulations, ge=100, le=10000)
+    ruin_threshold_pct: float = Field(default=THRESHOLDS.default_ruin_threshold_pct, gt=0, le=100)
+    skip_trade_pct: float = Field(default=0.0, ge=0, le=100)
     position_sizing: str = THRESHOLDS.default_position_sizing
 
 
 class StressTestRequest(BaseModel):
     trades: List[dict]
-    initial_balance: float = 10000.0
-    num_simulations: int = THRESHOLDS.stress_test_num_simulations  # Fewer — many scenarios
+    initial_balance: float = Field(default=10000.0, gt=0)
+    num_simulations: int = Field(
+        default=THRESHOLDS.stress_test_num_simulations, ge=100, le=10000
+    )  # Fewer — many scenarios
 
 
 def _dict_to_trade(t: dict, idx: int) -> Trade:
@@ -63,11 +66,12 @@ async def run_simulation(request: MonteCarloRequest):
     )
 
     simulator = MonteCarloSimulator(config)
-    result = simulator.run(trades)
+    # CPU-bound (joblib dispatch + wait); offload so this doesn't block the event loop.
+    result = await asyncio.to_thread(simulator.run, trades)
 
     return {
         "recommendation": result.recommendation,
-        "rejection_reasons": result.rejection_reasons,
+        "recommendation_reasons": result.recommendation_reasons,
         "probability_of_profit": result.probability_of_profit,
         "probability_of_ruin": result.probability_of_ruin,
         "median_final_balance": result.median_final_balance,
@@ -94,7 +98,8 @@ async def run_stress_tests(request: StressTestRequest):
     )
 
     suite = StressTestSuite()
-    results = suite.run_all_scenarios(trades, config)
+    # 6 full simulation runs — definitely CPU-bound enough to warrant offloading.
+    results = await asyncio.to_thread(suite.run_all_scenarios, trades, config)
 
     summary = {}
     for scenario_name, result in results.items():

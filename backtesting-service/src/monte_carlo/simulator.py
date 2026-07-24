@@ -10,6 +10,11 @@ from .thresholds import THRESHOLDS
 
 logger = logging.getLogger(__name__)
 
+# Minimum trade count for a statistically meaningful simulation. Shared with
+# stress_tests.py (to avoid a scenario shrinking a trade list below this floor)
+# and the API/router layers that gate access to this simulator.
+MIN_TRADES_REQUIRED = 30
+
 
 class MonteCarloSimulator:
     """
@@ -41,8 +46,10 @@ class MonteCarloSimulator:
         Returns:
             MonteCarloResult with all statistics
         """
-        if len(trades) < 30:
-            raise ValueError("Need at least 30 trades for meaningful Monte Carlo analysis")
+        if len(trades) < MIN_TRADES_REQUIRED:
+            raise ValueError(
+                f"Need at least {MIN_TRADES_REQUIRED} trades for meaningful Monte Carlo analysis"
+            )
 
         if self.config.skip_trade_pct <= 0 and self.config.position_sizing == "fixed":
             logger.info(
@@ -173,9 +180,14 @@ class MonteCarloSimulator:
         worst_5_pct = final_balances[final_balances <= p5_bal]
         cvar_95 = initial - float(np.mean(worst_5_pct)) if len(worst_5_pct) > 0 else var_95
 
-        # Sharpe ratio estimate
+        # Sharpe ratio estimate. Guard with an epsilon (not a bare > 0) since
+        # in the degenerate case (skip_trade_pct=0, position_sizing="fixed")
+        # every simulation's final balance is mathematically identical and
+        # std_returns should be exactly 0 — but floating-point summation order
+        # differs per permutation, leaving a near-zero (e.g. 1e-16) noise floor
+        # that would otherwise blow mean/std up into a meaningless huge number.
         std_returns = float(np.std(returns))
-        if std_returns > 0:
+        if std_returns > 1e-10:
             expected_sharpe = float(np.mean(returns) / std_returns)
         else:
             expected_sharpe = 0.0

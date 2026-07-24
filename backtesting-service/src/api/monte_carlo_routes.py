@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..monte_carlo.models import SimulationConfig, Trade
-from ..monte_carlo.simulator import MonteCarloSimulator
+from ..monte_carlo.simulator import MIN_TRADES_REQUIRED, MonteCarloSimulator
 from ..monte_carlo.stress_tests import StressTestSuite
 from ..monte_carlo.thresholds import THRESHOLDS
 
@@ -46,8 +46,10 @@ def _dict_to_trade(t: dict, idx: int) -> Trade:
 async def run_simulation(request: MonteCarloRequest):
     """Run Monte Carlo simulation on trade history"""
 
-    if len(request.trades) < 30:
-        raise HTTPException(400, "Need at least 30 trades for Monte Carlo analysis")
+    if len(request.trades) < MIN_TRADES_REQUIRED:
+        raise HTTPException(
+            400, f"Need at least {MIN_TRADES_REQUIRED} trades for Monte Carlo analysis"
+        )
 
     # Convert to Trade objects
     trades = [_dict_to_trade(t, i) for i, t in enumerate(request.trades)]
@@ -80,8 +82,10 @@ async def run_simulation(request: MonteCarloRequest):
 async def run_stress_tests(request: StressTestRequest):
     """Run multiple stress test scenarios"""
 
-    if len(request.trades) < 30:
-        raise HTTPException(400, "Need at least 30 trades for Monte Carlo stress testing")
+    if len(request.trades) < MIN_TRADES_REQUIRED:
+        raise HTTPException(
+            400, f"Need at least {MIN_TRADES_REQUIRED} trades for Monte Carlo stress testing"
+        )
 
     trades = [_dict_to_trade(t, i) for i, t in enumerate(request.trades)]
 

@@ -20,20 +20,19 @@ from ..data.loader import HistoricalDataLoader
 from ..engine.backtrader_engine import BacktraderEngine, BacktraderEngineError
 from ..engine.vectorbt_engine import VectorBTEngine
 from ..monte_carlo.models import MonteCarloResult, SimulationConfig, Trade
-from ..monte_carlo.simulator import MonteCarloSimulator
+from ..monte_carlo.simulator import MIN_TRADES_REQUIRED, MonteCarloSimulator
 from ..optimization.grid_search import GridSearchOptimizer
 from ..optimization.walk_forward import WalkForwardAnalyzer
 from ..strategies.confluence_strategy import ConfluenceStrategy
 from ..strategies.fvg_strategy import FVGStrategy
 
-# MonteCarloSimulator (permutation-shuffle engine, Ticket 22) requires >= 30
-# trades for a statistically meaningful result. Below that, /backtest/monte-carlo
-# falls back to the bootstrap-resampling monte_carlo_simulation() from Ticket 18,
-# which has no minimum trade count. The two use different resampling strategies
-# (permutation without replacement vs. bootstrap with replacement) and are not
-# numerically equivalent — this is an intentional compatibility fallback for
-# short backtests, not an oversight.
-_MIN_TRADES_FOR_NEW_SIMULATOR = 30
+# MonteCarloSimulator (permutation-shuffle engine, Ticket 22) requires >=
+# MIN_TRADES_REQUIRED trades for a statistically meaningful result. Below that,
+# /backtest/monte-carlo falls back to the bootstrap-resampling
+# monte_carlo_simulation() from Ticket 18, which has no minimum trade count.
+# The two use different resampling strategies (permutation without replacement
+# vs. bootstrap with replacement) and are not numerically equivalent — this is
+# an intentional compatibility fallback for short backtests, not an oversight.
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -252,7 +251,7 @@ def _run_new_monte_carlo(
     ruin_threshold_pct: float = 50.0,
 ) -> Optional[MonteCarloResult]:
     """Run the Ticket 22 permutation-based simulator, or None if too few trades."""
-    if len(trades) < _MIN_TRADES_FOR_NEW_SIMULATOR:
+    if len(trades) < MIN_TRADES_REQUIRED:
         return None
 
     trade_objs = _trades_df_to_objects(trades, symbol, strategy, initial_cash)

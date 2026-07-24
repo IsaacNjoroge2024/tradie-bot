@@ -2,7 +2,7 @@ import copy
 from typing import Dict, List
 
 from .models import MonteCarloResult, SimulationConfig, Trade
-from .simulator import MonteCarloSimulator
+from .simulator import MIN_TRADES_REQUIRED, MonteCarloSimulator
 
 
 class StressTestSuite:
@@ -53,9 +53,15 @@ class StressTestSuite:
         modified = [copy.deepcopy(t) for t in trades]
 
         if params.get("skip_best"):
-            # Sort by P&L and remove top performers
+            # Sort by P&L and remove top performers. Clamp so the reduced list
+            # never drops below MonteCarloSimulator's hard minimum — with an
+            # input trade count close to that floor (e.g. 31 trades), removing
+            # the nominal 10% would otherwise leave too few trades to simulate
+            # and raise ValueError, taking down the whole scenario batch.
             sorted_trades = sorted(modified, key=lambda t: t.pnl, reverse=True)
-            n_skip = int(len(sorted_trades) * params["skip_pct"] / 100)
+            nominal_skip = int(len(sorted_trades) * params["skip_pct"] / 100)
+            max_skip = max(0, len(sorted_trades) - MIN_TRADES_REQUIRED)
+            n_skip = min(nominal_skip, max_skip)
             modified = sorted_trades[n_skip:]
 
         if params.get("loss_multiplier"):

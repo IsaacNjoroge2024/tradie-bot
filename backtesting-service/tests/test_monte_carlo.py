@@ -137,6 +137,21 @@ class TestMonteCarloSimulator:
         assert len(results) == len(StressTestSuite.SCENARIOS)
         assert "baseline" in results
         assert "miss_10_pct" in results
+
+    def test_stress_test_suite_does_not_crash_near_minimum_trade_count(self):
+        """Regression test: with an input just above the 30-trade minimum, the
+        miss_best_10_pct scenario removes 10% of trades (e.g. 31 -> 28), which
+        used to drop below MonteCarloSimulator's hard minimum and raise an
+        uncaught ValueError, taking down the whole stress-test batch with a 500."""
+        trades = create_winning_strategy_trades(31)
+        config = SimulationConfig(num_simulations=100, random_seed=42)
+
+        suite = StressTestSuite()
+        results = suite.run_all_scenarios(trades, config)
+
+        assert len(results) == len(StressTestSuite.SCENARIOS)
+        assert all(result is not None for result in results.values())
+        assert results["miss_best_10_pct"].num_trades >= 30
         assert "double_losses" in results
         assert "halve_wins" in results
 
@@ -193,6 +208,25 @@ class TestMonteCarloSimulator:
         assert "baseline" in data
         assert "double_losses" in data
         assert "halve_wins" in data
+
+    def test_api_stress_test_endpoint_near_minimum_trade_count(self):
+        """Regression test for the 500 previously raised by /api/monte-carlo/stress-test
+        when given a trade count just above the 30-trade minimum (e.g. 31 trades) —
+        the miss_best_10_pct scenario used to shrink below the simulator's floor."""
+        client = TestClient(app)
+        trades = [t.__dict__ for t in create_winning_strategy_trades(31)]
+
+        payload = {
+            "trades": trades,
+            "initial_balance": 10000.0,
+            "num_simulations": 100,
+        }
+
+        response = client.post("/api/monte-carlo/stress-test", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert "miss_best_10_pct" in data
+        assert data["miss_best_10_pct"]["recommendation"] in ["APPROVED", "CAUTION", "REJECTED"]
 
 
 def _make_sample_ohlcv() -> pd.DataFrame:

@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     sentiment_danger_threshold: float = -0.5
     sentiment_caution_threshold: float = -0.3
 
+    # Sentiment Analysis Engine (Ticket 23 — FinBERT)
+    sentiment_primary_analyzer: str = "finbert"  # "finbert" or "vader"
+    finbert_device: str = "auto"  # "auto", "cuda", or "cpu"
+    finbert_max_length: int = 512
+    finbert_batch_size: int = 16
+
     # High Impact Events
     high_impact_pause_minutes: int = 30
 

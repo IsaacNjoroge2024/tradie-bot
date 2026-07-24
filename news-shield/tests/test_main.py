@@ -4,7 +4,12 @@ from fastapi.testclient import TestClient
 
 from src.main import app
 from src.services.event_calendar import EventCalendarService
-from src.services.sentiment_analyzer import SentimentAnalyzer, SentimentResult
+from src.services.sentiment_analyzer import (
+    MarketSentimentSummary,
+    SentimentAnalyzer,
+    SentimentResult,
+    TextSentimentResult,
+)
 
 client = TestClient(app)
 
@@ -21,6 +26,36 @@ def _setup_app_state():
             news_count=0,
             headlines=[],
         )
+    )
+    mock_sentiment_analyzer.analyze_text.return_value = TextSentimentResult(
+        text="Stocks rally on strong earnings",
+        label="POSITIVE",
+        compound=0.6,
+        confidence=0.8,
+        positive_score=0.8,
+        negative_score=0.05,
+        neutral_score=0.15,
+        engine="finbert",
+    )
+    mock_sentiment_analyzer.analyze_texts_batch.return_value = [
+        TextSentimentResult(
+            text="Stocks rally on strong earnings",
+            label="POSITIVE",
+            compound=0.6,
+            confidence=0.8,
+            positive_score=0.8,
+            negative_score=0.05,
+            neutral_score=0.15,
+            engine="finbert",
+        )
+    ]
+    mock_sentiment_analyzer.aggregate_sentiment.return_value = MarketSentimentSummary(
+        overall_sentiment="POSITIVE",
+        compound_score=0.6,
+        positive_pct=1.0,
+        negative_pct=0.0,
+        neutral_pct=0.0,
+        headline_count=1,
     )
 
     app.state.event_service = mock_event_service
@@ -57,3 +92,34 @@ def test_quick_check_safe():
     response = client.get("/api/quick-check")
     assert response.status_code == 200
     assert response.json() == {"safe_to_trade": True}
+
+
+def test_sentiment_analyze():
+    _setup_app_state()
+    response = client.post("/api/sentiment/analyze", json={"text": "Stocks rally"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["label"] == "POSITIVE"
+    assert body["engine"] == "finbert"
+
+
+def test_sentiment_analyze_batch():
+    _setup_app_state()
+    response = client.post(
+        "/api/sentiment/analyze-batch", json={"texts": ["Stocks rally on strong earnings"]}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["label"] == "POSITIVE"
+
+
+def test_sentiment_market_sentiment():
+    _setup_app_state()
+    response = client.post(
+        "/api/sentiment/market-sentiment", json={"texts": ["Stocks rally on strong earnings"]}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["overall_sentiment"] == "POSITIVE"
+    assert body["headline_count"] == 1

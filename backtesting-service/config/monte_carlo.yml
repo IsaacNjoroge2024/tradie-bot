@@ -1,0 +1,19 @@
+monte_carlo:
+  default:
+    num_simulations: 10000
+    ruin_threshold_pct: 50.0
+    position_sizing: "fixed"
+    
+  thresholds:
+    max_probability_of_ruin: 0.05
+    max_drawdown_95_pct: 40.0
+    min_probability_of_profit: 0.55
+    max_var_95_pct: 25.0
+    
+  stress_test:
+    num_simulations: 5000
+    scenarios:
+      - skip_10_pct
+      - skip_20_pct
+      - double_losses
+      - halve_wins

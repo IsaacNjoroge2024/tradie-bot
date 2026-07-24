@@ -444,21 +444,62 @@ async def run_monte_carlo(req: MonteCarloRequest, request: Request) -> MonteCarl
     signals = strategy.generate_signals(data)
     _, trades = run_pandas_backtest(data, signals, req.initial_cash, req.commission)
 
-    mc_result = monte_carlo_simulation(
-        trades,
-        initial_cash=req.initial_cash,
-        num_simulations=req.num_simulations,
-        confidence_level=settings.monte_carlo_confidence_level,
-    )
+    if len(trades) >= 30:
+        from ..monte_carlo.models import SimulationConfig, Trade
+        from ..monte_carlo.simulator import MonteCarloSimulator
 
-    return MonteCarloResponse(
-        strategy=req.strategy,
-        symbol=req.symbol,
-        median_return=mc_result.median_return,
-        drawdown_95th=mc_result.drawdown_95th,
-        risk_of_ruin=mc_result.risk_of_ruin,
-        simulations=mc_result.simulations,
-    )
+        trade_objs = []
+        for i, t in enumerate(trades.to_dict("records")):
+            pnl_val = float(t.get("pnl", 0.0))
+            trade_objs.append(
+                Trade(
+                    trade_id=f"T{i}",
+                    symbol=req.symbol,
+                    side=str(t.get("side", "BUY")).upper(),
+                    entry_price=float(t.get("entry_price", 0.0)),
+                    exit_price=float(t.get("exit_price", 0.0)),
+                    quantity=1.0,
+                    pnl=pnl_val,
+                    pnl_pct=pnl_val / req.initial_cash if req.initial_cash > 0 else 0.0,
+                    hold_time_minutes=0,
+                    strategy=req.strategy,
+                    timestamp=str(t.get("entry_time", "")),
+                )
+            )
+
+        config = SimulationConfig(
+            initial_balance=req.initial_cash,
+            num_simulations=req.num_simulations,
+            ruin_threshold_pct=50.0,
+        )
+        simulator = MonteCarloSimulator(config)
+        result = simulator.run(trade_objs)
+
+        median_ret = (result.median_final_balance - req.initial_cash) / req.initial_cash
+        return MonteCarloResponse(
+            strategy=req.strategy,
+            symbol=req.symbol,
+            median_return=round(median_ret, 6),
+            drawdown_95th=round(result.percentile_95_max_drawdown / 100.0, 6),
+            risk_of_ruin=round(result.probability_of_ruin, 4),
+            simulations=result.config.num_simulations,
+        )
+    else:
+        mc_result = monte_carlo_simulation(
+            trades,
+            initial_cash=req.initial_cash,
+            num_simulations=req.num_simulations,
+            confidence_level=settings.monte_carlo_confidence_level,
+        )
+
+        return MonteCarloResponse(
+            strategy=req.strategy,
+            symbol=req.symbol,
+            median_return=mc_result.median_return,
+            drawdown_95th=mc_result.drawdown_95th,
+            risk_of_ruin=mc_result.risk_of_ruin,
+            simulations=mc_result.simulations,
+        )
 
 
 def _vectorbt_available() -> bool:

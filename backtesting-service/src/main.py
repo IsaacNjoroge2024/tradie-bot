@@ -9,6 +9,7 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from .config import settings
 from .data.loader import HistoricalDataLoader
 from .data.timescale import TimescaleDBPool
+from .api.monte_carlo_routes import router as monte_carlo_router
 from .routers import backtest
 
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +59,7 @@ app.add_middleware(
 )
 
 app.include_router(backtest.router, prefix="/api", tags=["Backtesting"])
+app.include_router(monte_carlo_router)
 
 
 @app.get("/health")

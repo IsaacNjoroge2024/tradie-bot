@@ -79,6 +79,35 @@ _REPORT_TEMPLATE = """<!DOCTYPE html>
   </div>
   {% endif %}
 
+  {% if monte_carlo %}
+  <h2>Monte Carlo Risk Analysis</h2>
+  <p><strong>Recommendation:</strong> <span class="{{ 'positive' if monte_carlo.recommendation == 'APPROVED' else ('negative' if monte_carlo.recommendation == 'REJECTED' else '') }}">{{ monte_carlo.recommendation }}</span></p>
+  {% if monte_carlo.rejection_reasons %}
+  <ul>
+    {% for reason in monte_carlo.rejection_reasons %}
+    <li class="negative">{{ reason }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <table>
+    <tr><th>Monte Carlo Metric</th><th>Value</th></tr>
+    <tr><td>Simulations Run</td><td>{{ monte_carlo.config.num_simulations }}</td></tr>
+    <tr><td>Probability of Profit</td><td>{{ "%.2f"|format(monte_carlo.probability_of_profit * 100) }}%</td></tr>
+    <tr><td>Probability of Ruin</td><td>{{ "%.2f"|format(monte_carlo.probability_of_ruin * 100) }}%</td></tr>
+    <tr><td>Median Final Balance</td><td>${{ "%.2f"|format(monte_carlo.median_final_balance) }}</td></tr>
+    <tr><td>5th Percentile Balance (Worst 5%)</td><td>${{ "%.2f"|format(monte_carlo.percentile_5_balance) }}</td></tr>
+    <tr><td>95th Percentile Balance (Best 5%)</td><td>${{ "%.2f"|format(monte_carlo.percentile_95_balance) }}</td></tr>
+    <tr><td>Median Max Drawdown</td><td>{{ "%.2f"|format(monte_carlo.median_max_drawdown) }}%</td></tr>
+    <tr><td>95th Percentile Max Drawdown</td><td>{{ "%.2f"|format(monte_carlo.percentile_95_max_drawdown) }}%</td></tr>
+    <tr><td>99th Percentile Max Drawdown</td><td>{{ "%.2f"|format(monte_carlo.percentile_99_max_drawdown) }}%</td></tr>
+    <tr><td>Value at Risk 95% (VaR 95%)</td><td>${{ "%.2f"|format(monte_carlo.var_95) }}</td></tr>
+    <tr><td>Value at Risk 99% (VaR 99%)</td><td>${{ "%.2f"|format(monte_carlo.var_99) }}</td></tr>
+    <tr><td>Conditional VaR 95% (CVaR 95%)</td><td>${{ "%.2f"|format(monte_carlo.cvar_95) }}</td></tr>
+    <tr><td>Expected Sharpe Ratio</td><td>{{ "%.4f"|format(monte_carlo.expected_sharpe) }}</td></tr>
+    <tr><td>Worst Losing Streak</td><td>{{ monte_carlo.worst_losing_streak }} trades</td></tr>
+  </table>
+  {% endif %}
+
   {% if trades %}
   <h2>Trade Log</h2>
   <table>
@@ -125,6 +154,7 @@ class BacktestReportGenerator:
         metrics: BacktestMetrics,
         equity_curve: pd.Series,
         trades: pd.DataFrame,
+        monte_carlo: object = None,
     ) -> str:
         equity_chart = self._render_equity_chart(equity_curve)
         drawdown_chart = self._render_drawdown_chart(equity_curve)
@@ -141,6 +171,7 @@ class BacktestReportGenerator:
             equity_chart=equity_chart,
             drawdown_chart=drawdown_chart,
             trades=trade_records,
+            monte_carlo=monte_carlo,
         )
 
     def _render_equity_chart(self, equity_curve: pd.Series) -> str | None:

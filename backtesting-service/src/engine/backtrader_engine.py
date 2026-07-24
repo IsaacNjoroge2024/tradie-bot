@@ -35,20 +35,20 @@ class BacktraderEngine:
             raise BacktraderEngineError("run_backtest requires non-empty OHLCV data")
 
         try:
-            import backtrader as bt  # noqa: PLC0415
-        except ImportError:
+            import backtrader as bt
+        except ImportError as exc:
             raise BacktraderEngineError(
                 "backtrader is not installed. Install it with: pip install -e '.[backtesting]'"
-            )
+            ) from exc
 
         # --- Strategy class defined here so `bt` is in scope ---
         class _SignalStrategy(bt.Strategy):  # type: ignore[misc]
-            def __init__(self_s) -> None:  # noqa: N805
+            def __init__(self_s) -> None:
                 self_s.equity_values: list[float] = []
                 self_s.closed_trades: list[dict] = []
                 self_s._entry_size: float = 0.0
 
-            def next(self_s) -> None:  # noqa: N805
+            def next(self_s) -> None:
                 self_s.equity_values.append(float(self_s.broker.getvalue()))
                 signal = float(self_s.data.signal[0])
                 if not self_s.position and signal == 1.0:
@@ -56,11 +56,11 @@ class BacktraderEngine:
                 elif self_s.position and signal == -1.0:
                     self_s.close()
 
-            def notify_order(self_s, order) -> None:  # noqa: N805
+            def notify_order(self_s, order) -> None:
                 if order.status == order.Completed and order.isbuy():
                     self_s._entry_size = float(order.executed.size)
 
-            def notify_trade(self_s, trade) -> None:  # noqa: N805
+            def notify_trade(self_s, trade) -> None:
                 if not trade.isclosed:
                     return
                 entry_time = bt.num2date(trade.dtopen)

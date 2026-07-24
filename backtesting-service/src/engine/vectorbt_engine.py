@@ -79,7 +79,7 @@ class VectorBTEngine:
         slippage: float,
         timeframe: str = "1D",
     ) -> BacktestResult:
-        import vectorbt as vbt  # noqa: PLC0415
+        import vectorbt as vbt
 
         entries = signals["signal"] == 1
         exits = signals["signal"] == -1
@@ -106,7 +106,7 @@ class VectorBTEngine:
                 if len(losses) > 0 and losses.sum() != 0
                 else 0.0
             )
-            total_trades = int(len(trades_pnl))
+            total_trades = len(trades_pnl)
             raw = portfolio.trades.records_readable
             col_map = {
                 "Entry Timestamp": "entry_time",

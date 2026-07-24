@@ -53,7 +53,7 @@ class WalkForwardAnalyzer:
         if len(data) < min_bars:
             raise ValueError(
                 f"Walk-forward requires at least {min_bars} bars "
-                f"(num_periods={self.num_periods} × 20); got {len(data)}"
+                f"(num_periods={self.num_periods} x 20); got {len(data)}"
             )
 
         periods = self._split_periods(data)

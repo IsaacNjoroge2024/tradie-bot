@@ -1,5 +1,5 @@
 import copy
-from typing import Dict, List
+from typing import ClassVar, Dict, List
 
 from .models import MonteCarloResult, SimulationConfig, Trade
 from .simulator import MIN_TRADES_REQUIRED, MonteCarloSimulator
@@ -10,7 +10,8 @@ class StressTestSuite:
     Run multiple stress test scenarios on a strategy.
     """
 
-    SCENARIOS = {
+    # ClassVar: a shared, read-only lookup table — never mutated per-instance.
+    SCENARIOS: ClassVar[dict] = {
         "baseline": {"skip_trade_pct": 0.0, "description": "Normal conditions"},
         "miss_10_pct": {
             "skip_trade_pct": 10.0,

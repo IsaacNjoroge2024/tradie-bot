@@ -7,7 +7,7 @@ pytest.importorskip(
     "backtrader", reason="backtrader not installed; run: pip install -e '.[backtesting]'"
 )
 
-from src.engine.backtrader_engine import BacktraderEngine  # noqa: E402
+from src.engine.backtrader_engine import BacktraderEngine
 
 
 def _make_data(n: int = 50) -> pd.DataFrame:

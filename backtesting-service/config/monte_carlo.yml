@@ -14,8 +14,13 @@ monte_carlo:
     
   stress_test:
     num_simulations: 5000
+    # Informational only — the actual scenario set is defined in
+    # StressTestSuite.SCENARIOS (src/monte_carlo/stress_tests.py) and always
+    # runs all of them; this list is not read by any code.
     scenarios:
-      - skip_10_pct
-      - skip_20_pct
+      - baseline
+      - miss_10_pct
+      - miss_20_pct
+      - miss_best_10_pct
       - double_losses
       - halve_wins

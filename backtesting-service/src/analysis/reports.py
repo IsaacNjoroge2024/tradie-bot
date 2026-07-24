@@ -1,7 +1,6 @@
 import base64
 import io
 import logging
-from dataclasses import asdict
 from datetime import date
 
 import pandas as pd
@@ -188,10 +187,10 @@ class BacktestReportGenerator:
         self, series: pd.Series, ylabel: str, color: str, fill: bool = False
     ) -> str | None:
         try:
-            import matplotlib  # noqa: PLC0415
+            import matplotlib
 
             matplotlib.use("Agg")
-            import matplotlib.pyplot as plt  # noqa: PLC0415
+            import matplotlib.pyplot as plt
         except ImportError:
             logger.warning("matplotlib not available; charts will be omitted from report")
             return None

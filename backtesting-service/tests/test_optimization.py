@@ -52,7 +52,7 @@ class TestGridSearchOptimizer:
             {"min_gap_atr": [0.0, 0.5, 1.0], "atr_period": [10, 14]},
             optimize_metric="sharpe_ratio",
         )
-        assert len(result.all_results) == 6  # 3 × 2
+        assert len(result.all_results) == 6  # 3 x 2
 
     def test_optimize_metric_in_result(self):
         data = _make_data()

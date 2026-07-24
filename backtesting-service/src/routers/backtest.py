@@ -22,6 +22,7 @@ from ..engine.backtrader_engine import BacktraderEngine, BacktraderEngineError
 from ..engine.vectorbt_engine import VectorBTEngine
 from ..monte_carlo.models import MonteCarloResult, SimulationConfig, Trade
 from ..monte_carlo.simulator import MIN_TRADES_REQUIRED, MonteCarloSimulator
+from ..monte_carlo.thresholds import THRESHOLDS
 from ..optimization.grid_search import GridSearchOptimizer
 from ..optimization.walk_forward import WalkForwardAnalyzer
 from ..strategies.confluence_strategy import ConfluenceStrategy
@@ -209,7 +210,7 @@ async def _load_data(
     try:
         data = await loader.load(symbol, timeframe, start_date, end_date, exchange)
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if data.empty:
         raise HTTPException(
             status_code=404,
@@ -249,7 +250,7 @@ async def _run_new_monte_carlo(
     strategy: str,
     initial_cash: float,
     num_simulations: int,
-    ruin_threshold_pct: float = 50.0,
+    ruin_threshold_pct: float = THRESHOLDS.default_ruin_threshold_pct,
 ) -> Optional[MonteCarloResult]:
     """Run the Ticket 22 permutation-based simulator, or None if too few trades."""
     if len(trades) < MIN_TRADES_REQUIRED:
@@ -349,7 +350,7 @@ async def optimize_strategy(req: OptimizationRequest, request: Request) -> Optim
             req.timeframe,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return OptimizationResponse(
         strategy=req.strategy,
@@ -383,7 +384,7 @@ async def walk_forward(req: WalkForwardRequest, request: Request) -> WalkForward
             req.timeframe,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return WalkForwardResponse(
         strategy=req.strategy,

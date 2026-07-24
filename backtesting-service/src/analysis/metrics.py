@@ -7,7 +7,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 # Bars per trading year for each supported timeframe.
-# Intraday values use US session hours (6.5 h/day × 252 trading days)
+# Intraday values use US session hours (6.5 h/day x 252 trading days)
 # which is the standard quant-finance convention for multi-asset strategies.
 _BARS_PER_YEAR: dict[str, float] = {
     "1m": 252.0 * 390,  # 390 min/trading day

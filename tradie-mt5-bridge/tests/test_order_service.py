@@ -64,7 +64,7 @@ class TestPlaceOrder:
     async def test_place_stop_order(self, service, mock_client):
         mock_client.place_order.return_value = OrderResult(success=True, order_id=100004)
 
-        result = await service.place_order("EURUSD", "SELL", 0.1, order_type="STOP", price=1.080)
+        await service.place_order("EURUSD", "SELL", 0.1, order_type="STOP", price=1.080)
 
         call_kwargs = mock_client.place_order.call_args[1]
         assert call_kwargs["order_type"] == OrderType.SELL_STOP
@@ -89,7 +89,7 @@ class TestPlaceOrder:
 
     async def test_order_type_is_case_insensitive(self, service, mock_client):
         mock_client.place_order.return_value = OrderResult(success=True, order_id=100006)
-        result = await service.place_order("EURUSD", "BUY", 0.1, order_type="limit", price=1.085)
+        await service.place_order("EURUSD", "BUY", 0.1, order_type="limit", price=1.085)
         call_kwargs = mock_client.place_order.call_args[1]
         assert call_kwargs["order_type"] == OrderType.BUY_LIMIT
 

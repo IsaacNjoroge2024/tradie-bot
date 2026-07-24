@@ -12,9 +12,19 @@ class StressTestSuite:
 
     SCENARIOS = {
         "baseline": {"skip_trade_pct": 0.0, "description": "Normal conditions"},
-        "miss_10_pct": {"skip_trade_pct": 10.0, "description": "Miss 10% of trades (slippage, connectivity)"},
-        "miss_20_pct": {"skip_trade_pct": 20.0, "description": "Miss 20% of trades (severe conditions)"},
-        "miss_best_10_pct": {"skip_best": True, "skip_pct": 10.0, "description": "Miss 10% best trades"},
+        "miss_10_pct": {
+            "skip_trade_pct": 10.0,
+            "description": "Miss 10% of trades (slippage, connectivity)",
+        },
+        "miss_20_pct": {
+            "skip_trade_pct": 20.0,
+            "description": "Miss 20% of trades (severe conditions)",
+        },
+        "miss_best_10_pct": {
+            "skip_best": True,
+            "skip_pct": 10.0,
+            "description": "Miss 10% best trades",
+        },
         "double_losses": {"loss_multiplier": 2.0, "description": "Double all losing trades"},
         "halve_wins": {"win_multiplier": 0.5, "description": "Halve all winning trades"},
     }

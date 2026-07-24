@@ -1,9 +1,14 @@
+import logging
 from typing import List, Tuple
+
 import numpy as np
 from numpy.random import Generator, PCG64
 from joblib import Parallel, delayed
 
 from .models import MonteCarloResult, SimulationConfig, Trade
+from .thresholds import THRESHOLDS
+
+logger = logging.getLogger(__name__)
 
 
 class MonteCarloSimulator:
@@ -12,11 +17,18 @@ class MonteCarloSimulator:
 
     Runs thousands of simulations by reshuffling trade sequences
     to reveal realistic risk distributions that single backtests hide.
+
+    Note: with the default config (skip_trade_pct=0, position_sizing="fixed"),
+    shuffling is a pure permutation, so every simulation's *final* balance is
+    identical (only the equity path/drawdown differs) — VaR, CVaR and the
+    final-balance percentiles are therefore degenerate in that configuration.
+    They only carry distributional signal once skip_trade_pct > 0 or
+    position_sizing="compounding" is used. Drawdown percentiles and streak
+    metrics remain meaningful in all configurations.
     """
 
     def __init__(self, config: SimulationConfig):
         self.config = config
-        self.rng = Generator(PCG64(config.random_seed))
 
     def run(self, trades: List[Trade], n_jobs: int = -1) -> MonteCarloResult:
         """
@@ -31,6 +43,14 @@ class MonteCarloSimulator:
         """
         if len(trades) < 30:
             raise ValueError("Need at least 30 trades for meaningful Monte Carlo analysis")
+
+        if self.config.skip_trade_pct <= 0 and self.config.position_sizing == "fixed":
+            logger.info(
+                "Running with skip_trade_pct=0 and position_sizing='fixed': permutation "
+                "preserves total P&L, so final-balance VaR/CVaR/percentiles will be "
+                "degenerate (identical across simulations). Drawdown and streak metrics "
+                "remain meaningful."
+            )
 
         pnl_values = np.array([t.pnl for t in trades], dtype=float)
 
@@ -87,7 +107,11 @@ class MonteCarloSimulator:
             # Apply position sizing if compounding
             if self.config.position_sizing == "compounding":
                 # Scale P&L based on current balance vs initial
-                scale_factor = balance / self.config.initial_balance if self.config.initial_balance > 0 else 1.0
+                scale_factor = (
+                    balance / self.config.initial_balance
+                    if self.config.initial_balance > 0
+                    else 1.0
+                )
                 adjusted_pnl = pnl * scale_factor
             else:
                 adjusted_pnl = pnl
@@ -210,19 +234,32 @@ class MonteCarloSimulator:
         probability_of_profit: float,
         var_95_pct: float,
     ) -> Tuple[str, List[str]]:
-        """Generate go/no-go recommendation based on risk metrics"""
+        """Generate go/no-go recommendation based on risk metrics.
+
+        Thresholds are sourced from config/monte_carlo.yml (see .thresholds.THRESHOLDS)
+        so operators can tune go/no-go criteria without a code change.
+        """
 
         reasons = []
 
         # Critical failures (REJECTED)
-        if probability_of_ruin > 0.05:
-            reasons.append(f"Probability of ruin {probability_of_ruin:.1%} exceeds 5% threshold")
+        if probability_of_ruin > THRESHOLDS.max_probability_of_ruin:
+            reasons.append(
+                f"Probability of ruin {probability_of_ruin:.1%} exceeds "
+                f"{THRESHOLDS.max_probability_of_ruin:.0%} threshold"
+            )
 
-        if percentile_95_drawdown > 40:
-            reasons.append(f"95th percentile drawdown {percentile_95_drawdown:.1f}% exceeds 40% threshold")
+        if percentile_95_drawdown > THRESHOLDS.max_drawdown_95_pct:
+            reasons.append(
+                f"95th percentile drawdown {percentile_95_drawdown:.1f}% exceeds "
+                f"{THRESHOLDS.max_drawdown_95_pct:.0f}% threshold"
+            )
 
-        if probability_of_profit < 0.55:
-            reasons.append(f"Probability of profit {probability_of_profit:.1%} below 55% threshold")
+        if probability_of_profit < THRESHOLDS.min_probability_of_profit:
+            reasons.append(
+                f"Probability of profit {probability_of_profit:.1%} below "
+                f"{THRESHOLDS.min_probability_of_profit:.0%} threshold"
+            )
 
         if len(reasons) > 0:
             return "REJECTED", reasons
@@ -230,13 +267,19 @@ class MonteCarloSimulator:
         # Warnings (CAUTION)
         warnings = []
 
-        if probability_of_ruin > 0.02:
-            warnings.append(f"Probability of ruin {probability_of_ruin:.1%} above 2% (acceptable but elevated)")
+        if probability_of_ruin > THRESHOLDS.caution_probability_of_ruin:
+            warnings.append(
+                f"Probability of ruin {probability_of_ruin:.1%} above "
+                f"{THRESHOLDS.caution_probability_of_ruin:.0%} (acceptable but elevated)"
+            )
 
-        if percentile_95_drawdown > 30:
-            warnings.append(f"95th percentile drawdown {percentile_95_drawdown:.1f}% above 30%")
+        if percentile_95_drawdown > THRESHOLDS.caution_drawdown_95_pct:
+            warnings.append(
+                f"95th percentile drawdown {percentile_95_drawdown:.1f}% above "
+                f"{THRESHOLDS.caution_drawdown_95_pct:.0f}%"
+            )
 
-        if var_95_pct > 25:
+        if var_95_pct > THRESHOLDS.max_var_95_pct:
             warnings.append(f"VaR 95% is {var_95_pct:.1f}% of account")
 
         if len(warnings) > 0:

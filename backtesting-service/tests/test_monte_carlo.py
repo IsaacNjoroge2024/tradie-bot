@@ -1,7 +1,11 @@
+import pandas as pd
 import pytest
 import numpy as np
 from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from src.data.loader import HistoricalDataLoader
+from src.data.timescale import TimescaleDBPool
 from src.main import app
 from src.monte_carlo.models import SimulationConfig, Trade
 from src.monte_carlo.simulator import MonteCarloSimulator
@@ -109,7 +113,9 @@ class TestMonteCarloSimulator:
         result_normal = MonteCarloSimulator(config_normal).run(trades)
         result_skip = MonteCarloSimulator(config_skip).run(trades)
 
-        assert result_skip.percentile_95_max_drawdown >= result_normal.percentile_95_max_drawdown * 0.9
+        assert (
+            result_skip.percentile_95_max_drawdown >= result_normal.percentile_95_max_drawdown * 0.9
+        )
 
     def test_compounding_position_sizing(self):
         """Test compounding position sizing logic"""
@@ -187,3 +193,143 @@ class TestMonteCarloSimulator:
         assert "baseline" in data
         assert "double_losses" in data
         assert "halve_wins" in data
+
+
+def _make_sample_ohlcv() -> pd.DataFrame:
+    """Same random-walk generator used in test_main.py, kept local to avoid cross-file imports."""
+    rng = np.random.default_rng(42)
+    dates = pd.date_range("2023-01-01", periods=100, freq="D", tz="UTC")
+    close = 100.0 + np.cumsum(rng.standard_normal(100) * 0.5)
+    return pd.DataFrame(
+        {
+            "open": close - 0.2,
+            "high": close + 0.5,
+            "low": close - 0.5,
+            "close": close,
+            "volume": rng.integers(1000, 5000, size=100).astype(float),
+        },
+        index=dates,
+    )
+
+
+def _make_large_trades_df(n: int = 40) -> pd.DataFrame:
+    """All-positive-pnl trades, so recommendation math is deterministic regardless of shuffle
+    order (a permutation can't create a loss out of an all-winning trade sequence)."""
+    dates = pd.date_range("2023-01-01", periods=n, freq="D", tz="UTC")
+    return pd.DataFrame(
+        {
+            "entry_time": dates,
+            "exit_time": dates,
+            "entry_price": 100.0,
+            "exit_price": 101.5,
+            "pnl": 150.0,
+            "side": "long",
+        }
+    )
+
+
+def _setup_backtest_app_state():
+    mock_loader = MagicMock(spec=HistoricalDataLoader)
+    mock_loader.load = AsyncMock(return_value=_make_sample_ohlcv())
+    app.state.data_loader = mock_loader
+
+    mock_db = MagicMock(spec=TimescaleDBPool)
+    mock_db.is_connected = True
+    app.state.db_pool = mock_db
+
+
+@pytest.fixture(autouse=True)
+def _restore_backtest_app_state():
+    """Avoid leaking mocked app.state across other test modules in the same pytest session."""
+    prev_loader = getattr(app.state, "data_loader", None)
+    prev_db = getattr(app.state, "db_pool", None)
+    yield
+    app.state.data_loader = prev_loader
+    app.state.db_pool = prev_db
+
+
+class TestBacktestRouterMonteCarloIntegration:
+    """Covers the Ticket 22 integration points inside src/routers/backtest.py:
+    - /api/backtest/monte-carlo switching to the new simulator at >= 30 trades
+    - /api/backtest/report embedding the Monte Carlo section at >= 30 trades
+    """
+
+    def test_backtest_monte_carlo_endpoint_uses_new_simulator_for_30_plus_trades(self):
+        _setup_backtest_app_state()
+        client = TestClient(app)
+
+        with patch(
+            "src.routers.backtest.run_pandas_backtest",
+            return_value=(pd.Series(dtype=float), _make_large_trades_df(40)),
+        ):
+            payload = {
+                "symbol": "AAPL",
+                "timeframe": "1D",
+                "start_date": "2023-01-01",
+                "end_date": "2023-12-31",
+                "strategy": "FVG_Strategy",
+                "strategy_params": {},
+                "initial_cash": 100000.0,
+                "num_simulations": 300,
+            }
+            response = client.post("/api/backtest/monte-carlo", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        # All-positive trades: a permutation can't turn a winning sequence into a loss.
+        assert data["risk_of_ruin"] == 0.0
+        assert data["median_return"] > 0
+        assert data["simulations"] == 300
+
+    def test_backtest_report_embeds_monte_carlo_section_for_30_plus_trades(self):
+        _setup_backtest_app_state()
+        client = TestClient(app)
+
+        equity_curve = pd.Series(
+            [100000.0] * 5, index=pd.date_range("2023-01-01", periods=5, freq="D", tz="UTC")
+        )
+        with patch(
+            "src.routers.backtest.run_pandas_backtest",
+            return_value=(equity_curve, _make_large_trades_df(40)),
+        ):
+            payload = {
+                "symbol": "AAPL",
+                "timeframe": "1D",
+                "start_date": "2023-01-01",
+                "end_date": "2023-12-31",
+                "strategy": "FVG_Strategy",
+                "strategy_params": {},
+                "initial_cash": 100000.0,
+                "engine": "pandas",
+            }
+            response = client.post("/api/backtest/report", json=payload)
+
+        assert response.status_code == 200
+        assert "Monte Carlo Risk Analysis" in response.text
+        assert "Probability of Ruin" in response.text
+
+    def test_backtest_report_omits_monte_carlo_section_below_30_trades(self):
+        _setup_backtest_app_state()
+        client = TestClient(app)
+
+        equity_curve = pd.Series(
+            [100000.0] * 5, index=pd.date_range("2023-01-01", periods=5, freq="D", tz="UTC")
+        )
+        with patch(
+            "src.routers.backtest.run_pandas_backtest",
+            return_value=(equity_curve, _make_large_trades_df(10)),
+        ):
+            payload = {
+                "symbol": "AAPL",
+                "timeframe": "1D",
+                "start_date": "2023-01-01",
+                "end_date": "2023-12-31",
+                "strategy": "FVG_Strategy",
+                "strategy_params": {},
+                "initial_cash": 100000.0,
+                "engine": "pandas",
+            }
+            response = client.post("/api/backtest/report", json=payload)
+
+        assert response.status_code == 200
+        assert "Monte Carlo Risk Analysis" not in response.text

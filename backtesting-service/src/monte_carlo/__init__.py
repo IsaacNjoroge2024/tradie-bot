@@ -3,6 +3,7 @@
 from .models import MonteCarloResult, SimulationConfig, Trade
 from .simulator import MonteCarloSimulator
 from .stress_tests import StressTestSuite
+from .thresholds import THRESHOLDS, MonteCarloThresholds
 from .visualizer import MonteCarloVisualizer
 
 __all__ = [
@@ -12,4 +13,6 @@ __all__ = [
     "MonteCarloSimulator",
     "StressTestSuite",
     "MonteCarloVisualizer",
+    "MonteCarloThresholds",
+    "THRESHOLDS",
 ]

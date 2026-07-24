@@ -8,6 +8,8 @@ monte_carlo:
     max_probability_of_ruin: 0.05
     max_drawdown_95_pct: 40.0
     min_probability_of_profit: 0.55
+    caution_probability_of_ruin: 0.02
+    caution_drawdown_95_pct: 30.0
     max_var_95_pct: 25.0
     
   stress_test:

@@ -2,6 +2,7 @@ import json
 import click
 from ..monte_carlo.models import SimulationConfig, Trade
 from ..monte_carlo.simulator import MonteCarloSimulator
+from ..monte_carlo.thresholds import THRESHOLDS
 
 
 def _load_trade(t: dict, idx: int) -> Trade:
@@ -22,9 +23,16 @@ def _load_trade(t: dict, idx: int) -> Trade:
 
 @click.command()
 @click.argument("trades_file", type=click.Path(exists=True))
-@click.option("--simulations", "-n", default=10000, help="Number of simulations")
+@click.option(
+    "--simulations", "-n", default=THRESHOLDS.default_num_simulations, help="Number of simulations"
+)
 @click.option("--initial-balance", "-b", default=10000.0, help="Initial balance")
-@click.option("--ruin-threshold", "-r", default=50.0, help="Ruin threshold %")
+@click.option(
+    "--ruin-threshold",
+    "-r",
+    default=THRESHOLDS.default_ruin_threshold_pct,
+    help="Ruin threshold %",
+)
 @click.option("--output", "-o", default=None, help="Output file for results")
 def monte_carlo(trades_file, simulations, initial_balance, ruin_threshold, output):
     """Run Monte Carlo simulation on trade history"""

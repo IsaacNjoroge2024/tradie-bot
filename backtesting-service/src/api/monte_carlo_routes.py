@@ -1,10 +1,11 @@
 from typing import List
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ..monte_carlo.models import SimulationConfig, Trade
 from ..monte_carlo.simulator import MonteCarloSimulator
 from ..monte_carlo.stress_tests import StressTestSuite
+from ..monte_carlo.thresholds import THRESHOLDS
 
 router = APIRouter(prefix="/api/monte-carlo", tags=["Monte Carlo"])
 
@@ -12,16 +13,16 @@ router = APIRouter(prefix="/api/monte-carlo", tags=["Monte Carlo"])
 class MonteCarloRequest(BaseModel):
     trades: List[dict]  # Trade data from backtest
     initial_balance: float = 10000.0
-    num_simulations: int = 10000
-    ruin_threshold_pct: float = 50.0
+    num_simulations: int = THRESHOLDS.default_num_simulations
+    ruin_threshold_pct: float = THRESHOLDS.default_ruin_threshold_pct
     skip_trade_pct: float = 0.0
-    position_sizing: str = "fixed"
+    position_sizing: str = THRESHOLDS.default_position_sizing
 
 
 class StressTestRequest(BaseModel):
     trades: List[dict]
     initial_balance: float = 10000.0
-    num_simulations: int = 5000  # Fewer for stress tests (many scenarios)
+    num_simulations: int = THRESHOLDS.stress_test_num_simulations  # Fewer — many scenarios
 
 
 def _dict_to_trade(t: dict, idx: int) -> Trade:

@@ -62,6 +62,9 @@ class SignalValidationServiceTest {
     @Mock
     private CryptoAssetService cryptoAssetService;
 
+    @Mock
+    private RegimeAwareValidator regimeAwareValidator;
+
     private SignalValidationService service;
 
     private static final ConfirmationResult NO_OP_CONFIRMATION =
@@ -73,10 +76,12 @@ class SignalValidationServiceTest {
                 newsShieldClient, killZoneService, riskRuleService,
                 positionSizeService, confirmationService,
                 futuresContractService, cryptoRiskValidator, cryptoMarketHours,
-                cryptoAssetService, new SimpleMeterRegistry());
+                cryptoAssetService, regimeAwareValidator, new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "signalExpirySeconds", 300);
         lenient().when(confirmationService.confirm(any())).thenReturn(NO_OP_CONFIRMATION);
         lenient().when(cryptoMarketHours.shouldTrade(any())).thenReturn(true);
+        lenient().when(regimeAwareValidator.validate(any()))
+                .thenReturn(RegimeAwareValidator.RegimeValidationResult.approved("ranging", BigDecimal.ONE));
     }
 
     private TradeSignal freshSignal() {
@@ -413,5 +418,57 @@ class SignalValidationServiceTest {
         verify(killZoneService).validate(any());
         verify(cryptoMarketHours, never()).shouldTrade(any());
         verify(cryptoRiskValidator, never()).validate(any());
+    }
+
+    // ─── Regime-aware validation tests (Ticket 24) ─────────────────────────────
+
+    @Test
+    void validate_regimeAdvisesAgainstStrategy_rejected() {
+        when(newsShieldClient.getMarketStatus(anyString()))
+                .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
+        when(killZoneService.validate(any()))
+                .thenReturn(new KillZoneService.KillZoneResult(true, null, null));
+        when(riskRuleService.validateAll(any()))
+                .thenReturn(List.of(RuleResult.pass()));
+        when(regimeAwareValidator.validate(any())).thenReturn(
+                RegimeAwareValidator.RegimeValidationResult.rejected(
+                        "ranging", "Strategy FVG not recommended in ranging regime"));
+
+        ValidationResult result = service.validate(freshSignal());
+
+        assertFalse(result.approved());
+        assertTrue(result.rejectionReason().contains("not recommended"));
+        verify(positionSizeService, never()).calculatePositionSize(any(), any());
+    }
+
+    @Test
+    void validate_regimeReducesPositionSize_adjustmentAppliedAndWarned() {
+        when(newsShieldClient.getMarketStatus(anyString()))
+                .thenReturn(new MarketStatusResponse(true, "LOW", List.of()));
+        when(killZoneService.validate(any()))
+                .thenReturn(new KillZoneService.KillZoneResult(true, null, null));
+        when(riskRuleService.validateAll(any()))
+                .thenReturn(List.of(RuleResult.pass()));
+        when(regimeAwareValidator.validate(any())).thenReturn(
+                RegimeAwareValidator.RegimeValidationResult.approved("volatile", BigDecimal.valueOf(0.5)));
+        when(positionSizeService.calculatePositionSize(any(), eq(BigDecimal.valueOf(0.5))))
+                .thenReturn(validSizing(BigDecimal.valueOf(5)));
+
+        ValidationResult result = service.validate(freshSignal());
+
+        assertTrue(result.approved());
+        assertEquals(BigDecimal.valueOf(5), result.order().quantity());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("Regime-adjusted")));
+    }
+
+    @Test
+    void validate_regimeDetectionException_failOpen_stillApproves() {
+        stubAllPass();
+        when(regimeAwareValidator.validate(any())).thenThrow(new RuntimeException("ML Service unavailable"));
+
+        ValidationResult result = service.validate(freshSignal());
+
+        assertTrue(result.approved());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("Regime detection unavailable")));
     }
 }

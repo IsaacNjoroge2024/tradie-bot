@@ -1,9 +1,25 @@
+"""Integration tests against the real ProsusAI/finbert model.
+
+These deliberately do NOT mock the tokenizer/model: the point of this file is
+to verify the actual model classifies real financial text correctly (Ticket
+23 acceptance criterion), which a mock can't meaningfully assert on. Logic-only
+concerns (FinBERT-vs-VADER dispatch, fallback behavior) are covered separately
+in test_sentiment_analyzer.py using mocks, without needing the real model.
+
+Requires the optional `ml` extras (torch, transformers) — install with
+`pip install -e ".[ml,dev]"`. On a cold cache, constructing FinBERTAnalyzer
+below downloads the model (~440MB) from the Hugging Face Hub, so this file
+needs network access the first time it runs and is slower than a typical unit
+test thereafter. CI only installs `.[dev]` (see pyproject.toml), so this
+module is always skipped there via pytest.importorskip and never runs
+unless a developer has explicitly opted in locally.
+"""
+
 import pytest
 
-# Skip the entire module if the ml extras (torch/transformers) are not installed.
-# Both are guarded separately: transformers can be installed with a non-torch
-# backend (TensorFlow/JAX), so a bare "transformers" check alone wouldn't skip
-# cleanly in that case — finbert_analyzer.py imports torch directly.
+# Both packages are guarded separately: transformers can be installed with a
+# non-torch backend (TensorFlow/JAX), so a bare "transformers" check alone
+# wouldn't skip cleanly in that case — finbert_analyzer.py imports torch directly.
 pytest.importorskip(
     "transformers", reason="transformers/torch not installed; run: pip install -e '.[ml,dev]'"
 )
@@ -16,6 +32,8 @@ from src.sentiment.finbert_analyzer import FinBERTAnalyzer
 
 @pytest.fixture(scope="module")
 def analyzer():
+    # scope="module": load the (real, network-fetched-on-cold-cache) model once
+    # for all tests in this file rather than once per test.
     return FinBERTAnalyzer(device="cpu")
 
 

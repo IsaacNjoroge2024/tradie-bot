@@ -50,6 +50,16 @@ public class OHLCVDataService {
         return series;
     }
 
+    // Returns raw OHLCV candles (ascending by time) rather than a ta4j BarSeries,
+    // for callers that need plain bar data (e.g. building an external ML service
+    // request payload) instead of indicator-ready series objects.
+    public List<OHLCVCandle> getRecentCandles(String symbol, String exchange, String timeframe) {
+        String normalizedTimeframe = normalizeTimeframe(timeframe);
+        Duration lookback = getLookbackDuration(normalizedTimeframe, defaultLookbackBars);
+        Instant since = Instant.now().minus(lookback);
+        return repository.findRecentBars(symbol, exchange, normalizedTimeframe, since);
+    }
+
     private BarSeries buildBarSeries(String symbol, String timeframe, List<OHLCVCandle> candles) {
         BaseBarSeries series = new BaseBarSeries(symbol);
         Duration barDuration = getBarDuration(timeframe);

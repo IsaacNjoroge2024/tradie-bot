@@ -1,10 +1,13 @@
-from datetime import timedelta
+import threading
+from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
+from src.regime.hmm_detector import HMMRegimeDetector
 from src.regime.models import MarketRegime, RegimeState
-from src.regime.regime_service import RegimeService
+from src.regime.regime_service import _MAX_CACHED_DETECTORS, RegimeService
 
 
 def _make_data(n: int = 300, drift: float = 0.001, vol: float = 0.01) -> pd.DataFrame:
@@ -87,6 +90,59 @@ class TestRegimeService:
         service.get_regime("AAPL", "4H", data)
 
         assert service.detectors["AAPL_4H"].timeframe == "4H"
+
+    def test_fit_detector_evicts_stalest_entry_when_over_capacity(self):
+        """detectors/last_update are keyed by client-supplied symbol/timeframe
+        with no allowlist — without a bound, distinct values would grow these
+        dicts unboundedly for the life of the process."""
+        service = RegimeService()
+        data = _make_data()
+
+        # Pre-fill to capacity with lightweight fake entries — avoids actually
+        # fitting hundreds of real HMMs just to exercise the eviction path.
+        base_time = datetime.now() - timedelta(days=1)
+        for i in range(_MAX_CACHED_DETECTORS):
+            key = f"FAKE{i}_1H"
+            service.detectors[key] = HMMRegimeDetector()
+            service.last_update[key] = base_time + timedelta(seconds=i)
+
+        stalest_key = "FAKE0_1H"
+        assert stalest_key in service.detectors
+
+        service.get_regime("AAPL", "1H", data)  # real fit + eviction check
+
+        assert len(service.detectors) == _MAX_CACHED_DETECTORS
+        assert len(service.last_update) == _MAX_CACHED_DETECTORS
+        assert stalest_key not in service.detectors
+        assert "AAPL_1H" in service.detectors
+
+    def test_get_regime_concurrent_calls_for_same_new_key_fit_only_once(self):
+        """Regression test for the check-then-act race: concurrent requests
+        for the same missing/stale key (real OS threads, matching how the API
+        layer dispatches via asyncio.to_thread) must not trigger redundant,
+        wasted HMM fits."""
+        service = RegimeService()
+        data = _make_data()
+
+        fit_call_count = 0
+        original_fit_detector = RegimeService._fit_detector
+
+        def counting_fit_detector(self, key, price_data, timeframe):
+            nonlocal fit_call_count
+            fit_call_count += 1
+            return original_fit_detector(self, key, price_data, timeframe)
+
+        with patch.object(RegimeService, "_fit_detector", counting_fit_detector):
+            threads = [
+                threading.Thread(target=service.get_regime, args=("AAPL", "1H", data))
+                for _ in range(8)
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+        assert fit_call_count == 1
 
 
 class TestShouldTrade:

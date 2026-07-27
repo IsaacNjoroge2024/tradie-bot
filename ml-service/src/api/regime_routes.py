@@ -2,7 +2,7 @@ import asyncio
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from ..config import settings
 from ..regime.models import RegimeRecommendation, RegimeState
@@ -18,6 +18,20 @@ class PriceData(BaseModel):
     low: list[float]
     close: list[float]
     volume: list[float]
+
+    @model_validator(mode="after")
+    def _check_equal_lengths(self) -> "PriceData":
+        lengths = {
+            len(self.timestamp),
+            len(self.open),
+            len(self.high),
+            len(self.low),
+            len(self.close),
+            len(self.volume),
+        }
+        if len(lengths) > 1:
+            raise ValueError("All price_data fields must have the same length")
+        return self
 
 
 class RegimeRequest(BaseModel):

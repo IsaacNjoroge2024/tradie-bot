@@ -54,8 +54,6 @@ class HMMRegimeDetector:
         self.scaler = StandardScaler()
         self.regime_mapping: dict[int, MarketRegime] = {}
         self.is_fitted = False
-        self.current_regime_duration = 0
-        self.last_regime: MarketRegime | None = None
 
     def fit(self, price_data: pd.DataFrame) -> "HMMRegimeDetector":
         """
@@ -234,12 +232,19 @@ class HMMRegimeDetector:
 
         current_regime = self.regime_mapping.get(current_state, MarketRegime.RANGING)
 
-        # Track duration
-        if current_regime == self.last_regime:
-            self.current_regime_duration += 1
-        else:
-            self.current_regime_duration = 1
-            self.last_regime = current_regime
+        # Duration = trailing run-length of the current regime within this
+        # decoded window, derived purely from state_sequence (the input data).
+        # Not carried as mutable instance state across calls: two identical
+        # calls (e.g. a client polling before the next bar closes) must return
+        # the same duration, not an incrementing one, and a shared cached
+        # detector (RegimeService.detectors) is predicted from multiple
+        # threads via asyncio.to_thread — mutable per-call state on self would
+        # race under concurrent requests for the same symbol/timeframe.
+        duration = 1
+        for state in state_sequence[-2::-1]:
+            if self.regime_mapping.get(state, MarketRegime.RANGING) != current_regime:
+                break
+            duration += 1
 
         # Sum, not overwrite: multiple HMM states commonly collapse onto the
         # same regime label (see the warning in _map_regimes_to_states), and
@@ -256,7 +261,7 @@ class HMMRegimeDetector:
             regime=current_regime,
             probability=float(current_probs[current_state]),
             all_probabilities=all_probs,
-            duration=self.current_regime_duration,
+            duration=duration,
             transition_matrix=self.model.transmat_,
         )
 

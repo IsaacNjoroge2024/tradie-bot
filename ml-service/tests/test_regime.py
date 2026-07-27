@@ -171,7 +171,11 @@ class TestHMMRegimeDetector:
         assert state.transition_matrix.shape == (4, 4)
         np.testing.assert_allclose(state.transition_matrix.sum(axis=1), np.ones(4), atol=1e-6)
 
-    def test_duration_increments_while_regime_is_stable(self):
+    def test_duration_is_deterministic_and_idempotent_across_repeated_calls(self):
+        """duration must be derived purely from the input window, not carried as
+        mutable state across calls: two identical calls (e.g. a client polling
+        before the next bar closes) must return the *same* duration, not an
+        incrementing one."""
         data = create_ranging_data()
 
         detector = HMMRegimeDetector()
@@ -181,7 +185,16 @@ class TestHMMRegimeDetector:
         second = detector.predict(data)
 
         assert first.regime == second.regime
-        assert second.duration == first.duration + 1
+        assert second.duration == first.duration
+
+    def test_duration_reflects_trailing_run_length_within_the_window(self):
+        data = create_trending_up_data()
+
+        detector = HMMRegimeDetector()
+        detector.fit(data)
+        state = detector.predict(data)
+
+        assert 1 <= state.duration <= len(detector._calculate_features(data))
 
     def test_recommendation_generation(self):
         """Test that recommendations are generated correctly"""

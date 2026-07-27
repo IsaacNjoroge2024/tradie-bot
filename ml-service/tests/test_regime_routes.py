@@ -70,6 +70,20 @@ def test_detect_regime_rejects_insufficient_bars():
     assert response.status_code == 400
 
 
+def test_detect_regime_rejects_mismatched_array_lengths():
+    """pd.DataFrame({...}) on unequal-length lists raises an uncaught ValueError
+    (500) rather than a clean validation error — must be rejected before that."""
+    payload = _price_data_payload()
+    payload["close"] = payload["close"][:-1]  # one shorter than the rest
+
+    response = client.post(
+        "/api/regime/detect",
+        json={"symbol": "AAPL", "timeframe": "1H", "price_data": payload},
+    )
+
+    assert response.status_code == 422
+
+
 def test_detect_regime_reuses_cached_detector_across_requests():
     """Regression test: the route must not build a fresh, empty RegimeService
     per request, or the 4h retrain-interval caching design is defeated and

@@ -1,4 +1,5 @@
 import logging
+import threading
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -8,6 +9,13 @@ from .models import MarketRegime, RegimeConfig, RegimeRecommendation, RegimeStat
 from .thresholds import THRESHOLDS
 
 logger = logging.getLogger(__name__)
+
+# Caps the detectors/last_update dicts, which are keyed by client-supplied
+# "{symbol}_{timeframe}" strings with no allowlist — without a bound, a caller
+# sending many distinct values would grow these dicts unboundedly for the
+# life of the process. 500 matches strategy-engine's own Caffeine cache size
+# for a comparable purpose (marketStatus/accountInfo, see CacheConfig).
+_MAX_CACHED_DETECTORS = 500
 
 
 class RegimeService:
@@ -19,6 +27,12 @@ class RegimeService:
         self.detectors: dict[str, HMMRegimeDetector] = {}
         self.last_update: dict[str, datetime] = {}
         self.update_interval = timedelta(hours=THRESHOLDS.update_frequency_hours)
+        # Guards fit-or-reuse below. Real OS threads (via asyncio.to_thread in
+        # the API layer), not coroutines on one event loop, can call get_regime
+        # concurrently for the same key — an unsynchronized check-then-act
+        # would let two threads both see a stale/missing entry and redundantly
+        # fit the same detector at once.
+        self._fit_lock = threading.Lock()
 
     def get_regime(self, symbol: str, timeframe: str, price_data: pd.DataFrame) -> RegimeState:
         """Get current regime for a symbol"""
@@ -26,7 +40,11 @@ class RegimeService:
         key = f"{symbol}_{timeframe}"
 
         if key not in self.detectors or self._needs_update(key):
-            self._fit_detector(key, price_data, timeframe)
+            with self._fit_lock:
+                # Re-check: another thread may have fit this key while we
+                # were waiting for the lock.
+                if key not in self.detectors or self._needs_update(key):
+                    self._fit_detector(key, price_data, timeframe)
 
         return self.detectors[key].predict(price_data)
 
@@ -41,7 +59,7 @@ class RegimeService:
         return self.detectors[key].get_recommendation(state)
 
     def _fit_detector(self, key: str, price_data: pd.DataFrame, timeframe: str):
-        """Fit or refit a detector"""
+        """Fit or refit a detector. Always called while holding self._fit_lock."""
 
         config = RegimeConfig(
             n_regimes=THRESHOLDS.n_regimes, lookback_periods=THRESHOLDS.lookback_periods
@@ -51,6 +69,16 @@ class RegimeService:
 
         self.detectors[key] = detector
         self.last_update[key] = datetime.now()
+
+        if len(self.detectors) > _MAX_CACHED_DETECTORS:
+            stalest_key = min(self.last_update, key=self.last_update.get)
+            del self.detectors[stalest_key]
+            del self.last_update[stalest_key]
+            logger.info(
+                "Evicted regime detector for %s (cache exceeded %d entries)",
+                stalest_key,
+                _MAX_CACHED_DETECTORS,
+            )
 
         logger.info("Fitted regime detector for %s", key)
 

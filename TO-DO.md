@@ -68,6 +68,22 @@ Resolved in `RolloverService.java`:
 
 ---
 
+## Ticket 23 — FinBERT Sentiment Analyzer
+
+### 1. No offline/air-gapped guard on FinBERT model loading (CodeRabbit comment)
+**File**: `news-shield/src/sentiment/finbert_analyzer.py` — `FinBERTAnalyzer.__init__`
+**Problem**: `AutoTokenizer.from_pretrained`/`AutoModelForSequenceClassification.from_pretrained` attempt a Hub network call on first use. In a constrained/offline deployment environment, this blocks startup until HF's own client-side timeout elapses before `_load_finbert()`'s try/except catches the failure and falls back to VADER — the failure is handled gracefully, but the startup stall itself is still user-visible.
+**Why deferred**: no current requirement for offline/air-gapped deployment; adding a `local_files_only` setting now would be speculative configuration surface for a scenario that isn't in scope.
+**Solution** (if ever needed): add a `finbert_offline: bool` setting passed as `local_files_only=` to both `from_pretrained` calls, and document pre-baking the HF cache directory into the deployment image.
+
+### 2. No circuit breaker for persistent FinBERT failures (CodeRabbit comment)
+**File**: `news-shield/src/services/sentiment_analyzer.py` — `analyze_text`, `analyze_texts_batch`
+**Problem**: On a persistent fault (corrupted weights, sustained CUDA OOM), every call still attempts FinBERT inference before falling back to VADER, paying that cost repeatedly instead of "failing fast" into degraded mode.
+**Why deferred**: a *correct* circuit breaker needs reset/backoff semantics (open → half-open → closed) to avoid getting permanently stuck in degraded mode after a transient fault — a naive "disable after N failures with no recovery path" implementation could leave the service on VADER-only for the rest of the process lifetime even after a transient GPU hiccup resolves, which is worse than the status quo. Not tied to any observed failure or ticket requirement — all live/real-model testing was clean.
+**Solution** (if ever needed): track consecutive failures with a timestamp; skip FinBERT and go straight to VADER while "open," but retry after a cooldown window rather than disabling permanently.
+
+---
+
 ## Ticket 21 — MT5 Bridge
 
 ### 1. Add API key / mTLS authentication to bridge routes (Comment 8) ✅ DONE

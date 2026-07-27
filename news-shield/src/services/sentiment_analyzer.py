@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, ClassVar, List, Optional
@@ -49,9 +50,9 @@ class MarketSentimentSummary(BaseModel):
 
     overall_sentiment: str  # POSITIVE, NEGATIVE, NEUTRAL
     compound_score: float
-    positive_pct: float
-    negative_pct: float
-    neutral_pct: float
+    positive_ratio: float  # fraction 0.0-1.0, not a 0-100 percentage
+    negative_ratio: float
+    neutral_ratio: float
     headline_count: int
 
 
@@ -111,7 +112,9 @@ class SentimentAnalyzer:
         logger.info("Sentiment analyzer initialized with VADER")
 
         if settings.sentiment_primary_analyzer == "finbert":
-            self._load_finbert()
+            # Model download/load/warm-up is blocking, CPU/IO-bound work — offload
+            # so it doesn't stall the event loop during startup.
+            await asyncio.to_thread(self._load_finbert)
 
     def _load_finbert(self) -> None:
         """Attempt to load FinBERT as the primary analyzer."""
@@ -297,6 +300,13 @@ class SentimentAnalyzer:
                 results = self.finbert_model.analyze_batch(
                     texts, batch_size=settings.finbert_batch_size
                 )
+                if len(results) != len(texts):
+                    # Defense-in-depth: a mismatched count would otherwise surface
+                    # later as a confusing strict=True zip crash in get_market_sentiment
+                    # instead of the intended graceful VADER fallback.
+                    raise ValueError(
+                        f"FinBERT returned {len(results)} results for {len(texts)} texts"
+                    )
                 return [
                     TextSentimentResult(
                         text=r.text,
@@ -330,9 +340,9 @@ class SentimentAnalyzer:
             return MarketSentimentSummary(
                 overall_sentiment="NEUTRAL",
                 compound_score=0.0,
-                positive_pct=0.0,
-                negative_pct=0.0,
-                neutral_pct=0.0,
+                positive_ratio=0.0,
+                negative_ratio=0.0,
+                neutral_ratio=0.0,
                 headline_count=0,
             )
 
@@ -353,9 +363,9 @@ class SentimentAnalyzer:
         return MarketSentimentSummary(
             overall_sentiment=overall,
             compound_score=round(avg_compound, 3),
-            positive_pct=round(positive_count / total, 3),
-            negative_pct=round(negative_count / total, 3),
-            neutral_pct=round(neutral_count / total, 3),
+            positive_ratio=round(positive_count / total, 3),
+            negative_ratio=round(negative_count / total, 3),
+            neutral_ratio=round(neutral_count / total, 3),
             headline_count=total,
         )
 

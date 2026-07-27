@@ -52,9 +52,9 @@ def _setup_app_state():
     mock_sentiment_analyzer.aggregate_sentiment.return_value = MarketSentimentSummary(
         overall_sentiment="POSITIVE",
         compound_score=0.6,
-        positive_pct=1.0,
-        negative_pct=0.0,
-        neutral_pct=0.0,
+        positive_ratio=1.0,
+        negative_ratio=0.0,
+        neutral_ratio=0.0,
         headline_count=1,
     )
 

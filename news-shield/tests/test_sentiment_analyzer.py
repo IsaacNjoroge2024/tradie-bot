@@ -1,4 +1,5 @@
 import httpx
+import sys
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -70,16 +71,41 @@ class TestAnalyzeSentiment:
 
 
 class TestFinBERTLoading:
-    """These exercise the real _load_finbert() path. In CI (no `ml` extras
-    installed) this naturally validates graceful fallback via a real
-    ModuleNotFoundError — not a mocked one. If `ml` extras ARE installed
-    locally, this genuinely loads FinBERT (slower, but still correct)."""
+    """_load_finbert() imports FinBERTAnalyzer lazily via `from
+    ..sentiment.finbert_analyzer import FinBERTAnalyzer`. Injecting a fake
+    module into sys.modules under that name intercepts the import before the
+    real module (which unconditionally `import torch`) ever loads — so these
+    tests are deterministic and network-free even when the `ml` extras happen
+    to be installed. Real-model coverage lives in test_finbert_analyzer.py."""
+
+    @staticmethod
+    def _patched_finbert_module(fake_finbert_analyzer_class):
+        fake_module = MagicMock()
+        fake_module.FinBERTAnalyzer = fake_finbert_analyzer_class
+        return patch.dict(sys.modules, {"src.sentiment.finbert_analyzer": fake_module})
 
     @pytest.mark.asyncio
-    async def test_load_finbert_never_raises(self):
+    async def test_load_finbert_falls_back_on_construction_failure(self):
         a = SentimentAnalyzer()
-        a._load_finbert()
-        assert a.finbert_model is None or hasattr(a.finbert_model, "analyze")
+        failing_class = MagicMock(side_effect=ModuleNotFoundError("No module named 'torch'"))
+
+        with self._patched_finbert_module(failing_class):
+            a._load_finbert()
+
+        assert a.finbert_model is None
+        await a.aclose()
+
+    @pytest.mark.asyncio
+    async def test_load_finbert_succeeds_and_warms_up(self):
+        a = SentimentAnalyzer()
+        mock_model = MagicMock()
+        succeeding_class = MagicMock(return_value=mock_model)
+
+        with self._patched_finbert_module(succeeding_class):
+            a._load_finbert()
+
+        assert a.finbert_model is mock_model
+        mock_model.analyze.assert_called_once()  # warm-up inference
         await a.aclose()
 
     @pytest.mark.asyncio
@@ -208,7 +234,7 @@ class TestFinBERTHybridBehavior:
 
         assert summary.overall_sentiment == "POSITIVE"
         assert summary.headline_count == 4
-        assert summary.positive_pct == 0.75
+        assert summary.positive_ratio == 0.75
         assert summary.compound_score > 0.2
 
 

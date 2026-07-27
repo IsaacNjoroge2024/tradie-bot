@@ -7,7 +7,7 @@ so the base service still runs (VADER-only) without these heavy deps installed.
 
 import logging
 from dataclasses import dataclass
-from typing import ClassVar, List, Optional
+from typing import List, Optional
 
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -37,7 +37,6 @@ class FinBERTAnalyzer:
     """
 
     MODEL_NAME = "ProsusAI/finbert"
-    LABELS: ClassVar[List[str]] = ["positive", "negative", "neutral"]  # FinBERT's output order
 
     def __init__(self, device: Optional[str] = None, max_length: int = 512):
         """
@@ -53,6 +52,12 @@ class FinBERTAnalyzer:
         self.model = AutoModelForSequenceClassification.from_pretrained(self.MODEL_NAME)
         self.model.to(self.device)
         self.model.eval()
+
+        # Derive the class-index -> label mapping from the checkpoint's own
+        # config rather than assuming a fixed [positive, negative, neutral]
+        # order — fails fast (KeyError, caught by the caller) if a differently
+        # labeled checkpoint is ever swapped in for MODEL_NAME.
+        self.id2label = {idx: label.lower() for idx, label in self.model.config.id2label.items()}
 
         logger.info("FinBERT model loaded successfully")
 
@@ -91,25 +96,17 @@ class FinBERTAnalyzer:
 
             for j, text in enumerate(chunk):
                 probs = probabilities[j]
-                positive_score = float(probs[0])
-                negative_score = float(probs[1])
-                neutral_score = float(probs[2])
-
-                scores = {
-                    "positive": positive_score,
-                    "negative": negative_score,
-                    "neutral": neutral_score,
-                }
+                scores = {self.id2label[idx]: float(probs[idx]) for idx in range(len(probs))}
                 label = max(scores, key=scores.get)
 
                 results.append(
                     FinBERTResult(
                         text=text,
                         label=label,
-                        positive_score=positive_score,
-                        negative_score=negative_score,
-                        neutral_score=neutral_score,
-                        compound=positive_score - negative_score,
+                        positive_score=scores["positive"],
+                        negative_score=scores["negative"],
+                        neutral_score=scores["neutral"],
+                        compound=scores["positive"] - scores["negative"],
                         confidence=scores[label],
                     )
                 )

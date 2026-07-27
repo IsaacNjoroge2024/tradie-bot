@@ -1,4 +1,5 @@
 import httpx
+import sys
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,8 +10,15 @@ from src.services.sentiment_analyzer import SentimentAnalyzer
 
 @pytest.fixture
 async def analyzer():
-    a = SentimentAnalyzer()
-    await a.initialize()
+    # Force VADER-only initialization for these pre-existing tests, regardless
+    # of whether the optional `ml` extras (torch/transformers) happen to be
+    # installed locally — keeps this fixture fast and deterministic, and these
+    # tests are specifically about VADER behavior. FinBERT-primary behavior is
+    # covered separately in TestFinBERTHybridBehavior below.
+    with patch("src.services.sentiment_analyzer.settings") as mock_settings:
+        mock_settings.sentiment_primary_analyzer = "vader"
+        a = SentimentAnalyzer()
+        await a.initialize()
     yield a
     await a.aclose()
 
@@ -60,6 +68,174 @@ class TestAnalyzeSentiment:
         bullish_score = analyzer.analyze_sentiment("bullish")
         bearish_score = analyzer.analyze_sentiment("bearish")
         assert bullish_score > bearish_score
+
+
+class TestFinBERTLoading:
+    """_load_finbert() imports FinBERTAnalyzer lazily via `from
+    ..sentiment.finbert_analyzer import FinBERTAnalyzer`. Injecting a fake
+    module into sys.modules under that name intercepts the import before the
+    real module (which unconditionally `import torch`) ever loads — so these
+    tests are deterministic and network-free even when the `ml` extras happen
+    to be installed. Real-model coverage lives in test_finbert_analyzer.py."""
+
+    @staticmethod
+    def _patched_finbert_module(fake_finbert_analyzer_class):
+        fake_module = MagicMock()
+        fake_module.FinBERTAnalyzer = fake_finbert_analyzer_class
+        return patch.dict(sys.modules, {"src.sentiment.finbert_analyzer": fake_module})
+
+    @pytest.mark.asyncio
+    async def test_load_finbert_falls_back_on_construction_failure(self):
+        a = SentimentAnalyzer()
+        failing_class = MagicMock(side_effect=ModuleNotFoundError("No module named 'torch'"))
+
+        with self._patched_finbert_module(failing_class):
+            a._load_finbert()
+
+        assert a.finbert_model is None
+        await a.aclose()
+
+    @pytest.mark.asyncio
+    async def test_load_finbert_succeeds_and_warms_up(self):
+        a = SentimentAnalyzer()
+        mock_model = MagicMock()
+        succeeding_class = MagicMock(return_value=mock_model)
+
+        with self._patched_finbert_module(succeeding_class):
+            a._load_finbert()
+
+        assert a.finbert_model is mock_model
+        mock_model.analyze.assert_called_once()  # warm-up inference
+        await a.aclose()
+
+    @pytest.mark.asyncio
+    async def test_initialize_skips_finbert_when_vader_selected(self):
+        with patch("src.services.sentiment_analyzer.settings") as mock_settings:
+            mock_settings.sentiment_primary_analyzer = "vader"
+            a = SentimentAnalyzer()
+            await a.initialize()
+        assert a.finbert_model is None
+        await a.aclose()
+
+
+class TestFinBERTHybridBehavior:
+    """Tests the FinBERT-primary/VADER-fallback logic using a mocked FinBERT
+    model, so these run correctly without the heavy `ml` extras installed."""
+
+    @pytest.fixture
+    async def analyzer_with_mock_finbert(self):
+        with patch("src.services.sentiment_analyzer.settings") as mock_settings:
+            mock_settings.sentiment_primary_analyzer = "vader"
+            mock_settings.finbert_batch_size = 16
+            a = SentimentAnalyzer()
+            await a.initialize()
+        a.finbert_model = MagicMock()
+        yield a
+        await a.aclose()
+
+    @staticmethod
+    def _finbert_result(text: str, label: str, compound: float, confidence: float = 0.9):
+        return MagicMock(
+            text=text,
+            label=label,
+            compound=compound,
+            confidence=confidence,
+            positive_score=max(compound, 0.0),
+            negative_score=max(-compound, 0.0),
+            neutral_score=1.0 - abs(compound),
+        )
+
+    @pytest.mark.asyncio
+    async def test_analyze_text_prefers_finbert(self, analyzer_with_mock_finbert):
+        a = analyzer_with_mock_finbert
+        a.finbert_model.analyze.return_value = self._finbert_result("t", "positive", 0.8)
+
+        result = a.analyze_text("Company reports record earnings")
+
+        assert result.engine == "finbert"
+        assert result.label == "POSITIVE"
+        assert result.compound == 0.8
+        a.finbert_model.analyze.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_analyze_text_falls_back_to_vader_on_finbert_error(
+        self, analyzer_with_mock_finbert
+    ):
+        a = analyzer_with_mock_finbert
+        a.finbert_model.analyze.side_effect = RuntimeError("CUDA out of memory")
+
+        result = a.analyze_text("Stocks rally to record highs on strong earnings")
+
+        assert result.engine == "vader"
+        assert result.compound > 0
+
+    @pytest.mark.asyncio
+    async def test_analyze_sentiment_uses_finbert_compound(self, analyzer_with_mock_finbert):
+        a = analyzer_with_mock_finbert
+        a.finbert_model.analyze.return_value = self._finbert_result("t", "negative", -0.6)
+
+        assert a.analyze_sentiment("Company files for bankruptcy") == -0.6
+
+    @pytest.mark.asyncio
+    async def test_analyze_texts_batch_prefers_finbert(self, analyzer_with_mock_finbert):
+        a = analyzer_with_mock_finbert
+        a.finbert_model.analyze_batch.return_value = [
+            self._finbert_result("Stock hits all-time high", "positive", 0.7),
+            self._finbert_result("Company faces lawsuit", "negative", -0.6),
+        ]
+
+        results = a.analyze_texts_batch(["Stock hits all-time high", "Company faces lawsuit"])
+
+        assert len(results) == 2
+        assert results[0].label == "POSITIVE"
+        assert results[1].label == "NEGATIVE"
+        assert all(r.engine == "finbert" for r in results)
+
+    @pytest.mark.asyncio
+    async def test_analyze_texts_batch_falls_back_to_vader_on_finbert_error(
+        self, analyzer_with_mock_finbert
+    ):
+        a = analyzer_with_mock_finbert
+        a.finbert_model.analyze_batch.side_effect = RuntimeError("model error")
+
+        results = a.analyze_texts_batch(["Markets rally on positive jobs report"])
+
+        assert len(results) == 1
+        assert results[0].engine == "vader"
+
+    @pytest.mark.asyncio
+    async def test_analyze_texts_batch_empty_input(self, analyzer_with_mock_finbert):
+        assert analyzer_with_mock_finbert.analyze_texts_batch([]) == []
+
+    @pytest.mark.asyncio
+    async def test_aggregate_sentiment_empty_input(self, analyzer_with_mock_finbert):
+        summary = analyzer_with_mock_finbert.aggregate_sentiment([])
+        assert summary.overall_sentiment == "NEUTRAL"
+        assert summary.headline_count == 0
+
+    @pytest.mark.asyncio
+    async def test_aggregate_sentiment_computes_percentages(self, analyzer_with_mock_finbert):
+        a = analyzer_with_mock_finbert
+        a.finbert_model.analyze_batch.return_value = [
+            self._finbert_result("Markets rally on positive jobs report", "positive", 0.6),
+            self._finbert_result("Tech stocks lead gains", "positive", 0.5),
+            self._finbert_result("Fed signals rate cuts ahead", "neutral", 0.05),
+            self._finbert_result("Investors optimistic about Q4", "positive", 0.7),
+        ]
+
+        summary = a.aggregate_sentiment(
+            [
+                "Markets rally on positive jobs report",
+                "Tech stocks lead gains",
+                "Fed signals rate cuts ahead",
+                "Investors optimistic about Q4",
+            ]
+        )
+
+        assert summary.overall_sentiment == "POSITIVE"
+        assert summary.headline_count == 4
+        assert summary.positive_ratio == 0.75
+        assert summary.compound_score > 0.2
 
 
 class TestFetchMarketNews:

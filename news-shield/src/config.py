@@ -1,7 +1,8 @@
 import logging
 from pathlib import Path
+from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,12 @@ class Settings(BaseSettings):
     # News Shield Thresholds
     sentiment_danger_threshold: float = -0.5
     sentiment_caution_threshold: float = -0.3
+
+    # Sentiment Analysis Engine (Ticket 23 — FinBERT)
+    sentiment_primary_analyzer: Literal["finbert", "vader"] = "finbert"
+    finbert_device: Literal["auto", "cuda", "cpu"] = "auto"
+    finbert_max_length: int = Field(default=512, ge=1, le=512)  # 512 = BERT's position limit
+    finbert_batch_size: int = Field(default=16, ge=1)
 
     # High Impact Events
     high_impact_pause_minutes: int = 30

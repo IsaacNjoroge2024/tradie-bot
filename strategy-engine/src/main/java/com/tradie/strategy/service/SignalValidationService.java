@@ -39,6 +39,7 @@ public class SignalValidationService {
     private final CryptoRiskValidator cryptoRiskValidator;
     private final CryptoMarketHours cryptoMarketHours;
     private final CryptoAssetService cryptoAssetService;
+    private final RegimeAwareValidator regimeAwareValidator;
 
     private final Counter receivedCounter;
     private final Counter validatedCounter;
@@ -58,6 +59,7 @@ public class SignalValidationService {
             CryptoRiskValidator cryptoRiskValidator,
             CryptoMarketHours cryptoMarketHours,
             CryptoAssetService cryptoAssetService,
+            RegimeAwareValidator regimeAwareValidator,
             MeterRegistry meterRegistry) {
         this.newsShieldClient = newsShieldClient;
         this.killZoneService = killZoneService;
@@ -68,6 +70,7 @@ public class SignalValidationService {
         this.cryptoRiskValidator = cryptoRiskValidator;
         this.cryptoMarketHours = cryptoMarketHours;
         this.cryptoAssetService = cryptoAssetService;
+        this.regimeAwareValidator = regimeAwareValidator;
         this.meterRegistry = meterRegistry;
 
         this.receivedCounter  = Counter.builder("tradie.signals.received").register(meterRegistry);
@@ -135,6 +138,24 @@ public class SignalValidationService {
             if (!cryptoResult.allowed()) {
                 return reject(signal, cryptoResult.reason());
             }
+        }
+
+        // Step 4.6: Market regime detection (Ticket 24) — rejects strategies the
+        // current regime advises against, and scales position size to it
+        try {
+            RegimeAwareValidator.RegimeValidationResult regimeResult = regimeAwareValidator.validate(signal);
+            if (!regimeResult.approved()) {
+                return reject(signal, regimeResult.rejectionReason());
+            }
+            if (regimeResult.sizeMultiplier().compareTo(BigDecimal.ONE) != 0) {
+                sizeAdjustment = sizeAdjustment.multiply(regimeResult.sizeMultiplier());
+                warnings.add("Regime-adjusted position size (" + regimeResult.regime()
+                        + "): x" + regimeResult.sizeMultiplier());
+            }
+        } catch (Exception e) {
+            log.warn("Regime detection unavailable for symbol={}, proceeding without regime adjustment: {}",
+                    signal.getSymbol(), e.getMessage());
+            warnings.add("Regime detection unavailable - proceeding without regime adjustment");
         }
 
         // Step 5: Indicator confirmation (informational — does not reject, adjusts confidence)

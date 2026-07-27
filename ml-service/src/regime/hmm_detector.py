@@ -10,6 +10,31 @@ from .thresholds import THRESHOLDS
 
 logger = logging.getLogger(__name__)
 
+# Bars per year per timeframe, for annualizing rate-like features consistently
+# across timeframes. Mirrors backtesting-service's _BARS_PER_YEAR (src/analysis/metrics.py),
+# restricted to the timeframes strategy-engine's OHLCVDataService actually produces.
+_BARS_PER_YEAR: dict[str, float] = {
+    "1M": 252.0 * 390,  # 390 min/trading day
+    "5M": 252.0 * 78,
+    "15M": 252.0 * 26,
+    "1H": 252.0 * 6.5,
+    "4H": 252.0 * 1.625,
+    "1D": 252.0,
+}
+
+
+def _bars_per_year(timeframe: str) -> float:
+    bars_per_year = _BARS_PER_YEAR.get(timeframe.upper())
+    if bars_per_year is None:
+        logger.warning(
+            "Unknown timeframe %r; defaulting to 252 bars/year (daily annualisation). "
+            "Supported values: %s",
+            timeframe,
+            list(_BARS_PER_YEAR),
+        )
+        return 252.0
+    return bars_per_year
+
 
 class HMMRegimeDetector:
     """
@@ -22,8 +47,9 @@ class HMMRegimeDetector:
     - VOLATILE: High volatility, erratic returns
     """
 
-    def __init__(self, config: RegimeConfig | None = None):
+    def __init__(self, config: RegimeConfig | None = None, timeframe: str = "1D"):
         self.config = config or RegimeConfig()
+        self.timeframe = timeframe
         self.model: hmm.GaussianHMM | None = None
         self.scaler = StandardScaler()
         self.regime_mapping: dict[int, MarketRegime] = {}
@@ -77,18 +103,35 @@ class HMMRegimeDetector:
         return self
 
     def _calculate_features(self, data: pd.DataFrame) -> np.ndarray:
-        """Calculate features for regime detection"""
+        """Calculate features for regime detection.
+
+        returns_5/20 and volatility_5/20 are annualized using this detector's
+        timeframe. Without this, a "5-bar return" means 5 hours on 1H data but
+        5 days on 1D data — comparing either against a single fixed threshold
+        (as _map_regimes_to_states does) would be timeframe-inconsistent:
+        empirically, un-annualized realized volatility on real 1H bars crossed
+        the volatile-regime threshold ~10x less often than on 1D bars for the
+        same symbol, not because 1H was genuinely calmer but because sqrt(252)
+        assumes every bar is one trading day. Annualizing bakes in a
+        timeframe-independent rate so a single threshold is fair across all of
+        them. This is a no-op for "1D" (bars_per_year == 252, matching the
+        previous hardcoded behavior exactly), so existing 1D calibration is
+        unaffected.
+        """
+
+        bars_per_year = _bars_per_year(self.timeframe)
+        vol_ann_factor = np.sqrt(bars_per_year)
 
         df = data.copy()
 
-        # Returns (multiple windows)
+        # Returns (multiple windows), annualized to a rate comparable across timeframes
         df["returns_1"] = df["close"].pct_change(1)
-        df["returns_5"] = df["close"].pct_change(5)
-        df["returns_20"] = df["close"].pct_change(20)
+        df["returns_5"] = df["close"].pct_change(5) * (bars_per_year / 5)
+        df["returns_20"] = df["close"].pct_change(20) * (bars_per_year / 20)
 
-        # Volatility (realized volatility)
-        df["volatility_5"] = df["returns_1"].rolling(5).std() * np.sqrt(252)
-        df["volatility_20"] = df["returns_1"].rolling(20).std() * np.sqrt(252)
+        # Volatility (realized volatility, annualized)
+        df["volatility_5"] = df["returns_1"].rolling(5).std() * vol_ann_factor
+        df["volatility_20"] = df["returns_1"].rolling(20).std() * vol_ann_factor
 
         # Volume change
         df["volume_ma"] = df["volume"].rolling(20).mean()

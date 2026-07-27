@@ -119,6 +119,20 @@ class RegimeAwareValidatorTest {
     }
 
     @Test
+    void validate_strategyInAvoidList_caseInsensitiveMatch_rejected() {
+        when(ohlcvDataService.getRecentCandles("AAPL", "NASDAQ", "1H")).thenReturn(candles(60));
+        when(regimeClient.detectRegime(eq("AAPL"), eq("1H"), anyList()))
+                .thenReturn(response("ranging", 0.8, List.of("FVG", "BREAKOUT")));
+
+        // TradingView payload strategy names aren't case-normalized anywhere in the
+        // ingestion pipeline; the avoid-list match must not depend on exact casing.
+        RegimeAwareValidator.RegimeValidationResult result = validator.validate(signal("fvg"));
+
+        assertFalse(result.approved());
+        assertTrue(result.rejectionReason().contains("fvg"));
+    }
+
+    @Test
     void validate_nullTimeframe_fallsBackToDefault() {
         TradeSignal s = signal("FVG");
         s.setTimeframe(null);

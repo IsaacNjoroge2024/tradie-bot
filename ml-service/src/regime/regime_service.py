@@ -26,7 +26,7 @@ class RegimeService:
         key = f"{symbol}_{timeframe}"
 
         if key not in self.detectors or self._needs_update(key):
-            self._fit_detector(key, price_data)
+            self._fit_detector(key, price_data, timeframe)
 
         return self.detectors[key].predict(price_data)
 
@@ -40,13 +40,13 @@ class RegimeService:
 
         return self.detectors[key].get_recommendation(state)
 
-    def _fit_detector(self, key: str, price_data: pd.DataFrame):
+    def _fit_detector(self, key: str, price_data: pd.DataFrame, timeframe: str):
         """Fit or refit a detector"""
 
         config = RegimeConfig(
             n_regimes=THRESHOLDS.n_regimes, lookback_periods=THRESHOLDS.lookback_periods
         )
-        detector = HMMRegimeDetector(config)
+        detector = HMMRegimeDetector(config, timeframe)
         detector.fit(price_data)
 
         self.detectors[key] = detector

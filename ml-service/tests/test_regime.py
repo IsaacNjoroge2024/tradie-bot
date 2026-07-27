@@ -239,6 +239,113 @@ class TestHMMRegimeDetector:
         assert multipliers[MarketRegime.VOLATILE] == min(multipliers.values())
 
 
+class TestTimeframeAnnualization:
+    """Covers the timeframe-aware annualization fix in _calculate_features.
+
+    Before this fix, returns_5/20 and volatility_5/20 were annualized with a
+    hardcoded sqrt(252) regardless of timeframe. Verified live against real
+    seeded AAPL data: the VOLATILE threshold was crossed by 4.36% of 1D bars
+    but only 0.43% of 1H bars for the *same symbol* — a ~10x discrepancy
+    caused entirely by treating each 1H bar as if it were a full trading day,
+    not by 1H genuinely being calmer.
+    """
+
+    def test_bars_per_year_known_timeframes(self):
+        from src.regime.hmm_detector import _bars_per_year
+
+        assert _bars_per_year("1D") == 252.0
+        assert _bars_per_year("1H") == pytest.approx(252.0 * 6.5)
+        assert _bars_per_year("4H") == pytest.approx(252.0 * 1.625)
+
+    def test_bars_per_year_unknown_timeframe_falls_back_to_daily(self):
+        from src.regime.hmm_detector import _bars_per_year
+
+        assert _bars_per_year("3D") == 252.0
+
+    def test_bars_per_year_is_case_insensitive(self):
+        from src.regime.hmm_detector import _bars_per_year
+
+        assert _bars_per_year("1h") == _bars_per_year("1H")
+
+    def test_default_timeframe_is_1d(self):
+        assert HMMRegimeDetector().timeframe == "1D"
+
+    def test_1d_behavior_unchanged_from_hardcoded_sqrt_252(self):
+        """Regression guard: the default (1D) detector must reproduce exactly
+        what the old hardcoded `* np.sqrt(252)` computed."""
+        data = create_trending_up_data()
+        detector = HMMRegimeDetector()
+        features = detector._calculate_features(data)
+
+        raw_returns_1 = data["close"].pct_change(1)
+        expected_volatility_5 = (raw_returns_1.rolling(5).std() * np.sqrt(252)).dropna()
+
+        np.testing.assert_allclose(
+            features[:, 2][-10:], expected_volatility_5.values[-10:], rtol=1e-9
+        )
+
+    def test_1h_scales_features_relative_to_1d_by_bars_per_year_ratio(self):
+        """Same raw price series, different timeframe label: returns_5 must scale
+        linearly by the bars-per-year ratio; volatility_5 by its square root."""
+        data = create_trending_up_data()
+
+        features_1d = HMMRegimeDetector(timeframe="1D")._calculate_features(data)
+        features_1h = HMMRegimeDetector(timeframe="1H")._calculate_features(data)
+
+        returns_5_ratio = features_1h[:, 0] / features_1d[:, 0]
+        volatility_5_ratio = features_1h[:, 2] / features_1d[:, 2]
+
+        np.testing.assert_allclose(returns_5_ratio, 6.5, rtol=1e-6)
+        np.testing.assert_allclose(volatility_5_ratio, np.sqrt(6.5), rtol=1e-6)
+
+    def test_matched_annualized_volatility_produces_comparable_features_across_timeframes(
+        self,
+    ):
+        """The actual bug this fixes: 1H bars carrying the same *true* annualized
+        volatility as some 1D bars must now produce comparable volatility_5
+        features, so a single threshold treats both fairly."""
+        n = 300
+        np.random.seed(11)
+        daily_returns = np.random.normal(0, 0.03, n)
+        daily_prices = 100 * np.cumprod(1 + daily_returns)
+        daily_df = pd.DataFrame(
+            {
+                "close": daily_prices,
+                "high": daily_prices * 1.02,
+                "low": daily_prices * 0.98,
+                "volume": np.random.uniform(2000000, 5000000, n),
+            }
+        )
+
+        # Same annualized volatility as the daily series above, expressed as
+        # hourly bars: per-bar stdev scales down by sqrt(bars_per_year ratio).
+        np.random.seed(11)
+        hourly_returns = np.random.normal(0, 0.03 / np.sqrt(6.5), n)
+        hourly_prices = 100 * np.cumprod(1 + hourly_returns)
+        hourly_df = pd.DataFrame(
+            {
+                "close": hourly_prices,
+                "high": hourly_prices * 1.005,
+                "low": hourly_prices * 0.995,
+                "volume": np.random.uniform(2000000, 5000000, n),
+            }
+        )
+
+        features_1d = HMMRegimeDetector(timeframe="1D")._calculate_features(daily_df)
+        features_1h = HMMRegimeDetector(timeframe="1H")._calculate_features(hourly_df)
+
+        assert features_1h[:, 2].mean() == pytest.approx(features_1d[:, 2].mean(), rel=0.05)
+
+    def test_fit_and_predict_with_explicit_timeframe(self):
+        data = create_trending_up_data()
+        detector = HMMRegimeDetector(timeframe="4H")
+        detector.fit(data)
+
+        assert detector.timeframe == "4H"
+        state = detector.predict(data)
+        assert state.regime is not None
+
+
 class TestRegimeConfig:
     def test_defaults(self):
         config = RegimeConfig()

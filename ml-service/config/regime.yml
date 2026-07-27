@@ -6,8 +6,10 @@ regime:
   # Applied to each HMM state's mean *raw* (unscaled) feature values — see
   # HMMRegimeDetector._map_regimes_to_states for why raw values are used
   # instead of the standardized features the HMM itself is fit on.
+  # trending_return is annualized (see _calculate_features) so it's
+  # comparable across timeframes, not a raw 5-bar % move.
   thresholds:
-    trending_return: 0.015    # 1.5% mean 5-bar return
+    trending_return: 0.756     # 1.5% raw 5-bar return, annualized at 1D's 252 bars/year
     volatile_volatility: 0.35  # 35% annualized realized volatility
 
   recommendations:

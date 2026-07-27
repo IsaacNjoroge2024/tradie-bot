@@ -88,3 +88,71 @@ def test_detect_regime_reuses_cached_detector_across_requests():
     )
 
     assert app.state.regime_service.detectors["AAPL_1H"] is detector_after_first_call
+
+
+def test_multi_timeframe_returns_should_trade_decision():
+    payload = _price_data_payload()
+    response = client.post(
+        "/api/regime/multi-timeframe",
+        json={
+            "symbol": "AAPL",
+            "price_data_1h": payload,
+            "price_data_4h": payload,
+            "price_data_1d": payload,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["symbol"] == "AAPL"
+    assert set(body["regimes"].keys()) == {"1H", "4H", "1D"}
+    for tf_result in body["regimes"].values():
+        assert tf_result["regime"] in {"trending_up", "trending_down", "ranging", "volatile"}
+        assert 0 <= tf_result["probability"] <= 1
+    assert isinstance(body["should_trade"], bool)
+    assert body["reason"]
+    assert body["dominant_regime"] in {"trending_up", "trending_down", "ranging", "volatile"}
+    assert 0 <= body["alignment"] <= 1
+    assert 0 <= body["avg_confidence"] <= 1
+
+
+def test_multi_timeframe_rejects_insufficient_bars_on_any_timeframe():
+    payload = _price_data_payload()
+    short_payload = _price_data_payload(n=10)
+
+    response = client.post(
+        "/api/regime/multi-timeframe",
+        json={
+            "symbol": "AAPL",
+            "price_data_1h": payload,
+            "price_data_4h": short_payload,
+            "price_data_1d": payload,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "4H" in response.json()["detail"]
+
+
+def test_multi_timeframe_uses_the_same_cached_detectors_as_single_timeframe_detect():
+    """get_multi_timeframe_regime fits through the same per-key cache as /detect,
+    so a prior /detect call for a timeframe must be reused here too."""
+    payload = _price_data_payload()
+
+    client.post(
+        "/api/regime/detect",
+        json={"symbol": "AAPL", "timeframe": "1H", "price_data": payload},
+    )
+    detector_from_detect = app.state.regime_service.detectors["AAPL_1H"]
+
+    client.post(
+        "/api/regime/multi-timeframe",
+        json={
+            "symbol": "AAPL",
+            "price_data_1h": payload,
+            "price_data_4h": payload,
+            "price_data_1d": payload,
+        },
+    )
+
+    assert app.state.regime_service.detectors["AAPL_1H"] is detector_from_detect

@@ -21,8 +21,13 @@ class RegimeThresholds:
     update_frequency_hours: int = 4
 
     # Classification thresholds (applied to each state's mean *raw*, unscaled
-    # feature values — not the standardized features the HMM is fit on)
-    trending_return: float = 0.015
+    # feature values — not the standardized features the HMM is fit on).
+    # trending_return is an *annualized* rate (bars_per_year / window applied
+    # in HMMRegimeDetector._calculate_features), not a raw 5-bar % move, so it
+    # is comparable across timeframes. 0.756 == 0.015 raw 5-bar return
+    # annualized at 1D's 252 bars/year (0.015 * 252/5); this preserves the
+    # exact 1D decision boundary this project's original calibration used.
+    trending_return: float = 0.756
     volatile_volatility: float = 0.35
 
     # Recommendation multipliers per regime

@@ -48,7 +48,12 @@ public class RegimeAwareValidator {
         RegimeResponse response = regimeClient.detectRegime(signal.getSymbol(), timeframe, candles);
         RegimeRecommendationDTO recommendation = response.recommendation();
 
-        if (recommendation.avoidStrategies().contains(signal.getStrategy())) {
+        // Case-insensitive: TradeSignal.strategy is stored verbatim from the TradingView
+        // webhook payload (no case normalization anywhere in the ingestion pipeline), while
+        // the ML Service's avoid_strategies always uses canonical uppercase names.
+        boolean strategyAvoided = recommendation.avoidStrategies().stream()
+                .anyMatch(avoided -> avoided.equalsIgnoreCase(signal.getStrategy()));
+        if (strategyAvoided) {
             return RegimeValidationResult.rejected(response.regime(),
                     "Strategy " + signal.getStrategy() + " not recommended in " + response.regime() + " regime");
         }

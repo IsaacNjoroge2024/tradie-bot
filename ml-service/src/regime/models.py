@@ -28,7 +28,8 @@ class RegimeConfig:
 
     n_regimes: int = 4
     lookback_periods: int = 252  # Trading days for training
-    update_frequency: int = 20  # Retrain every N bars
+    # Retrain cadence is time-based (RegimeThresholds.update_frequency_hours,
+    # enforced by RegimeService), not bar-count-based — no field for it here.
     features: list[str] = field(
         default_factory=lambda: [
             "returns_5",

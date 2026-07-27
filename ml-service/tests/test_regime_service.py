@@ -76,6 +76,18 @@ class TestRegimeService:
         assert recommendation.position_size_multiplier > 0
         assert recommendation.regime in MarketRegime
 
+    def test_get_regime_threads_timeframe_into_detector(self):
+        """The detector built for a given key must be fit with that same
+        timeframe, so its feature annualization matches (see hmm_detector's
+        _bars_per_year — a detector fit with the wrong timeframe would
+        silently miscalibrate returns_5/volatility_5)."""
+        service = RegimeService()
+        data = _make_data()
+
+        service.get_regime("AAPL", "4H", data)
+
+        assert service.detectors["AAPL_4H"].timeframe == "4H"
+
 
 class TestShouldTrade:
     def _state(self, regime: MarketRegime, probability: float) -> RegimeState:
